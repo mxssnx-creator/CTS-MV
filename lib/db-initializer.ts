@@ -20,8 +20,8 @@ export async function initializeDatabase(): Promise<void> {
     }
 
     try {
-      const fs = await import("fs")
-      const path = await import("path")
+      const fs = (await import("fs")) as any
+      const path = (await import("path")) as any
       
       const sqlPath = path.join(process.cwd(), "scripts", "unified_complete_setup.sql")
       if (!fs.existsSync(sqlPath)) {
@@ -29,10 +29,14 @@ export async function initializeDatabase(): Promise<void> {
       }
 
       const sql = fs.readFileSync(sqlPath, "utf-8")
-      const statements = sql
+      const statements = Array.isArray(sql) ? sql : sql
         .split(";")
-        .map(s => s.trim())
-        .filter(s => s.length > 10)
+        .map((s: string) => s.trim())
+        .filter((s: string) => s.length > 10)
+
+      if (!Array.isArray(statements) || statements.length === 0) {
+        return
+      }
 
       for (const stmt of statements) {
         try {
