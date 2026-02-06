@@ -1120,13 +1120,13 @@ export function ConnectionCard({
             <DialogTitle>Disable Connection?</DialogTitle>
             <DialogDescription>
               This will stop all trading activity on this connection including:
-              <ul className="list-disc list-inside mt-2 space-y-1">
-                <li>Live Trade Engine</li>
-                <li>Preset Trade Engine</li>
-                <li>All active positions monitoring</li>
-              </ul>
             </DialogDescription>
           </DialogHeader>
+          <ul className="list-disc list-inside mt-2 space-y-1 text-sm text-muted-foreground">
+            <li>Live Trade Engine</li>
+            <li>Preset Trade Engine</li>
+            <li>All active positions monitoring</li>
+          </ul>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setShowDisableConfirm(false)}>
               Cancel
