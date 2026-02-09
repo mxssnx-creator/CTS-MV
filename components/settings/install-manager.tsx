@@ -557,10 +557,6 @@ export default function InstallManager() {
           </Card>
         </TabsContent>
 
-                    />
-                  </div>
-
-                  {/* Connection String Preview */}
                   <div className="space-y-2">
                     <Label>Connection String</Label>
                     <div className="p-3 bg-muted/50 rounded-md text-sm font-mono break-all">
