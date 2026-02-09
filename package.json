@@ -35,20 +35,16 @@
     "cts-setup": "./scripts/setup.js"
   },
   "scripts": {
-    "prebuild": "node scripts/prebuild.js --skip-db 2>/dev/null || true",
     "build": "next build",
-    "clean": "bash scripts/clear-cache.sh",
-    "clean:all": "bash scripts/clear-cache.sh && rm -rf node_modules && npm install",
-    "clean:local": "bash scripts/clear-local-cache.sh",
-    "clean:vercel": "rm -rf .next .turbo node_modules/.cache tsconfig.tsbuildinfo",
+    "clean": "rm -rf .next .turbo node_modules/.cache tsconfig.tsbuildinfo",
+    "clean:all": "rm -rf .next .turbo node_modules/.cache tsconfig.tsbuildinfo node_modules && npm install",
     "dev": "next dev -p ${PORT:-3000}",
     "dev:nocache": "next dev -p ${PORT:-3000}",
     "dev:quick": "next dev -p ${PORT:-3000}",
     "health": "curl http://localhost:3000/api/system/health || echo 'Server not running'",
     "lint": "next lint",
     "start": "next start -p ${PORT:-3000}",
-    "type-check": "tsc --noEmit",
-    "verify": "node scripts/verify-build.js"
+    "type-check": "tsc --noEmit"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "1.2.2",
