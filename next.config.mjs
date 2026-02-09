@@ -7,12 +7,7 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  webpack: (config, { isServer }) => {
-    // Disable problematic transpilation analysis
-    config.resolve.conditionNames = config.resolve.conditionNames.filter(
-      (c) => c !== 'edge-light'
-    )
-    
+  webpack: (config) => {
     config.externals = {
       ...config.externals,
       'redis': 'commonjs redis',
