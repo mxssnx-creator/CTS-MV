@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getTradeEngineStatus } from "@/lib/trade-engine"
-import { loadConnections } from "@/lib/file-storage"
+import { getConnection, initRedis } from "@/lib/redis-db"
 import { SystemLogger } from "@/lib/system-logger"
 
 // GET real-time status for a specific connection
@@ -11,8 +11,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     console.log("[v0] Fetching status for connection:", connectionId)
 
-    const connections = loadConnections()
-    const connection = connections.find((c) => c.id === connectionId)
+    await initRedis()
+    const connection = await getConnection(connectionId)
 
     if (!connection) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 })

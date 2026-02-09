@@ -1,54 +1,102 @@
-import { NextResponse } from "next/server"
-import { query } from "@/lib/db"
-import { loadConnections } from "@/lib/file-storage"
+import { type NextRequest, NextResponse } from "next/server"
 
-export async function GET() {
+export const runtime = "nodejs"
+
+/**
+ * GET /api/system/init-status
+ * Returns the current system initialization status
+ * Used by frontend to determine if migrations have completed and system is ready
+ */
+export async function GET(request: NextRequest) {
   try {
-    // Check database tables
-    let tablesCount = 0
-    let dbInitialized = false
-    
-    try {
-      const tables = await query<{ count: number }>(
-        "SELECT COUNT(*) as count FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+    const { initRedis, isRedisConnected, getRedisStats, getAllConnections } = await import("@/lib/redis-db")
+    const { getMigrationStatus } = await import("@/lib/redis-migrations")
+
+    // Try to connect to Redis
+    await initRedis()
+    const connected = await isRedisConnected()
+
+    if (!connected) {
+      return NextResponse.json(
+        {
+          status: "error",
+          initialized: false,
+          message: "Redis not connected",
+          database: "redis",
+          ready: false,
+          timestamp: new Date().toISOString(),
+        },
+        { status: 503 }
       )
-      tablesCount = tables[0]?.count || 0
-      dbInitialized = tablesCount >= 20 // Expect at least 20 tables
-    } catch (dbError) {
-      console.warn("[v0] Database check failed:", dbError)
     }
 
-    // Check connections
+    // Get migration status
+    const migrationStatus = await getMigrationStatus()
+    const stats = await getRedisStats()
+
+    // Get connection count
     let connectionsCount = 0
     let enabledConnectionsCount = 0
     
     try {
-      const connections = loadConnections()
+      const connections = await getAllConnections()
       connectionsCount = connections.length
-      enabledConnectionsCount = connections.filter(c => c.is_enabled).length
-    } catch (connError) {
-      console.warn("[v0] Connections check failed:", connError)
+      enabledConnectionsCount = connections.filter((c: any) => c.is_enabled !== false).length
+    } catch (error) {
+      console.warn("[v0] Failed to get connections count:", error)
     }
 
-    const status = {
-      database: {
-        initialized: dbInitialized,
-        tablesCount,
-      },
-      connections: {
-        total: connectionsCount,
-        enabled: enabledConnectionsCount,
-      },
-      ready: dbInitialized && enabledConnectionsCount > 0,
-    }
+    const initialized =
+      connected && migrationStatus.currentVersion === migrationStatus.latestVersion
+    const ready = initialized && connectionsCount > 0
 
-    console.log("[v0] System init status:", status)
-
-    return NextResponse.json(status)
-  } catch (error) {
-    console.error("[v0] Failed to get init status:", error)
     return NextResponse.json(
-      { error: "Failed to get initialization status" },
+      {
+        status: initialized ? "ready" : "initializing",
+        initialized,
+        ready,
+        message: initialized ? "System ready" : "Migrations in progress",
+        database: {
+          type: "redis",
+          connected,
+        },
+        migrations: {
+          current_version: migrationStatus.currentVersion,
+          latest_version: migrationStatus.latestVersion,
+          up_to_date: migrationStatus.currentVersion === migrationStatus.latestVersion,
+        },
+        connections: {
+          total: connectionsCount,
+          enabled: enabledConnectionsCount,
+        },
+        statistics: {
+          total_keys: stats.total_keys || 0,
+          memory_used: stats.memory_used || "0",
+          uptime_seconds: stats.uptime_seconds || 0,
+        },
+        system: {
+          version: "3.2",
+          environment: process.env.NODE_ENV || "development",
+          timestamp: new Date().toISOString(),
+        },
+      },
+      { status: 200 }
+    )
+  } catch (error) {
+    console.error("[v0] Init status check failed:", error)
+
+    return NextResponse.json(
+      {
+        status: "error",
+        initialized: false,
+        ready: false,
+        message: error instanceof Error ? error.message : "Unknown error",
+        database: {
+          type: "redis",
+          connected: false,
+        },
+        timestamp: new Date().toISOString(),
+      },
       { status: 500 }
     )
   }

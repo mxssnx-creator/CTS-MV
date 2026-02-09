@@ -1,11 +1,28 @@
 import { NextResponse } from "next/server"
-import { getDatabaseType, query, execute } from "@/lib/db"
+import { initRedis, getRedisClient } from "@/lib/redis-db"
 
 export async function GET() {
   try {
-    const retentionSettings = await query(
-      "SELECT connection_id, retention_hours, auto_cleanup_enabled FROM exchange_retention_settings ORDER BY connection_id",
-    )
+    await initRedis()
+    const client = getRedisClient()
+
+    // Get all retention settings from Redis
+    const keys = await (client as any).keys("exchange_retention:*")
+    const retentionSettings = []
+
+    for (const key of keys) {
+      const data = await (client as any).hGetAll(key)
+      if (data && Object.keys(data).length > 0) {
+        retentionSettings.push({
+          connection_id: data.connection_id,
+          retention_hours: parseInt(data.retention_hours || "24"),
+          auto_cleanup_enabled: data.auto_cleanup_enabled === "true" || data.auto_cleanup_enabled === true,
+        })
+      }
+    }
+
+    // Sort by connection_id
+    retentionSettings.sort((a, b) => a.connection_id.localeCompare(b.connection_id))
 
     return NextResponse.json({ retentionSettings })
   } catch (error) {
@@ -22,28 +39,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "connectionId and retentionHours are required" }, { status: 400 })
     }
 
-    const dbType = getDatabaseType()
+    await initRedis()
+    const client = getRedisClient()
 
-    if (dbType === "postgres") {
-      await execute(
-        `INSERT INTO exchange_retention_settings (connection_id, retention_hours, auto_cleanup_enabled)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (connection_id)
-         DO UPDATE SET 
-           retention_hours = $2,
-           auto_cleanup_enabled = $3,
-           updated_at = NOW()`,
-        [connectionId, retentionHours, autoCleanupEnabled ?? true],
-      )
-    } else {
-      await execute(
-        `INSERT INTO exchange_retention_settings (connection_id, retention_hours, auto_cleanup_enabled)
-         VALUES (?, ?, ?)
-         ON CONFLICT(connection_id) 
-         DO UPDATE SET retention_hours = ?, auto_cleanup_enabled = ?, updated_at = datetime('now')`,
-        [connectionId, retentionHours, autoCleanupEnabled ?? true, retentionHours, autoCleanupEnabled ?? true],
-      )
+    const key = `exchange_retention:${connectionId}`
+    const setting = {
+      connection_id: connectionId,
+      retention_hours: String(retentionHours),
+      auto_cleanup_enabled: String(autoCleanupEnabled ?? true),
+      updated_at: new Date().toISOString(),
     }
+
+    // Store in Redis
+    const fields = Object.entries(setting).flat()
+    await (client as any).hSet(key, ...fields)
+
+    // Add to index
+    await (client as any).sAdd("exchange_retention_settings:all", connectionId)
+    
+    // Set TTL (30 days)
+    await (client as any).expire(key, 30 * 24 * 60 * 60)
 
     return NextResponse.json({ success: true })
   } catch (error) {

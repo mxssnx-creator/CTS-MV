@@ -14,12 +14,12 @@ const nextConfig = {
     '@dydxprotocol/v4-proto',
     'long',
     'protobufjs/minimal',
-    'better-sqlite3',
+    'redis',
   ],
   webpack: (config, { isServer }) => {
     config.externals = {
       ...config.externals,
-      'better-sqlite3': 'commonjs better-sqlite3',
+      'redis': 'commonjs redis',
     }
     return config
   },

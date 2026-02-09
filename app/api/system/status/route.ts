@@ -19,24 +19,19 @@ export async function GET(request: NextRequest) {
     const allHealth = coordinator.getAllConnectionsHealth()
     const allMetrics = coordinator.getAllConnectionsMetrics()
 
-    // Get database audit information
-    let databaseInfo: any = { status: "unavailable" }
+    // Get database info from Redis
+    let databaseInfo: any = { status: "available", type: "redis" }
     try {
-      const { runDatabaseAudit } = await import("@/lib/db-initialization-coordinator")
-      const audit = await runDatabaseAudit()
-      if (audit) {
-        databaseInfo = {
-          status: "available",
-          size: audit.size,
-          tables: audit.totalTables,
-          indexes: audit.totalIndexes,
-          integrity: audit.pragmaSettings,
-          hasIssues: audit.issues.length > 0,
-          issues: audit.issues,
-        }
+      const { getRedisClient } = await import("@/lib/redis-db")
+      const client = getRedisClient()
+      const dbSize = await client.dbSize()
+      databaseInfo = {
+        status: "available",
+        type: "redis",
+        keys_count: dbSize,
       }
     } catch (error) {
-      databaseInfo.error = "Audit unavailable"
+      databaseInfo.error = "Redis info unavailable"
     }
 
     // Group by exchange

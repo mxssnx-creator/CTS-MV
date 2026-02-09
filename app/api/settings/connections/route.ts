@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { nanoid } from "nanoid"
 import { SystemLogger } from "@/lib/system-logger"
-import { loadConnections, saveConnections, type Connection } from "@/lib/file-storage"
+import { getAllConnections, createConnection, initRedis } from "@/lib/redis-db"
 import { getPredefinedConnectionsAsStatic } from "@/lib/connection-predefinitions"
 
 const EXCHANGE_NAME_TO_ID: Record<string, number> = {
@@ -20,7 +20,7 @@ const EXCHANGE_NAME_TO_ID: Record<string, number> = {
 
 export async function GET(request: NextRequest) {
   try {
-    console.log("[v0] Fetching connections with filters...")
+    console.log("[v0] Fetching connections from Redis...")
     const { searchParams } = new URL(request.url)
 
     const exchange = searchParams.get("exchange")
@@ -37,13 +37,14 @@ export async function GET(request: NextRequest) {
 
     let connections: any[] = []
     try {
-      connections = loadConnections()
-      if (!Array.isArray(connections)) {
-        console.log("[v0] Invalid connections data, returning predefined")
+      await initRedis()
+      connections = await getAllConnections()
+      if (!Array.isArray(connections) || connections.length === 0) {
+        console.log("[v0] No connections in Redis, returning predefined")
         connections = getPredefinedConnectionsAsStatic()
       }
     } catch (error) {
-      console.log("[v0] Failed to load connections from file, returning predefined")
+      console.log("[v0] Failed to load connections from Redis:", error)
       connections = getPredefinedConnectionsAsStatic()
     }
 
@@ -165,15 +166,16 @@ export async function POST(request: NextRequest) {
     const exchangeName = body.exchange.toLowerCase()
     const exchangeId = EXCHANGE_NAME_TO_ID[exchangeName] || null
 
-    const newConnection: Connection = {
+    const newConnection: any = {
       id: connectionId,
       user_id: 1,
       name: body.name,
       exchange: exchangeName,
       exchange_id: exchangeId,
       api_type: body.api_type || "perpetual_futures",
+      api_subtype: body.api_subtype || "perpetual",
       connection_method: body.connection_method || "rest",
-      connection_library: body.connection_library || "library",
+      connection_library: body.connection_library || "native",
       api_key: body.api_key,
       api_secret: body.api_secret,
       api_passphrase: body.api_passphrase || "",
@@ -190,9 +192,9 @@ export async function POST(request: NextRequest) {
       updated_at: new Date().toISOString(),
     }
 
-    const connections = loadConnections()
-    connections.push(newConnection)
-    saveConnections(connections)
+    // Save to Redis
+    await initRedis()
+    await createConnection(newConnection)
 
     console.log("[v0] Connection created successfully:", connectionId)
     await SystemLogger.logConnection(`Connection created: ${body.name}`, connectionId, "info", {

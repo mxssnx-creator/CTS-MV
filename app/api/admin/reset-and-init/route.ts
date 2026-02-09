@@ -1,64 +1,37 @@
 import { NextResponse } from "next/server"
-import { execute, getDatabaseType } from "@/lib/db"
-import fs from "fs"
-import path from "path"
+import { initRedis, getRedisClient, flushAll } from "@/lib/redis-db"
+import { runMigrations } from "@/lib/redis-migrations"
 
 export const runtime = "nodejs"
 
 export async function POST() {
   try {
-    console.log("[v0] === DROPPING ALL TABLES ===")
+    console.log("[v0] === FLUSHING REDIS DATABASE ===")
     
-    const dbType = getDatabaseType()
+    await initRedis()
     
-    // Drop all tables in reverse dependency order
-    const tablesToDrop = [
-      "archived_market_data",
-      "data_cleanup_log", 
-      "performance_metrics",
-      "pseudo_positions",
-      "base_pseudo_positions",
-      "indications_active",
-      "trades",
-      "indications_direction",
-      "indications",
-      "market_data",
-      "trade_engine_state",
-      "exchange_connections",
-      "connection_presets",
-      "preset_types",
-      "site_logs",
-      "system_settings",
-      "migrations",
-      "users"
-    ]
-    
-    for (const table of tablesToDrop) {
-      try {
-        await execute(`DROP TABLE IF EXISTS ${table}`, [])
-        console.log(`[v0] Dropped table: ${table}`)
-      } catch (error) {
-        console.log(`[v0] Could not drop ${table}:`, error)
-      }
-    }
+    // Flush all data from Redis
+    await flushAll()
+    console.log("[v0] Redis database flushed")
     
     console.log("[v0] === RUNNING FRESH MIGRATIONS ===")
     
-    // Now run migrations fresh
-    const { runAllMigrations } = await import("@/lib/db-migration-runner")
-    const result = await runAllMigrations()
+    // Run migrations fresh
+    await runMigrations()
+    console.log("[v0] Migrations completed")
     
     return NextResponse.json({
       success: true,
-      message: "Database reset and initialized successfully",
-      result,
+      message: "Redis database reset and initialized successfully",
+      database_type: "redis",
     })
   } catch (error: any) {
     console.error("[v0] Reset and init failed:", error)
     return NextResponse.json(
       {
         success: false,
-        error: error.message,
+        error: error.message || "Unknown error",
+        database_type: "redis",
       },
       { status: 500 },
     )

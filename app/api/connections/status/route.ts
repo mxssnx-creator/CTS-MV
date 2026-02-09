@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server"
-import { loadConnections } from "@/lib/file-storage"
+import { getAllConnections, initRedis } from "@/lib/redis-db"
 import { SystemLogger } from "@/lib/system-logger"
 import { getTradeEngineStatus } from "@/lib/trade-engine"
 
 // GET real-time status for all active connections
 export async function GET() {
   try {
-    console.log("[v0] Fetching real connection statuses")
+    console.log("[v0] Fetching real connection statuses from Redis")
 
-    const connections = loadConnections()
+    await initRedis()
+    const connections = await getAllConnections()
     
     // Ensure connections is an array
     if (!Array.isArray(connections)) {
@@ -16,11 +17,11 @@ export async function GET() {
       return NextResponse.json({ error: "Invalid connections data", statuses: [] }, { status: 500 })
     }
 
-    const activeConnections = connections.filter((c) => c.is_active)
+    const activeConnections = connections.filter((c: any) => c.is_enabled !== false)
 
     // Get real statuses from trade engines
     const statuses = await Promise.all(
-      activeConnections.map(async (connection) => {
+      activeConnections.map(async (connection: any) => {
         try {
           const engineStatus = await getTradeEngineStatus(connection.id)
 

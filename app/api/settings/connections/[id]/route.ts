@@ -1,19 +1,15 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { SystemLogger } from "@/lib/system-logger"
-import { loadConnections, saveConnections, type Connection } from "@/lib/file-storage"
+import { getConnection, updateConnection, deleteConnection, initRedis } from "@/lib/redis-db"
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-    const connections = loadConnections()
     
-    // Ensure connections is an array
-    if (!Array.isArray(connections)) {
-      console.error("[v0] Connections is not an array:", typeof connections)
-      return NextResponse.json({ error: "Invalid connections data" }, { status: 500 })
-    }
-
-    const connection = connections.find((c) => c.id === id && c.is_active)
+    console.log("[v0] Fetching connection from Redis:", id)
+    await initRedis()
+    
+    const connection = await getConnection(id)
 
     if (!connection) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 })
@@ -34,22 +30,12 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   try {
     const { id } = await params
 
-    console.log("[v0] Deleting connection:", id)
+    console.log("[v0] Deleting connection from Redis:", id)
     await SystemLogger.logConnection(`Deleting connection`, id, "info")
 
-    const connections = loadConnections()
+    await initRedis()
+    await deleteConnection(id)
     
-    // Ensure connections is an array
-    if (!Array.isArray(connections)) {
-      console.error("[v0] Connections is not an array:", typeof connections)
-      return NextResponse.json({ error: "Invalid connections data" }, { status: 500 })
-    }
-
-    const updatedConnections = connections.map((conn) =>
-      conn.id === id ? { ...conn, is_active: false, updated_at: new Date().toISOString() } : conn,
-    )
-
-    saveConnections(updatedConnections)
     await SystemLogger.logConnection(`Connection deleted`, id, "info")
 
     return NextResponse.json({ success: true })
@@ -63,45 +49,37 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   }
 }
 
-export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     const body = await request.json()
 
-    console.log("[v0] Updating connection:", id, body)
+    console.log("[v0] Updating connection in Redis:", id, body)
     await SystemLogger.logConnection(`Updating connection`, id, "info", body)
 
-    const connections = loadConnections()
-    
-    // Ensure connections is an array
-    if (!Array.isArray(connections)) {
-      console.error("[v0] Connections is not an array:", typeof connections)
-      return NextResponse.json({ error: "Invalid connections data" }, { status: 500 })
-    }
+    await initRedis()
+    const connection = await getConnection(id)
 
-    const connectionIndex = connections.findIndex((c) => c.id === id)
-
-    if (connectionIndex === -1) {
+    if (!connection) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 })
     }
 
-    const updatedConnection: Connection = {
-      ...connections[connectionIndex],
+    const updatedConnection = {
+      ...connection,
       ...body,
-      id: connections[connectionIndex].id, // Preserve original ID
-      created_at: connections[connectionIndex].created_at, // Preserve creation time
+      id: connection.id,
+      created_at: connection.created_at,
       updated_at: new Date().toISOString(),
     }
 
-    connections[connectionIndex] = updatedConnection
-    saveConnections(connections)
+    await updateConnection(id, updatedConnection)
 
     await SystemLogger.logConnection(`Connection updated successfully`, id, "info")
 
     return NextResponse.json({ success: true, connection: updatedConnection })
   } catch (error) {
     console.error("[v0] Failed to update connection:", error)
-    await SystemLogger.logError(error, "api", `PATCH /api/settings/connections/${(await params).id}`)
+    await SystemLogger.logError(error, "api", `PUT /api/settings/connections/${(await params).id}`)
     return NextResponse.json(
       { error: "Failed to update connection", details: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 },

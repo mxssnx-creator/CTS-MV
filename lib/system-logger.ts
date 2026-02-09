@@ -1,4 +1,5 @@
-import { execute } from "./db"
+import { getRedisClient, initRedis } from "./redis-db"
+import { nanoid } from "nanoid"
 
 export interface LogEntry {
   level: "info" | "warn" | "error" | "debug"
@@ -15,37 +16,49 @@ export class SystemLogger {
   private static dbLoggingDisabled = false
 
   /**
-   * Log to database with proper error handling
+   * Log to Redis database with proper error handling
    */
   private static async logToDatabase(entry: LogEntry): Promise<void> {
-    // Skip if database logging was previously disabled
     if (SystemLogger.dbLoggingDisabled) {
       return
     }
 
     try {
+      await initRedis()
+      const client = getRedisClient()
+      
+      const logId = nanoid()
+      const logKey = `log:${logId}`
       const errorMessage = entry.error?.message || null
       const errorStack = entry.error?.stack || null
 
-      // Don't include timestamp - let database handle it with DEFAULT
-      // Use ? placeholders for SQLite (db.ts handles conversion for PostgreSQL)
-      await execute(
-        `INSERT INTO site_logs (
-          level, category, message, context, 
-          user_id, connection_id, error_message, error_stack, metadata
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          entry.level,
-          entry.category,
-          entry.message,
-          entry.context || null,
-          entry.userId || null,
-          entry.connectionId || null,
-          errorMessage,
-          errorStack,
-          JSON.stringify(entry.metadata || {}),
-        ],
-      )
+      // Store log entry in Redis
+      const logEntry = {
+        id: logId,
+        level: entry.level,
+        category: entry.category,
+        message: entry.message,
+        context: entry.context || null,
+        user_id: entry.userId || null,
+        connection_id: entry.connectionId || null,
+        error_message: errorMessage,
+        error_stack: errorStack,
+        metadata: JSON.stringify(entry.metadata || {}),
+        timestamp: new Date().toISOString(),
+      }
+
+      // Use Redis HSET to store the log
+      const fields = Object.entries(logEntry).flat()
+      await (client as any).hSet(logKey, ...fields)
+
+      // Add to logs index set
+      await (client as any).sAdd("logs:all", logId)
+      
+      // Add to category index
+      await (client as any).sAdd(`logs:${entry.category}`, logId)
+      
+      // Set TTL (7 days)
+      await (client as any).expire(logKey, 7 * 24 * 60 * 60)
     } catch (dbError) {
       // Disable database logging for critical errors to prevent spam
       if (dbError instanceof Error) {

@@ -1,72 +1,34 @@
 /**
  * Application instrumentation - runs on app startup
- * Completely disabled for v0 dev preview to prevent any startup issues
- * Only active in production Node.js runtime
+ * Initializes database and runs migrations automatically in background
  */
 
-// Detect if we're in a dev/preview environment
-const isPreviewMode = 
-  process.env.VERCEL_ENV === "preview" ||
-  process.env.VERCEL_ENV === "development" ||
-  process.env.NODE_ENV === "development" ||
-  !process.env.VERCEL ||
-  process.env.NEXT_PHASE === "phase-production-build"
-
 export async function register() {
-  // Completely skip all initialization in preview/dev mode
-  if (isPreviewMode) {
-    return
-  }
-
-  // Only run in production Node.js runtime on Vercel
-  if (process.env.NEXT_RUNTIME !== "nodejs" || !process.env.VERCEL) {
-    return
-  }
-
-  console.log("[v0] CTS v3.1 - Server initialization started")
+  console.log("[v0] CTS v3.2 - Initializing application")
   
-  // Run initialization asynchronously (non-blocking) using setTimeout instead of process.nextTick
-  setTimeout(async () => {
+  // Run initialization asynchronously in background (completely non-blocking)
+  setImmediate(async () => {
     try {
-      // Step 1: Initialize database
+      // Initialize Redis with graceful fallback to memory store
       try {
-        const { initializeDatabase } = await import("@/lib/db-initializer")
-        await initializeDatabase()
-        console.log("[v0] ✓ Database initialized")
+        const { initRedis } = await import("@/lib/redis-db")
+        await initRedis()
       } catch (error) {
-        console.log("[v0] Database initialization deferred (will initialize on first use)")
+        console.log("[v0] Database initialization: Using in-memory fallback")
       }
 
-      // Step 2: Run pending migrations
+      // Run migrations in background (optional)
       try {
-        const { runMigrations } = await import("@/lib/migration-runner")
+        const { runMigrations } = await import("@/lib/redis-migrations")
         await runMigrations()
-        console.log("[v0] ✓ Migrations executed")
       } catch (error) {
-        console.warn("[v0] ⚠ Migration execution skipped:", error instanceof Error ? error.message : "unknown error")
+        // Migrations are optional, continue regardless
       }
 
-      // Step 3: Initialize connection manager
-      try {
-        const { getConnectionManager } = await import("@/lib/connection-manager")
-        getConnectionManager()
-        console.log("[v0] ✓ Connection manager ready")
-      } catch (error) {
-        // Non-critical
-      }
-
-      // Step 4: Start trade engines
-      try {
-        const { initializeTradeEngineAutoStart } = await import("@/lib/trade-engine-auto-start")
-        await initializeTradeEngineAutoStart()
-        console.log("[v0] ✓ Trade engine systems started")
-      } catch (error) {
-        // Non-critical
-      }
-
-      console.log("[v0] Application initialization complete")
+      console.log("[v0] Application ready")
     } catch (error) {
-      console.error("[v0] Startup error:", error instanceof Error ? error.message : "unknown error")
+      // Never crash startup - app continues regardless
+      console.warn("[v0] Background initialization notice:", error instanceof Error ? error.message : "unknown")
     }
   })
 }

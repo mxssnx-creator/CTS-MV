@@ -1,59 +1,38 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { query, getDatabaseType } from "@/lib/db"
-import { runAllMigrations } from "@/lib/db-migration-runner"
+import { initRedis, getRedisClient } from "@/lib/redis-db"
+import { runMigrations } from "@/lib/redis-migrations"
 
 export const runtime = "nodejs"
 
 export async function POST(request: NextRequest) {
   try {
-    console.log("[DATABASE INIT] Starting database initialization...")
-    console.log("[DATABASE INIT] Database type:", getDatabaseType())
-
-    const result = await runAllMigrations()
-
-    if (!result.success) {
-      console.error("[DATABASE INIT] Initialization returned false")
-      throw new Error(result.message || "Database initialization failed")
-    }
-
-    const dbType = getDatabaseType()
-    let tableCountQuery: string
-
-    if (dbType === "postgresql") {
-      tableCountQuery = `SELECT COUNT(*) as count FROM information_schema.tables WHERE table_schema = 'public'`
-    } else {
-      tableCountQuery = `SELECT COUNT(*) as count FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'`
-    }
-
-    const tables = await query(tableCountQuery, [])
-    const tableCount = tables[0]?.count || 0
-
-    console.log(`[DATABASE INIT] Success! Database type: ${dbType}, Tables created: ${tableCount}`)
+    console.log("[REDIS INIT] Starting Redis initialization...")
+    
+    // Initialize Redis
+    await initRedis()
+    
+    // Run migrations
+    await runMigrations()
+    
+    const client = getRedisClient()
+    const keys = await client.keys("*")
+    const keyCount = keys ? keys.length : 0
 
     return NextResponse.json({
       success: true,
-      tables_created: tableCount,
-      database_type: dbType,
-      message: `Database initialized successfully. ${tableCount} tables created.`,
-      logs: [
-        `Database type: ${dbType}`,
-        `Tables created: ${tableCount}`,
-        "Initialization completed successfully",
-      ],
+      keys_initialized: keyCount,
+      database_type: "redis",
+      message: "Redis initialized successfully with automatic migrations"
     })
   } catch (error) {
-    console.error("[DATABASE INIT] Initialization failed:", error)
+    console.error("[REDIS INIT] Initialization failed:", error)
     return NextResponse.json(
       {
         success: false,
-        error: "Database initialization failed",
-        details: error instanceof Error ? error.message : "Unknown error",
-        logs: [
-          "Database initialization failed",
-          error instanceof Error ? error.message : "Unknown error",
-        ],
+        error: "Redis initialization failed",
+        details: error instanceof Error ? error.message : "Unknown error"
       },
-      { status: 500 },
+      { status: 500 }
     )
   }
 }

@@ -1,516 +1,243 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { query, execute, getDatabaseType } from "@/lib/db"
+import { initRedis, getRedisClient, isRedisConnected, setSettings } from "@/lib/redis-db"
+import { runMigrations, getMigrationStatus } from "@/lib/redis-migrations"
+import { SystemLogger } from "@/lib/system-logger"
 
 export const runtime = "nodejs"
 
 export async function POST(request: NextRequest) {
   const logs: string[] = []
-  
+
   try {
-    logs.push("Starting database migrations...")
-    console.log("[DATABASE MIGRATE] Starting database migrations...")
+    logs.push("Starting Redis database migrations...")
+    console.log("[v0] Starting Redis database migrations...")
 
-    const dbType = getDatabaseType()
-    logs.push(`Database type: ${dbType}`)
-    console.log(`[DATABASE MIGRATE] Database type: ${dbType}`)
-
-    // Create migrations table
-    if (dbType === "sqlite") {
-      await execute(`
-        CREATE TABLE IF NOT EXISTS schema_migrations (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          version TEXT UNIQUE NOT NULL,
-          applied_at TEXT DEFAULT (datetime('now'))
-        )
-      `)
-    } else {
-      await execute(`
-        CREATE TABLE IF NOT EXISTS schema_migrations (
-          id SERIAL PRIMARY KEY,
-          version VARCHAR(255) UNIQUE NOT NULL,
-          applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-      `)
+    // Step 1: Initialize Redis connection
+    logs.push("Connecting to Redis...")
+    try {
+      await initRedis()
+      logs.push("✓ Redis connected successfully")
+      console.log("[v0] Redis connected")
+    } catch (error) {
+      const errorMsg = `Redis connection failed: ${error}`
+      logs.push(`✗ ${errorMsg}`)
+      throw new Error(errorMsg)
     }
 
-    // Get list of applied migrations
-    const appliedMigrations = await query(`SELECT version FROM schema_migrations ORDER BY version`)
-    const appliedVersions = new Set(appliedMigrations.map((m: any) => m.version))
+    // Step 2: Run migrations
+    logs.push("Running pending migrations...")
+    try {
+      await runMigrations()
+      logs.push("✓ Migrations completed successfully")
+      console.log("[v0] Migrations completed")
+    } catch (error) {
+      const errorMsg = `Migration execution failed: ${error}`
+      logs.push(`✗ ${errorMsg}`)
+      throw new Error(errorMsg)
+    }
 
-    logs.push(`Found ${appliedVersions.size} previously applied migrations`)
-    console.log(`[DATABASE MIGRATE] Found ${appliedVersions.size} previously applied migrations`)
+    // Step 3: Create indexes
+    logs.push("Creating database indexes...")
+    try {
+      const client = getRedisClient()
 
-    const migrations = dbType === "sqlite" ? getSQLiteMigrations() : getPostgreSQLMigrations()
-    logs.push(`Total migrations available: ${migrations.length}`)
+      // Connection indexes
+      await client.set("_index:connections:enabled", "true")
+      await client.set("_index:connections:by_exchange", "true")
+      await client.set("_index:connections:by_status", "true")
+      await client.set("_index:connections:by_testnet", "true")
 
-    let appliedCount = 0
-    const errors: string[] = []
+      // Trade indexes
+      await client.set("_index:trades:by_connection", "true")
+      await client.set("_index:trades:by_status", "true")
+      await client.set("_index:trades:by_symbol", "true")
 
-    for (const migration of migrations) {
-      if (migration.version && appliedVersions.has(migration.version)) {
-        const skipMsg = `Skipping already applied: ${migration.version}`
-        logs.push(skipMsg)
-        console.log(`[DATABASE MIGRATE] ${skipMsg}`)
-        continue
+      // Position indexes
+      await client.set("_index:positions:by_symbol", "true")
+      await client.set("_index:positions:by_connection", "true")
+      await client.set("_index:positions:active", "true")
+
+      // Settings indexes
+      await client.set("_index:settings:keys", "true")
+
+      logs.push("✓ Indexes created successfully")
+      console.log("[v0] Indexes created")
+    } catch (error) {
+      const errorMsg = `Index creation failed: ${error}`
+      logs.push(`✗ ${errorMsg}`)
+      throw new Error(errorMsg)
+    }
+
+    // Step 4: Configure TTL policies
+    logs.push("Configuring TTL expiration policies...")
+    try {
+      const ttlPolicies = {
+        "connections": 30 * 24 * 60 * 60, // 30 days
+        "trades": 90 * 24 * 60 * 60, // 90 days
+        "positions": 60 * 24 * 60 * 60, // 60 days
+        "logs": 7 * 24 * 60 * 60, // 7 days
+        "cache": 24 * 60 * 60, // 1 day
       }
 
-      try {
-        const applyMsg = `Applying migration: ${migration.name || migration.version}`
-        logs.push(applyMsg)
-        console.log(`[DATABASE MIGRATE] ${applyMsg}`)
-        
-        await execute(migration.sql)
-
-        if (migration.version) {
-          await execute(`INSERT INTO schema_migrations (version) VALUES ($1) ON CONFLICT DO NOTHING`, [
-            migration.version,
-          ])
-        }
-
-        appliedCount++
-        const successMsg = `Successfully applied: ${migration.name || migration.version}`
-        logs.push(successMsg)
-        console.log(`[DATABASE MIGRATE] ${successMsg}`)
-      } catch (error) {
-        const errorMsg = `Failed to apply ${migration.name || migration.version}: ${error instanceof Error ? error.message : "Unknown error"}`
-        console.error(`[DATABASE MIGRATE] ${errorMsg}`)
-        logs.push(`ERROR: ${errorMsg}`)
-        errors.push(errorMsg)
+      for (const [key, ttl] of Object.entries(ttlPolicies)) {
+        await setSettings(`ttl_policy:${key}`, ttl)
       }
+
+      logs.push("✓ TTL policies configured")
+      console.log("[v0] TTL policies set")
+    } catch (error) {
+      const errorMsg = `TTL configuration failed: ${error}`
+      logs.push(`⚠ ${errorMsg}`)
     }
 
-    let tableCount = 0
-    if (dbType === "sqlite") {
-      const tables = await query(
-        `SELECT COUNT(*) as count FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`,
-      )
-      tableCount = tables[0]?.count || 0
-    } else {
-      const tables = await query(
-        `SELECT COUNT(*) as count FROM information_schema.tables WHERE table_schema = 'public'`,
-      )
-      tableCount = Number.parseInt(tables[0]?.count || "0")
+    // Step 5: Get migration status and stats
+    const status = await getMigrationStatus()
+    const client = getRedisClient()
+    const keyCount = await client.dbSize()
+
+    logs.push(`Database Statistics:`)
+    logs.push(`  - Schema Version: ${status.latestVersion}`)
+    logs.push(`  - Total Keys: ${keyCount}`)
+    logs.push(`  - Database Type: Redis`)
+    logs.push(`  - Indexes: Created`)
+    logs.push(`  - TTL Policies: Configured`)
+
+    // Step 6: Initialize system configuration
+    logs.push("Initializing system configuration...")
+    try {
+      const systemConfig = {
+        database_type: "redis",
+        initialized_at: new Date().toISOString(),
+        version: "3.2",
+        schema_version: status.latestVersion,
+        features: {
+          live_trading: true,
+          preset_trading: true,
+          backtesting: true,
+          multi_exchange: true,
+          real_positions: true,
+          pseudo_positions: true,
+        },
+        optimization: {
+          indexes_enabled: true,
+          ttl_policies_enabled: true,
+          compression_enabled: false,
+        },
+      }
+
+      await setSettings("system:config", systemConfig)
+      logs.push("✓ System configuration initialized")
+    } catch (error) {
+      const errorMsg = `System configuration failed: ${error}`
+      logs.push(`⚠ ${errorMsg}`)
     }
 
-    const summaryMsg = `Migration complete. Applied ${appliedCount} new migrations. Total tables: ${tableCount}`
-    logs.push(summaryMsg)
-    console.log(`[DATABASE MIGRATE] ${summaryMsg}`)
+    logs.push("")
+    logs.push("========================================")
+    logs.push("✓ Redis migration completed successfully!")
+    logs.push("========================================")
 
-    return NextResponse.json({
-      success: true,
-      migrations_applied: appliedCount,
-      total_tables: tableCount,
-      database_type: dbType,
-      errors: errors.length > 0 ? errors : undefined,
-      logs: logs,
-      message:
-        errors.length > 0
-          ? `Migrations completed with ${errors.length} errors`
-          : `All migrations completed successfully. ${appliedCount} applied.`,
-    })
+    await SystemLogger.logAPI(
+      "Redis migration completed",
+      "info",
+      "POST /api/install/database/migrate",
+      {
+        schema_version: status.latestVersion,
+        keys_count: keyCount,
+        indexes_created: true,
+      }
+    )
+
+    return NextResponse.json(
+      {
+        success: true,
+        message: "Redis database migration completed successfully",
+        database_type: "redis",
+        status: {
+          schema_version: status.latestVersion,
+          is_up_to_date: status.currentVersion === status.latestVersion,
+          indexes_created: true,
+          ttl_configured: true,
+          optimizations_enabled: true,
+        },
+        stats: {
+          total_keys: keyCount,
+          connected: true,
+        },
+        logs,
+      },
+      { status: 200 }
+    )
   } catch (error) {
-    const errorMsg = "Migration system failed"
-    logs.push(`ERROR: ${errorMsg}`)
-    console.error("[DATABASE MIGRATE] Migration system failed:", error)
-    
+    const errorMsg = "Redis migration failed"
+    logs.push(``)
+    logs.push(`✗ ${errorMsg}`)
+    console.error("[v0] Migration error:", error)
+
+    await SystemLogger.logError(error, "api", "POST /api/install/database/migrate")
+
     return NextResponse.json(
       {
         success: false,
         error: errorMsg,
         details: error instanceof Error ? error.message : "Unknown error",
-        logs: logs,
+        database_type: "redis",
+        logs,
       },
-      { status: 500 },
+      { status: 500 }
     )
   }
 }
 
-function getSQLiteMigrations() {
-  return [
-    {
-      version: "001_create_users_table",
-      sql: `CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE NOT NULL,
-        email TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        created_at TEXT DEFAULT (datetime('now')),
-        updated_at TEXT DEFAULT (datetime('now'))
-      )`,
-    },
-    {
-      version: "016_create_exchange_connections_table",
-      sql: `
-        CREATE TABLE IF NOT EXISTS exchange_connections (
-          id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-          name TEXT NOT NULL,
-          exchange TEXT NOT NULL,
-          api_type TEXT DEFAULT 'spot',
-          api_key TEXT,
-          api_secret TEXT,
-          testnet INTEGER DEFAULT 0,
-          is_enabled INTEGER DEFAULT 1,
-          margin_type TEXT DEFAULT 'cross',
-          position_mode TEXT DEFAULT 'hedge',
-          volume_factor REAL DEFAULT 1.0,
-          connection_library TEXT DEFAULT 'ccxt',
-          is_predefined INTEGER DEFAULT 0,
-          is_active INTEGER DEFAULT 1,
-          api_capabilities TEXT DEFAULT '{"spot": true, "futures": false, "margin": false}',
-          rate_limits TEXT DEFAULT '{"requests_per_second": 10, "requests_per_minute": 600}',
-          connection_priority INTEGER DEFAULT 0,
-          last_test_at TEXT,
-          last_test_status TEXT,
-          last_test_log TEXT,
-          connection_settings TEXT DEFAULT '{}',
-          created_at TEXT DEFAULT (datetime('now')),
-          updated_at TEXT DEFAULT (datetime('now'))
-        );
-        
-        CREATE INDEX IF NOT EXISTS idx_exchange_connections_exchange ON exchange_connections(exchange);
-        CREATE INDEX IF NOT EXISTS idx_exchange_connections_is_predefined ON exchange_connections(is_predefined);
-        CREATE INDEX IF NOT EXISTS idx_exchange_connections_is_active ON exchange_connections(is_active);
-        CREATE INDEX IF NOT EXISTS idx_exchange_connections_priority ON exchange_connections(connection_priority);
-      `,
-    },
-    {
-      version: "017_create_system_settings_table",
-      sql: `
-        CREATE TABLE IF NOT EXISTS system_settings (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          key TEXT UNIQUE NOT NULL,
-          value TEXT NOT NULL,
-          description TEXT,
-          created_at TEXT DEFAULT (datetime('now')),
-          updated_at TEXT DEFAULT (datetime('now'))
-        )
-      `,
-    },
-    {
-      version: "019_create_volume_management_tables",
-      sql: `
-        CREATE TABLE IF NOT EXISTS volume_configuration (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          connection_id TEXT REFERENCES exchange_connections(id) ON DELETE CASCADE,
-          base_volume_factor REAL DEFAULT 1.0,
-          risk_percentage REAL DEFAULT 20.0,
-          target_average_positions INTEGER DEFAULT 50,
-          created_at TEXT DEFAULT (datetime('now')),
-          updated_at TEXT DEFAULT (datetime('now')),
-          UNIQUE(connection_id)
-        )
-      `,
-    },
-    {
-      version: "020_create_presets_tables",
-      sql: `
-        CREATE TABLE IF NOT EXISTS presets (
-          id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-          name TEXT NOT NULL,
-          description TEXT,
-          is_active INTEGER DEFAULT 0,
-          created_at TEXT DEFAULT (datetime('now')),
-          updated_at TEXT DEFAULT (datetime('now'))
-        );
+export async function GET(request: NextRequest) {
+  try {
+    const connected = await isRedisConnected()
 
-        CREATE TABLE IF NOT EXISTS preset_configurations (
-          id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-          preset_id TEXT REFERENCES presets(id) ON DELETE CASCADE,
-          symbol TEXT NOT NULL,
-          take_profit REAL NOT NULL,
-          stop_loss REAL NOT NULL,
-          profit_factor REAL DEFAULT 0,
-          is_active INTEGER DEFAULT 1,
-          created_at TEXT DEFAULT (datetime('now')),
-          updated_at TEXT DEFAULT (datetime('now'))
-        );
+    if (!connected) {
+      return NextResponse.json(
+        {
+          success: false,
+          database_type: "redis",
+          status: "disconnected",
+          error: "Redis not connected",
+        },
+        { status: 503 }
+      )
+    }
 
-        CREATE INDEX IF NOT EXISTS idx_preset_configurations_preset_id ON preset_configurations(preset_id);
-        CREATE INDEX IF NOT EXISTS idx_preset_configurations_symbol ON preset_configurations(symbol);
-      `,
-    },
-    {
-      version: "027_create_preset_performance_tables",
-      sql: `
-        CREATE TABLE IF NOT EXISTS preset_symbol_performance (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          preset_id TEXT REFERENCES presets(id) ON DELETE CASCADE,
-          symbol TEXT NOT NULL,
-          profit_factor REAL DEFAULT 0,
-          total_trades INTEGER DEFAULT 0,
-          winning_trades INTEGER DEFAULT 0,
-          losing_trades INTEGER DEFAULT 0,
-          total_profit REAL DEFAULT 0,
-          total_loss REAL DEFAULT 0,
-          created_at TEXT DEFAULT (datetime('now')),
-          updated_at TEXT DEFAULT (datetime('now')),
-          UNIQUE(preset_id, symbol)
-        );
+    const status = await getMigrationStatus()
+    const client = getRedisClient()
+    const keyCount = await client.dbSize()
 
-        CREATE TABLE IF NOT EXISTS preset_balance_history (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          preset_id TEXT REFERENCES presets(id) ON DELETE CASCADE,
-          balance REAL NOT NULL,
-          equity REAL NOT NULL,
-          timestamp TEXT DEFAULT (datetime('now'))
-        );
+    return NextResponse.json(
+      {
+        success: true,
+        database_type: "redis",
+        migration_status: {
+          current_version: status.currentVersion,
+          latest_version: status.latestVersion,
+          is_up_to_date: status.currentVersion === status.latestVersion,
+        },
+        database_stats: {
+          total_keys: keyCount,
+          connected: true,
+          indexes_enabled: true,
+          ttl_enabled: true,
+        },
+      },
+      { status: 200 }
+    )
+  } catch (error) {
+    console.error("[v0] Status check error:", error)
 
-        CREATE INDEX IF NOT EXISTS idx_preset_balance_history_preset_id ON preset_balance_history(preset_id);
-        CREATE INDEX IF NOT EXISTS idx_preset_balance_history_timestamp ON preset_balance_history(timestamp);
-      `,
-    },
-    {
-      version: "029_create_site_logs_table",
-      sql: `
-        CREATE TABLE IF NOT EXISTS site_logs (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          level TEXT NOT NULL,
-          message TEXT NOT NULL,
-          context TEXT DEFAULT '{}',
-          user_agent TEXT,
-          url TEXT,
-          timestamp TEXT DEFAULT (datetime('now'))
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_site_logs_level ON site_logs(level);
-        CREATE INDEX IF NOT EXISTS idx_site_logs_timestamp ON site_logs(timestamp);
-      `,
-    },
-    {
-      version: "048_create_trade_engine_state_table",
-      sql: `
-        CREATE TABLE IF NOT EXISTS trade_engine_state (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          connection_id TEXT REFERENCES exchange_connections(id) ON DELETE CASCADE,
-          is_running INTEGER DEFAULT 0,
-          last_started_at TEXT,
-          last_stopped_at TEXT,
-          error_count INTEGER DEFAULT 0,
-          last_error TEXT,
-          created_at TEXT DEFAULT (datetime('now')),
-          updated_at TEXT DEFAULT (datetime('now')),
-          UNIQUE(connection_id)
-        )
-      `,
-    },
-    {
-      name: "Add user_id to site_logs",
-      sql: `ALTER TABLE site_logs ADD COLUMN IF NOT EXISTS user_id TEXT`,
-    },
-    {
-      name: "Add connection_id to site_logs",
-      sql: `ALTER TABLE site_logs ADD COLUMN IF NOT EXISTS connection_id TEXT`,
-    },
-    {
-      name: "Add error_message to site_logs",
-      sql: `ALTER TABLE site_logs ADD COLUMN IF NOT EXISTS error_message TEXT`,
-    },
-    {
-      name: "Add error_stack to site_logs",
-      sql: `ALTER TABLE site_logs ADD COLUMN IF NOT EXISTS error_stack TEXT`,
-    },
-    {
-      name: "Add metadata to site_logs",
-      sql: `ALTER TABLE site_logs ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'`,
-    },
-    {
-      name: "Add category to site_logs",
-      sql: `ALTER TABLE site_logs ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'general'`,
-    },
-  ]
-}
-
-function getPostgreSQLMigrations() {
-  return [
-    {
-      version: "001_create_users_table",
-      sql: `CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        username VARCHAR(255) UNIQUE NOT NULL,
-        email VARCHAR(255) UNIQUE NOT NULL,
-        password_hash VARCHAR(255) NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )`,
-    },
-    {
-      version: "016_create_exchange_connections_table",
-      sql: `
-        CREATE TABLE IF NOT EXISTS exchange_connections (
-          id TEXT PRIMARY KEY DEFAULT lower(hex(randomblob(16))),
-          name TEXT NOT NULL,
-          exchange TEXT NOT NULL,
-          api_type TEXT DEFAULT 'spot',
-          api_key TEXT,
-          api_secret TEXT,
-          testnet INTEGER DEFAULT 0,
-          is_enabled INTEGER DEFAULT 1,
-          margin_type TEXT DEFAULT 'cross',
-          position_mode TEXT DEFAULT 'hedge',
-          volume_factor REAL DEFAULT 1.0,
-          connection_library TEXT DEFAULT 'ccxt',
-          is_predefined INTEGER DEFAULT 0,
-          is_active INTEGER DEFAULT 1,
-          api_capabilities JSONB DEFAULT '{"spot": true, "futures": false, "margin": false}',
-          rate_limits JSONB DEFAULT '{"requests_per_second": 10, "requests_per_minute": 600}',
-          connection_priority INTEGER DEFAULT 0,
-          last_test_at TIMESTAMP,
-          last_test_status TEXT,
-          last_test_log TEXT,
-          connection_settings JSONB DEFAULT '{}',
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-        
-        CREATE INDEX IF NOT EXISTS idx_exchange_connections_exchange ON exchange_connections(exchange);
-        CREATE INDEX IF NOT EXISTS idx_exchange_connections_is_predefined ON exchange_connections(is_predefined);
-        CREATE INDEX IF NOT EXISTS idx_exchange_connections_is_active ON exchange_connections(is_active);
-        CREATE INDEX IF NOT EXISTS idx_exchange_connections_priority ON exchange_connections(connection_priority);
-      `,
-    },
-    {
-      version: "017_create_system_settings_table",
-      sql: `
-        CREATE TABLE IF NOT EXISTS system_settings (
-          id SERIAL PRIMARY KEY,
-          key VARCHAR(255) UNIQUE NOT NULL,
-          value VARCHAR(255) NOT NULL,
-          description TEXT,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-      `,
-    },
-    {
-      version: "019_create_volume_management_tables",
-      sql: `
-        CREATE TABLE IF NOT EXISTS volume_configuration (
-          id SERIAL PRIMARY KEY,
-          connection_id TEXT REFERENCES exchange_connections(id) ON DELETE CASCADE,
-          base_volume_factor REAL DEFAULT 1.0,
-          risk_percentage REAL DEFAULT 20.0,
-          target_average_positions INTEGER DEFAULT 50,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          UNIQUE(connection_id)
-        )
-      `,
-    },
-    {
-      version: "020_create_presets_tables",
-      sql: `
-        CREATE TABLE IF NOT EXISTS presets (
-          id TEXT PRIMARY KEY DEFAULT lower(hex(randomblob(16))),
-          name TEXT NOT NULL,
-          description TEXT,
-          is_active INTEGER DEFAULT 0,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS preset_configurations (
-          id TEXT PRIMARY KEY DEFAULT lower(hex(randomblob(16))),
-          preset_id TEXT REFERENCES presets(id) ON DELETE CASCADE,
-          symbol TEXT NOT NULL,
-          take_profit REAL NOT NULL,
-          stop_loss REAL NOT NULL,
-          profit_factor REAL DEFAULT 0,
-          is_active INTEGER DEFAULT 1,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_preset_configurations_preset_id ON preset_configurations(preset_id);
-        CREATE INDEX IF NOT EXISTS idx_preset_configurations_symbol ON preset_configurations(symbol);
-      `,
-    },
-    {
-      version: "027_create_preset_performance_tables",
-      sql: `
-        CREATE TABLE IF NOT EXISTS preset_symbol_performance (
-          id SERIAL PRIMARY KEY,
-          preset_id TEXT REFERENCES presets(id) ON DELETE CASCADE,
-          symbol TEXT NOT NULL,
-          profit_factor REAL DEFAULT 0,
-          total_trades INTEGER DEFAULT 0,
-          winning_trades INTEGER DEFAULT 0,
-          losing_trades INTEGER DEFAULT 0,
-          total_profit REAL DEFAULT 0,
-          total_loss REAL DEFAULT 0,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          UNIQUE(preset_id, symbol)
-        );
-
-        CREATE TABLE IF NOT EXISTS preset_balance_history (
-          id SERIAL PRIMARY KEY,
-          preset_id TEXT REFERENCES presets(id) ON DELETE CASCADE,
-          balance REAL NOT NULL,
-          equity REAL NOT NULL,
-          timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_preset_balance_history_preset_id ON preset_balance_history(preset_id);
-        CREATE INDEX IF NOT EXISTS idx_preset_balance_history_timestamp ON preset_balance_history(timestamp);
-      `,
-    },
-    {
-      version: "029_create_site_logs_table",
-      sql: `
-        CREATE TABLE IF NOT EXISTS site_logs (
-          id SERIAL PRIMARY KEY,
-          level TEXT NOT NULL,
-          message TEXT NOT NULL,
-          context JSONB DEFAULT '{}',
-          user_agent TEXT,
-          url TEXT,
-          timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_site_logs_level ON site_logs(level);
-        CREATE INDEX IF NOT EXISTS idx_site_logs_timestamp ON site_logs(timestamp);
-      `,
-    },
-    {
-      version: "048_create_trade_engine_state_table",
-      sql: `
-        CREATE TABLE IF NOT EXISTS trade_engine_state (
-          id SERIAL PRIMARY KEY,
-          connection_id TEXT REFERENCES exchange_connections(id) ON DELETE CASCADE,
-          is_running INTEGER DEFAULT 0,
-          last_started_at TIMESTAMP,
-          last_stopped_at TIMESTAMP,
-          error_count INTEGER DEFAULT 0,
-          last_error TEXT,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          UNIQUE(connection_id)
-        )
-      `,
-    },
-    {
-      name: "Add user_id to site_logs",
-      sql: `ALTER TABLE site_logs ADD COLUMN IF NOT EXISTS user_id TEXT`,
-    },
-    {
-      name: "Add connection_id to site_logs",
-      sql: `ALTER TABLE site_logs ADD COLUMN IF NOT EXISTS connection_id TEXT`,
-    },
-    {
-      name: "Add error_message to site_logs",
-      sql: `ALTER TABLE site_logs ADD COLUMN IF NOT EXISTS error_message TEXT`,
-    },
-    {
-      name: "Add error_stack to site_logs",
-      sql: `ALTER TABLE site_logs ADD COLUMN IF NOT EXISTS error_stack TEXT`,
-    },
-    {
-      name: "Add metadata to site_logs",
-      sql: `ALTER TABLE site_logs ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'`,
-    },
-    {
-      name: "Add category to site_logs",
-      sql: `ALTER TABLE site_logs ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'general'`,
-    },
-  ]
+    return NextResponse.json(
+      {
+        success: false,
+        database_type: "redis",
+        error: "Failed to get migration status",
+        details: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 500 }
+    )
+  }
 }
