@@ -557,50 +557,53 @@ export default function InstallManager() {
           </Card>
         </TabsContent>
 
-                  <div className="space-y-2">
-                    <Label>Connection String</Label>
-                    <div className="p-3 bg-muted/50 rounded-md text-sm font-mono break-all">
-                      {dbPassword 
-                        ? `postgresql://${dbUser}:****@${dbHost}:${dbPort}/${dbName}`
-                        : `postgresql://${dbUser}@${dbHost}:${dbPort}/${dbName}`
-                      }
-                    </div>
-                  </div>
+        {/* Configuration Tab */}
+        <TabsContent value="configure" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Redis Configuration</CardTitle>
+              <CardDescription>Configure Redis connection for production deployment</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                <p className="text-sm text-blue-900 dark:text-blue-100">
+                  <strong>Note:</strong> Redis is the only database engine supported. For production, use Upstash Redis or deploy your own Redis instance.
+                </p>
+              </div>
 
-                  {/* Test Connection Button */}
-                  <Button variant="outline" onClick={testConnection} className="w-full bg-transparent">
-                    <Database className="h-4 w-4 mr-2" />
-                    Test Connection
-                  </Button>
-                </div>
-              )}
+              <div className="space-y-2">
+                <Label htmlFor="redis-url">Redis URL</Label>
+                <Input
+                  id="redis-url"
+                  placeholder="redis://localhost:6379 or rediss://..."
+                  defaultValue={process.env.REDIS_URL || ""}
+                  className="font-mono text-xs"
+                />
+              </div>
 
-              {/* SQLite Info */}
-              {dbType === "sqlite" && (
-                <Alert>
-                  <Database className="h-4 w-4" />
-                  <AlertDescription>
-                    SQLite will automatically create a database file at <code className="text-xs bg-muted px-1 py-0.5 rounded">./data/cts.db</code>
-                    <br />
-                    No additional configuration is needed.
-                  </AlertDescription>
-                </Alert>
-              )}
+              <div className="space-y-2">
+                <Label htmlFor="redis-password">Redis Password (Optional)</Label>
+                <Input
+                  id="redis-password"
+                  type="password"
+                  placeholder="Leave empty if no password required"
+                  className="font-mono text-xs"
+                />
+              </div>
 
-              {/* Save Configuration */}
               <div className="flex gap-2">
-                <Button onClick={configureDatabase} className="flex-1">
-                  <SettingsIcon className="h-4 w-4 mr-2" />
-                  Save Configuration
+                <Button className="flex-1">
+                  <Database className="h-4 w-4 mr-2" />
+                  Test Connection
                 </Button>
-                <Button variant="outline" onClick={() => setActiveTab("status")}>
-                  Cancel
+                <Button variant="outline" className="flex-1">
+                  Save Configuration
                 </Button>
               </div>
 
-              {/* Help Text */}
               <div className="text-sm text-muted-foreground space-y-2">
-                <p><strong>Note:</strong> After changing the database configuration, you'll need to run the installation process to create all tables and apply migrations.</p>
+                <p><strong>Development:</strong> Leave Redis URL empty to use in-memory fallback store.</p>
+                <p><strong>Production:</strong> Provide a valid Redis connection string for persistent data storage.</p>
               </div>
             </CardContent>
           </Card>
