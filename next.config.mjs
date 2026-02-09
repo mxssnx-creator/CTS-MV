@@ -16,6 +16,9 @@ const nextConfig = {
   },
   productionBrowserSourceMaps: false,
   compress: true,
+  experimental: {
+    turbopack: false,
+  },
 }
 
 export default nextConfig
