@@ -26,8 +26,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // Authorization system disabled - user is always logged in as admin
+    console.log("[v0] AuthProvider: Initializing with default admin user")
     setIsLoading(false)
   }, [])
+
+  console.log("[v0] AuthProvider: Providing auth context - user:", user?.id, "isLoading:", isLoading)
 
   const login = async (email: string, password: string) => {
     setUser({
