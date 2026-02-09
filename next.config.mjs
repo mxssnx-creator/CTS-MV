@@ -7,21 +7,17 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  serverExternalPackages: [
-    'ccxt',
-    'redis',
-  ],
   webpack: (config, { isServer }) => {
+    // Disable problematic transpilation analysis
+    config.resolve.conditionNames = config.resolve.conditionNames.filter(
+      (c) => c !== 'edge-light'
+    )
+    
     config.externals = {
       ...config.externals,
       'redis': 'commonjs redis',
     }
     return config
-  },
-  logging: {
-    fetches: {
-      fullUrl: true,
-    },
   },
   productionBrowserSourceMaps: false,
   compress: true,
