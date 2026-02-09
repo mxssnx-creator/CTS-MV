@@ -7,13 +7,8 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  transpilePackages: ['lucide-react'],
   serverExternalPackages: [
     'ccxt',
-    'protobufjs',
-    '@dydxprotocol/v4-proto',
-    'long',
-    'protobufjs/minimal',
     'redis',
   ],
   webpack: (config, { isServer }) => {
@@ -23,9 +18,6 @@ const nextConfig = {
     }
     return config
   },
-  experimental: {
-    optimizePackageImports: ['lucide-react'],
-  },
   logging: {
     fetches: {
       fullUrl: true,
@@ -33,7 +25,6 @@ const nextConfig = {
   },
   productionBrowserSourceMaps: false,
   compress: true,
-  turbopack: {},
 }
 
 export default nextConfig
