@@ -3,14 +3,24 @@
 /**
  * Pre-build script for CTS v3.1
  * Aggressively clears all caches before build to prevent stale TypeScript errors
+ * Also fixes Turbopack missing file issue
  */
 
 const fs = require("fs")
 const path = require("path")
+const { execSync } = require("child_process")
 
 const rootDir = process.cwd()
 
 console.log("CTS v3.1 Pre-build Cache Clearing...\n")
+
+// Fix Turbopack missing file issue first
+console.log("  Fixing Turbopack configuration...")
+try {
+  execSync("node scripts/fix-turbopack.js", { cwd: rootDir, stdio: "inherit" })
+} catch (err) {
+  console.log("  ⚠ Could not run Turbopack fix, continuing...")
+}
 
 const cacheDirs = [
   path.join(rootDir, ".next"),
