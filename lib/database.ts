@@ -251,6 +251,60 @@ class DatabaseManagerClass {
     await client.sRem(`entities:${entityType}:${subType}`, id)
     await client.del(`entity:${entityType}:${subType}:${id}`)
   }
+
+  // Position methods
+  async getPseudoPositions(_connectionId?: string, _limit?: number): Promise<any[]> {
+    return this.getAll("positions", "pseudo")
+  }
+
+  async getRealPositions(_connectionId?: string): Promise<any[]> {
+    return this.getAll("positions", "real")
+  }
+
+  async getPositionStats(_connectionId?: string): Promise<any> {
+    const pseudo = await this.getPseudoPositions(_connectionId)
+    const real = await this.getRealPositions(_connectionId)
+    return { pseudoCount: pseudo.length, realCount: real.length, total: pseudo.length + real.length }
+  }
+
+  async getGlobalPositionStats(): Promise<any> {
+    return this.getPositionStats()
+  }
+
+  // Error methods
+  async getErrors(_limit?: number, _resolved?: boolean): Promise<any[]> {
+    return this.getAll("monitoring", "errors")
+  }
+
+  async resolveError(id: string): Promise<void> {
+    await this.update("monitoring", "errors", id, { resolved: "true", resolved_at: new Date().toISOString() })
+  }
+
+  async clearOldErrors(_days?: number): Promise<void> {
+    // No-op for Redis - errors auto-expire via TTL
+  }
+
+  // Log methods
+  async getLogs(_limit?: number): Promise<any[]> {
+    return this.getAll("monitoring", "logs")
+  }
+
+  // Connection methods
+  async getConnections(): Promise<any[]> {
+    const { getAllConnections } = await import("./redis-db")
+    return getAllConnections()
+  }
+
+  // Settings methods
+  async getSetting(key: string): Promise<any> {
+    const { getSettings } = await import("./redis-db")
+    return getSettings(key)
+  }
+
+  async setSetting(key: string, value: any): Promise<void> {
+    const { setSettings } = await import("./redis-db")
+    await setSettings(key, value)
+  }
 }
 
 const DatabaseManager = DatabaseManagerClass.getInstance()
