@@ -727,6 +727,7 @@ export function ConnectionCard({
               <DialogContent className="max-w-md">
                 <DialogHeader>
                   <DialogTitle className="text-base">Connection Information - {connection.name}</DialogTitle>
+                  <DialogDescription>View connection details, margin settings, and trading configuration.</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-3">
@@ -833,6 +834,7 @@ export function ConnectionCard({
               <DialogContent className="max-w-md">
                 <DialogHeader>
                   <DialogTitle className="text-base">Preset Configuration</DialogTitle>
+                  <DialogDescription>Configure volume factor, risk level, and trading preset parameters.</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
                   <div className="space-y-2">
