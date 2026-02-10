@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
-import { query, insertReturning } from "@/lib/db"
+import { getSettings, setSettings } from "@/lib/redis-db"
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,40 +10,21 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url)
-    const portfolioId = searchParams.get("portfolio_id")
     const status = searchParams.get("status")
     const limit = Number.parseInt(searchParams.get("limit") || "50")
 
-    let queryText = `
-      SELECT o.*, tp.symbol, tp.base_currency, tp.quote_currency, e.name as exchange_name
-      FROM orders o
-      JOIN trading_pairs tp ON o.trading_pair_id = tp.id
-      JOIN exchanges e ON tp.exchange_id = e.id
-      WHERE o.user_id = $1
-    `
-    const params: any[] = [user.id]
-    let paramIndex = 2
-
-    if (portfolioId) {
-      queryText += ` AND o.portfolio_id = $${paramIndex}`
-      params.push(portfolioId)
-      paramIndex++
-    }
+    const allOrders = (await getSettings("orders")) || []
+    let filtered = allOrders.filter((o: any) => o.user_id === user.id)
 
     if (status) {
-      queryText += ` AND o.status = $${paramIndex}`
-      params.push(status)
-      paramIndex++
+      filtered = filtered.filter((o: any) => o.status === status)
     }
 
-    queryText += ` ORDER BY o.created_at DESC LIMIT $${paramIndex}`
-    params.push(limit)
-
-    const orders = await query(queryText, params)
+    filtered = filtered.slice(0, limit)
 
     return NextResponse.json({
       success: true,
-      data: orders,
+      data: filtered,
     })
   } catch (error) {
     console.error("[v0] Get orders error:", error)
@@ -58,47 +39,35 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 })
     }
 
-    const { portfolio_id, trading_pair_id, order_type, side, price, quantity, time_in_force } = await request.json()
+    const { connection_id, symbol, order_type, side, price, quantity, time_in_force } = await request.json()
 
-    // Validate required fields
-    if (!portfolio_id || !trading_pair_id || !order_type || !side || !quantity) {
+    if (!connection_id || !symbol || !order_type || !side || !quantity) {
       return NextResponse.json({ success: false, error: "Missing required fields" }, { status: 400 })
     }
 
-    // Verify portfolio belongs to user
-    const portfolios = await query("SELECT id FROM portfolios WHERE id = ? AND user_id = ?", [portfolio_id, user.id])
-
-    if (portfolios.length === 0) {
-      return NextResponse.json({ success: false, error: "Portfolio not found" }, { status: 404 })
+    const existing = (await getSettings("orders")) || []
+    const newOrder = {
+      id: `order:${Date.now()}:${Math.random().toString(36).substr(2, 9)}`,
+      user_id: user.id,
+      connection_id,
+      symbol,
+      order_type,
+      side,
+      price: price || null,
+      quantity,
+      remaining_quantity: quantity,
+      time_in_force: time_in_force || "GTC",
+      status: "pending",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     }
 
-    const insertQuery = `
-      INSERT INTO orders (
-        user_id, portfolio_id, trading_pair_id, order_type, side, 
-        price, quantity, remaining_quantity, time_in_force, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      RETURNING *
-    `
-    
-    const result = await insertReturning(
-      insertQuery,
-      [
-        user.id,
-        portfolio_id,
-        trading_pair_id,
-        order_type,
-        side,
-        price || null,
-        quantity,
-        quantity,
-        time_in_force || "GTC",
-        "pending",
-      ],
-    )
+    existing.push(newOrder)
+    await setSettings("orders", existing)
 
     return NextResponse.json({
       success: true,
-      data: result,
+      data: newOrder,
     })
   } catch (error) {
     console.error("[v0] Create order error:", error)

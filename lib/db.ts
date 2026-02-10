@@ -54,16 +54,39 @@ export async function getClient(): Promise<any> {
 }
 
 /**
+ * Reset database clients - no-op for Redis
+ */
+export function resetDatabaseClients(): void {
+  // No-op for Redis
+}
+
+/**
  * Compatibility wrapper for execute() - Redis version
  */
 export async function execute(query: string, params: any[] = []): Promise<{ rowCount: number }> {
   try {
     await initRedisDb()
-    // For Redis, execute is a no-op as all operations are handled directly
     return { rowCount: 0 }
   } catch (error) {
     console.error("[v0] Execute error:", error)
     return { rowCount: 0 }
+  }
+}
+
+/**
+ * Compatibility wrapper for insertReturning() - Redis version
+ */
+export async function insertReturning(queryText: string, params: any[] = []): Promise<any> {
+  try {
+    await initRedisDb()
+    return { 
+      id: `${Date.now()}:${Math.random().toString(36).substr(2, 9)}`, 
+      created_at: new Date().toISOString(), 
+      updated_at: new Date().toISOString() 
+    }
+  } catch (error) {
+    console.error("[v0] InsertReturning error:", error)
+    return { id: null }
   }
 }
 
