@@ -151,6 +151,7 @@ export const db = {
 /**
  * Compatibility class `DatabaseManager` - wraps Redis operations
  * Used by: import DatabaseManager from "@/lib/database"
+ * Supports both static and instance-level getInstance()
  */
 class DatabaseManagerClass {
   static instance: DatabaseManagerClass | null = null
