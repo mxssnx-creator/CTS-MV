@@ -11,12 +11,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import ExchangeConnectionManager from "@/components/settings/exchange-connection-manager"
 import InstallManager from "@/components/settings/install-manager"
 import { toast } from "@/lib/simple-toast"
-import { Save, Download, Upload, RefreshCw, Activity, Layers, X, Plus, Info } from "lucide-react"
+import { Save, Download, Upload, RefreshCw, Activity, Layers, X, Plus, Info, Menu } from "lucide-react"
 import type { ExchangeConnection } from "@/lib/types"
 import { LogsViewer } from "@/components/settings/logs-viewer"
 import { Badge } from "@/components/ui/badge"
 import { AuthGuard } from "@/components/auth-guard"
-import { SidebarTrigger } from "@/components/ui/sidebar"
+import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import AutoIndicationSettings from "@/components/settings/auto-indication-settings"
 import { StatisticsOverview } from "@/components/settings/statistics-overview"
@@ -1924,7 +1924,7 @@ export default function SettingsPage() {
       <div className="container mx-auto p-6 space-y-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <SidebarTrigger />
+            <Button variant="ghost" size="icon" className="h-8 w-8"><Menu className="h-4 w-4" /></Button>
             <div>
               <h1 className="text-3xl font-bold">Settings</h1>
               <p className="text-muted-foreground">Configure system parameters and trading strategies</p>
