@@ -7,16 +7,10 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  webpack: (config) => {
-    config.externals = {
-      ...config.externals,
-      'redis': 'commonjs redis',
-    }
-    return config
-  },
+  serverExternalPackages: ['redis'],
+  turbopack: {},
   productionBrowserSourceMaps: false,
   compress: true,
-  turbopack: false,
 }
 
 export default nextConfig
