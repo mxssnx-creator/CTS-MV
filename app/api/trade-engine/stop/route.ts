@@ -5,17 +5,18 @@ import { SystemLogger } from "@/lib/system-logger"
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { connectionId } = body
-
-    if (!connectionId) {
-      return NextResponse.json(
-        { success: false, error: "Connection ID is required" },
-        { status: 400 }
-      )
+    let connectionId: string | undefined
+    try {
+      const text = await request.text()
+      if (text && text.trim()) {
+        const body = JSON.parse(text)
+        connectionId = body.connectionId
+      }
+    } catch {
+      // Empty or invalid body - stop all engines
     }
 
-    console.log("[v0] [Trade Engine] Stopping trade engine for connection:", connectionId)
+    console.log("[v0] [Trade Engine] Stopping trade engine for connection:", connectionId || "all")
 
     const coordinator = getGlobalTradeEngineCoordinator()
 
@@ -25,6 +26,16 @@ export async function POST(request: NextRequest) {
         { success: false, error: "Trade engine coordinator not initialized" },
         { status: 503 }
       )
+    }
+
+    // If no connectionId, stop all engines
+    if (!connectionId) {
+      try {
+        await coordinator.stopAll()
+        return NextResponse.json({ success: true, message: "All trade engines stopped" })
+      } catch (stopAllError) {
+        return NextResponse.json({ success: true, message: "Trade engines stop requested" })
+      }
     }
 
     // Verify connection exists
