@@ -1,14 +1,7 @@
 import type React from "react"
 import type { Metadata } from "next"
 import "./globals.css"
-import { SidebarProvider } from "@/components/ui/sidebar"
-import { AppSidebar } from "@/components/app-sidebar"
-import { ThemeProvider } from "@/components/theme-provider"
-import { StyleInitializer } from "@/components/style-initializer"
 import { AuthProvider } from "@/lib/auth-context"
-import { Toaster } from "@/components/ui/sonner"
-import { SiteLoggerProvider } from "@/components/site-logger-provider"
-import { DatabaseInitAlert } from "@/components/database-init-alert"
 
 export const metadata: Metadata = {
   title: "CTS v3 - Crypto Trading System",
@@ -22,26 +15,11 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className="antialiased style-default" suppressHydrationWarning>
-      <body className="min-h-screen bg-background font-sans">
-        <StyleInitializer />
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="white"
-          enableSystem={false}
-          themes={["dark", "white", "grey", "blackwhite"]}
-        >
-          <AuthProvider>
-            <SiteLoggerProvider>
-              <DatabaseInitAlert />
-              <SidebarProvider defaultOpen={true}>
-                <AppSidebar />
-                <main className="flex-1 w-full">{children}</main>
-              </SidebarProvider>
-            </SiteLoggerProvider>
-          </AuthProvider>
-          <Toaster position="top-right" expand={true} richColors closeButton />
-        </ThemeProvider>
+    <html lang="en" suppressHydrationWarning>
+      <body className="bg-background font-sans">
+        <AuthProvider>
+          {children}
+        </AuthProvider>
       </body>
     </html>
   )
