@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { flushAll, getRedisClient, initRedis, runMigrations } from "@/lib/redis-db"
+import { flushAll, getRedisClient, initRedis } from "@/lib/redis-db"
+import { runMigrations } from "@/lib/redis-migrations"
 import { SystemLogger } from "@/lib/system-logger"
 
 export const runtime = "nodejs"
