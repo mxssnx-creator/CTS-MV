@@ -435,6 +435,39 @@ const migrations: Migration[] = [
       await client.set("_schema_version", "9")
     },
   },
+  {
+    name: "011-seed-predefined-connections",
+    version: 11,
+    up: async (client: any) => {
+      await client.set("_schema_version", "11")
+      
+      // Import and seed predefined connections
+      const { getPredefinedConnectionsAsStatic } = await import("./connection-predefinitions")
+      const { createConnection } = await import("./redis-db")
+      
+      const predefinedConnections = getPredefinedConnectionsAsStatic()
+      
+      for (const connection of predefinedConnections) {
+        try {
+          // Check if connection already exists
+          const existingKey = `connection:${connection.id}`
+          const exists = await client.exists(existingKey)
+          
+          if (!exists) {
+            await createConnection(connection)
+            console.log(`[v0] Seeded predefined connection: ${connection.name}`)
+          }
+        } catch (error) {
+          console.warn(`[v0] Failed to seed connection ${connection.name}:`, error instanceof Error ? error.message : "unknown")
+        }
+      }
+      
+      console.log(`[v0] Migration 011: Seeded ${predefinedConnections.length} predefined connections`)
+    },
+    down: async (client: any) => {
+      await client.set("_schema_version", "10")
+    },
+  },
 ]
 
 /**
