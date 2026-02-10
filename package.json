@@ -44,7 +44,8 @@
     "health": "curl http://localhost:3000/api/system/health || echo 'Server not running'",
     "lint": "next lint",
     "start": "next start -p ${PORT:-3000}",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "vercel-build": "next build"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "1.2.2",
