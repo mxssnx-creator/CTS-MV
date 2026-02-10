@@ -19,7 +19,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ExchangeConnectionSettingsDialog } from "@/components/settings/exchange-connection-settings-dialog"
 import { Input } from "@/components/ui/input"
-import { toast } from "@/lib/simple-toast"
+import { toast } from "sonner"
 import type { ExchangeConnection } from "@/lib/types"
 import { Activity, AlertCircle, CheckCircle, Trash2, Settings, Info } from "lucide-react"
 

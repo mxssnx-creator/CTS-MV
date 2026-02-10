@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { SystemLogger } from "@/lib/system-logger"
-import { loadConnections, saveConnections } from "@/lib/file-storage"
+import { initRedis, getConnection, updateConnection } from "@/lib/redis-db"
 
 // POST toggle connection enabled status
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -15,22 +15,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       is_preset_trade,
     })
 
-    const connections = loadConnections()
-    
-    // Ensure connections is an array
-    if (!Array.isArray(connections)) {
-      console.error("[v0] Connections is not an array:", typeof connections)
-      return NextResponse.json({ error: "Invalid connections data" }, { status: 500 })
-    }
+    await initRedis()
+    const connection = await getConnection(connectionId)
 
-    const connectionIndex = connections.findIndex((c) => c.id === connectionId)
-
-    if (connectionIndex === -1) {
+    if (!connection) {
       console.error("[v0] Connection not found:", connectionId)
       return NextResponse.json({ error: "Connection not found" }, { status: 404 })
     }
-
-    const connection = connections[connectionIndex]
 
     if (is_live_trade && !is_enabled) {
       console.warn("[v0] Cannot enable live trade without enabling connection first")
@@ -40,17 +31,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       )
     }
 
-    // Update connection in file storage
+    // Update connection in Redis
     const updatedConnection = {
       ...connection,
       is_enabled,
-      is_live_trade: is_enabled ? is_live_trade : false, // Disable trading if connection disabled
+      is_live_trade: is_enabled ? is_live_trade : false,
       is_preset_trade: is_enabled ? is_preset_trade : false,
       updated_at: new Date().toISOString(),
     }
 
-    connections[connectionIndex] = updatedConnection
-    saveConnections(connections)
+    await updateConnection(connectionId, updatedConnection)
 
     await SystemLogger.logConnection(
       `Connection toggled: ${connection.name} - enabled: ${is_enabled}, live: ${is_live_trade}`,

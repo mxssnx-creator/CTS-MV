@@ -74,17 +74,28 @@ export function Dashboard() {
 
   const handleToggleEnable = async (id: string, enabled: boolean) => {
     try {
+      const connection = connections.find(c => c.id === id)
+      if (!connection) {
+        toast.error("Connection not found")
+        return
+      }
+
       const response = await fetch(`/api/settings/connections/${id}/toggle`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled }),
+        body: JSON.stringify({
+          is_enabled: enabled,
+          is_live_trade: enabled ? connection.is_live_trade : false,
+          is_preset_trade: enabled ? connection.is_preset_trade : false,
+        }),
       })
 
       if (response.ok) {
         toast.success(`Connection ${enabled ? "enabled" : "disabled"}`)
         await loadConnections()
       } else {
-        toast.error("Failed to toggle connection")
+        const error = await response.json()
+        toast.error(error.details || "Failed to toggle connection")
       }
     } catch (error) {
       console.error("[v0] Failed to toggle connection:", error)
@@ -94,17 +105,33 @@ export function Dashboard() {
 
   const handleToggleLiveTrade = async (id: string, enabled: boolean) => {
     try {
-      const response = await fetch(`/api/settings/connections/${id}/live-trade`, {
+      const connection = connections.find(c => c.id === id)
+      if (!connection) {
+        toast.error("Connection not found")
+        return
+      }
+
+      if (!connection.is_enabled && enabled) {
+        toast.error("Please enable the connection first")
+        return
+      }
+
+      const response = await fetch(`/api/settings/connections/${id}/toggle`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled }),
+        body: JSON.stringify({
+          is_enabled: connection.is_enabled,
+          is_live_trade: enabled,
+          is_preset_trade: connection.is_preset_trade,
+        }),
       })
 
       if (response.ok) {
         toast.success(`Live trading ${enabled ? "enabled" : "disabled"}`)
         await loadConnections()
       } else {
-        toast.error("Failed to toggle live trading")
+        const error = await response.json()
+        toast.error(error.details || "Failed to toggle live trading")
       }
     } catch (error) {
       console.error("[v0] Failed to toggle live trading:", error)
