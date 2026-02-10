@@ -125,3 +125,75 @@ export async function initializeDatabase() {
     return false
   }
 }
+
+/**
+ * Compatibility object `db` - wraps Redis operations into a db-like interface
+ * Used by: import { db } from "@/lib/database"
+ */
+export const db = {
+  query,
+  queryOne,
+  execute,
+  getClient,
+  getDatabaseType,
+  initializeDatabase,
+  async all(sql: string, params: any[] = []) {
+    return query(sql, params)
+  },
+  async get(sql: string, params: any[] = []) {
+    return queryOne(sql, params)
+  },
+  async run(sql: string, params: any[] = []) {
+    return execute(sql, params)
+  },
+}
+
+/**
+ * Compatibility class `DatabaseManager` - wraps Redis operations
+ * Used by: import DatabaseManager from "@/lib/database"
+ */
+class DatabaseManagerClass {
+  static instance: DatabaseManagerClass | null = null
+
+  static getInstance(): DatabaseManagerClass {
+    if (!DatabaseManagerClass.instance) {
+      DatabaseManagerClass.instance = new DatabaseManagerClass()
+    }
+    return DatabaseManagerClass.instance
+  }
+
+  async query<T = any>(sql: string, params: any[] = []): Promise<T[]> {
+    return query<T>(sql, params)
+  }
+
+  async queryOne<T = any>(sql: string, params: any[] = []): Promise<T | null> {
+    return queryOne<T>(sql, params)
+  }
+
+  async execute(sql: string, params: any[] = []): Promise<{ rowCount: number }> {
+    return execute(sql, params)
+  }
+
+  async all(sql: string, params: any[] = []) {
+    return query(sql, params)
+  }
+
+  async get(sql: string, params: any[] = []) {
+    return queryOne(sql, params)
+  }
+
+  async run(sql: string, params: any[] = []) {
+    return execute(sql, params)
+  }
+
+  getDatabaseType(): string {
+    return "redis"
+  }
+
+  async initialize() {
+    return initializeDatabase()
+  }
+}
+
+const DatabaseManager = DatabaseManagerClass.getInstance()
+export default DatabaseManager
