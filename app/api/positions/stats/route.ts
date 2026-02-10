@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server"
-import { db } from "@/lib/database" // Updated import to use DatabaseManager
+import DatabaseManager from "@/lib/database"
 
 export async function GET() {
   try {
+    const db = DatabaseManager.getInstance()
     // Get position statistics
     const stats: any = await db.getGlobalPositionStats() // Use the new getGlobalPositionStats method instead of direct db.prepare
 

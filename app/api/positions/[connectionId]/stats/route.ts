@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server"
-import { db } from "@/lib/database" // Updated import to use DatabaseManager
+import DatabaseManager from "@/lib/database"
 
 export async function GET(request: Request, { params }: { params: Promise<{ connectionId: string }> }) {
   try {
     const { connectionId } = await params
+    const db = DatabaseManager.getInstance()
 
     // Get position statistics for specific connection
     const stats: any = await db.getPositionStats(connectionId)
