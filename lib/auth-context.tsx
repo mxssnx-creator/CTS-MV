@@ -1,7 +1,13 @@
 "use client"
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
-import type { User } from "@/lib/auth"
+
+interface User {
+  id: number
+  username: string
+  email: string
+  role: string
+}
 
 interface AuthContextType {
   user: User | null
@@ -25,12 +31,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
-    // Authorization system disabled - user is always logged in as admin
-    console.log("[v0] AuthProvider: Initializing with default admin user")
     setIsLoading(false)
   }, [])
-
-  console.log("[v0] AuthProvider: Providing auth context - user:", user?.id, "isLoading:", isLoading)
 
   const login = async (email: string, password: string) => {
     setUser({
