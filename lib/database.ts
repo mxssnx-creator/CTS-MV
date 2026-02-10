@@ -127,28 +127,6 @@ export async function initializeDatabase() {
 }
 
 /**
- * Compatibility object `db` - wraps Redis operations into a db-like interface
- * Used by: import { db } from "@/lib/database"
- */
-export const db = {
-  query,
-  queryOne,
-  execute,
-  getClient,
-  getDatabaseType,
-  initializeDatabase,
-  async all(sql: string, params: any[] = []) {
-    return query(sql, params)
-  },
-  async get(sql: string, params: any[] = []) {
-    return queryOne(sql, params)
-  },
-  async run(sql: string, params: any[] = []) {
-    return execute(sql, params)
-  },
-}
-
-/**
  * Compatibility class `DatabaseManager` - wraps Redis operations
  * Used by: import DatabaseManager from "@/lib/database"
  * Supports both static and instance-level getInstance()
@@ -309,3 +287,9 @@ class DatabaseManagerClass {
 
 const DatabaseManager = DatabaseManagerClass.getInstance()
 export default DatabaseManager
+
+/**
+ * Named export `db` - same instance as DatabaseManager
+ * Used by: import { db } from "@/lib/database"
+ */
+export const db = DatabaseManager as any
