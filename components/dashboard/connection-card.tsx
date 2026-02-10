@@ -64,6 +64,9 @@ export function ConnectionCard({
   status,
   progress = 0,
 }: ConnectionCardProps) {
+  const [expanded, setExpanded] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<any>(null)
   const [showLogs, setShowLogs] = useState(false)
   const [showInfo, setShowInfo] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
@@ -642,17 +645,54 @@ export function ConnectionCard({
     }
   }
 
+  const handleTestConnection = async () => {
+    setTesting(true)
+    setTestResult(null)
+    toast.info("Testing connection...")
+
+    try {
+      const response = await fetch(`/api/settings/connections/${connection.id}/test`, {
+        method: "POST",
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setTestResult({ success: true, ...data })
+        toast.success(`Connection successful! Balance: ${data.balance?.toFixed(2)} USDT`)
+      } else {
+        setTestResult({ success: false, error: data.details || data.error })
+        toast.error(data.details || data.error || "Connection test failed")
+      }
+    } catch (error) {
+      console.error("[v0] Connection test error:", error)
+      setTestResult({ success: false, error: "Network error" })
+      toast.error("Failed to test connection")
+    } finally {
+      setTesting(false)
+    }
+  }
+
   return (
     <Card className="relative overflow-hidden hover:shadow-lg transition-shadow">
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0 flex-1">
+          <div className="flex items-center gap-2 min-w-0 flex-1 cursor-pointer" onClick={() => setExpanded(!expanded)}>
             <CardTitle className="text-base font-semibold truncate">
               {connection.name} ({connection.exchange})
             </CardTitle>
             <div className="h-4 w-4 shrink-0">{getStatusIcon()}</div>
           </div>
-          <div className="flex gap-1.5 shrink-0">
+          <div className="flex gap-1.5 items-center shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              onClick={handleTestConnection}
+              disabled={testing}
+            >
+              {testing ? "Testing..." : "Test"}
+            </Button>
             <Badge variant="outline" className="text-xs px-1.5 py-0">
               {connection.api_type}
             </Badge>
@@ -663,7 +703,13 @@ export function ConnectionCard({
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-3 pt-2">
+      <CardContent className={`space-y-3 pt-2 ${!expanded ? "hidden" : ""}`}>
+        {testResult && (
+          <div className={`text-xs p-2 rounded ${testResult.success ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
+            {testResult.success ? `✓ Connected - Balance: ${testResult.balance?.toFixed(2)} USDT` : `✗ ${testResult.error}`}
+          </div>
+        )}
+        
         {status === "connecting" && (
           <div className="space-y-2">
             <div className="flex justify-between text-xs">

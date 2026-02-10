@@ -1,9 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { SystemLogger } from "@/lib/system-logger"
 import { createExchangeConnector } from "@/lib/exchange-connectors"
-import { loadConnections, saveConnections } from "@/lib/file-storage"
+import { initRedis, getConnection, updateConnection, getSettings } from "@/lib/redis-db"
 import { getConnectionManager } from "@/lib/connection-manager"
-import DatabaseManager from "@/lib/database"
 
 const TEST_TIMEOUT_MS = 30000
 
@@ -15,15 +14,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     testLog.push(`[${new Date().toISOString()}] Starting connection test for ID: ${id}`)
 
-    let connections = loadConnections()
+    await initRedis()
+    const connection = await getConnection(id)
 
-    if (!Array.isArray(connections)) {
-      testLog.push(`[${new Date().toISOString()}] ERROR: Connections data is not an array`)
-      return NextResponse.json({ error: "Invalid connections data", log: testLog }, { status: 500 })
-    }
-
-    const connectionIndex = connections.findIndex((c) => c.id === id)
-    if (connectionIndex === -1) {
+    if (!connection) {
       testLog.push(`[${new Date().toISOString()}] ERROR: Connection not found (ID: ${id})`)
       await SystemLogger.logAPI(
         `Connection test failed: not found`,
@@ -32,8 +26,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       )
       return NextResponse.json({ error: "Connection not found", log: testLog }, { status: 404 })
     }
-
-    const connection = connections[connectionIndex]
 
     testLog.push(`[${new Date().toISOString()}] Connection found: ${connection.name} (${connection.exchange})`)
     testLog.push(`[${new Date().toISOString()}] API Type: ${connection.api_type}`)
@@ -45,14 +37,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       testLog.push(`[${new Date().toISOString()}] WARNING: API key appears to be empty or placeholder`)
       testLog.push(`[${new Date().toISOString()}] Please configure valid API credentials before testing`)
 
-      connections[connectionIndex] = {
+      await updateConnection(id, {
         ...connection,
         last_test_status: "warning",
         last_test_log: testLog,
         last_test_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-      }
-      saveConnections(connections)
+      })
 
       // Update connection manager
       const manager = getConnectionManager()
@@ -71,9 +62,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     let minInterval = 200
     try {
-      const db = await DatabaseManager.getInstance()
-      const intervalSetting = await db.getSetting("minimum_connect_interval")
-      minInterval = intervalSetting ? Number.parseInt(intervalSetting) : 200
+      const settings = await getSettings("all_settings")
+      minInterval = settings?.minimum_connect_interval || 200
     } catch (settingsError) {
       testLog.push(`[${new Date().toISOString()}] Using default connect interval: ${minInterval}ms`)
     }
@@ -110,27 +100,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     testLog.push(`[${new Date().toISOString()}] Response received from ${connection.exchange}`)
     testLog.push(`[${new Date().toISOString()}] Test completed in ${duration}ms`)
 
-    connections = loadConnections()
-    const updatedIndex = connections.findIndex((c) => c.id === id)
+    await updateConnection(id, {
+      ...connection,
+      last_test_status: "success",
+      last_test_balance: result.balance,
+      last_test_log: testLog,
+      last_test_at: new Date().toISOString(),
+      api_capabilities: JSON.stringify(result.capabilities || []),
+      updated_at: new Date().toISOString(),
+    })
 
-    if (updatedIndex !== -1) {
-      const updatedConnection = {
-        ...connections[updatedIndex],
-        last_test_status: "success",
-        last_test_balance: result.balance,
-        last_test_log: testLog,
-        last_test_at: new Date().toISOString(),
-        api_capabilities: JSON.stringify(result.capabilities || []),
-        updated_at: new Date().toISOString(),
-      }
-
-      connections[updatedIndex] = updatedConnection
-      saveConnections(connections)
-
-      // Update connection manager
-      const manager = getConnectionManager()
-      await manager.markTestPassed(id, result.balance)
-    }
+    // Update connection manager
+    const manager = getConnectionManager()
+    await manager.markTestPassed(id, result.balance)
 
     await SystemLogger.logConnection(`Connection test successful: ${connection.name}`, id, "info", {
       balance: result.balance,
@@ -172,23 +154,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     await SystemLogger.logError(error, "api", "POST /api/settings/connections/[id]/test")
 
     try {
-      const connections = loadConnections()
-      if (Array.isArray(connections)) {
-        const connectionIndex = connections.findIndex((c) => c.id === id)
-        if (connectionIndex !== -1) {
-          connections[connectionIndex] = {
-            ...connections[connectionIndex],
-            last_test_status: "failed",
-            last_test_log: testLog,
-            last_test_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          }
-          saveConnections(connections)
+      const existingConnection = await getConnection(id)
+      if (existingConnection) {
+        await updateConnection(id, {
+          ...existingConnection,
+          last_test_status: "failed",
+          last_test_log: testLog,
+          last_test_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
 
-          // Update connection manager
-          const manager = getConnectionManager()
-          await manager.markTestFailed(id, userFriendlyError)
-        }
+        // Update connection manager
+        const manager = getConnectionManager()
+        await manager.markTestFailed(id, userFriendlyError)
       }
     } catch (updateError) {
       console.error("[v0] Failed to update connection with error status:", updateError)
