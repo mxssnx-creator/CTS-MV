@@ -8,7 +8,7 @@ import { ConnectionCard } from "./connection-card"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Plus, RefreshCw } from "lucide-react"
-import { toast } from "@/lib/simple-toast"
+import { toast } from "sonner"
 import type { ExchangeConnection } from "@/lib/types"
 
 export function Dashboard() {

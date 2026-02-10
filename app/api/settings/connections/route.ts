@@ -40,8 +40,21 @@ export async function GET(request: NextRequest) {
       await initRedis()
       connections = await getAllConnections()
       if (!Array.isArray(connections) || connections.length === 0) {
-        console.log("[v0] No connections in Redis, returning predefined")
-        connections = getPredefinedConnectionsAsStatic()
+        console.log("[v0] No connections in Redis, seeding predefined connections...")
+        const predefined = getPredefinedConnectionsAsStatic()
+        
+        // Save all predefined connections to Redis
+        for (const conn of predefined) {
+          try {
+            await createConnection(conn)
+          } catch (createError) {
+            console.warn(`[v0] Failed to seed connection ${conn.name}:`, createError)
+          }
+        }
+        
+        // Fetch the saved connections
+        connections = await getAllConnections()
+        console.log(`[v0] Seeded and loaded ${connections.length} predefined connections`)
       }
     } catch (error) {
       console.log("[v0] Failed to load connections from Redis:", error)
