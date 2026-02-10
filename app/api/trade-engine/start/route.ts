@@ -29,6 +29,38 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // If no connectionId, start all enabled connections
+    if (!connectionId) {
+      console.log("[v0] [Trade Engine] Starting all enabled connections")
+      try {
+        const connections = loadConnections()
+        const enabledConnections = connections.filter((c) => c.is_enabled)
+        
+        if (enabledConnections.length === 0) {
+          return NextResponse.json({
+            success: false,
+            error: "No enabled connections found",
+          }, { status: 400 })
+        }
+
+        console.log("[v0] [Trade Engine] Starting engines for", enabledConnections.length, "enabled connections")
+        
+        await coordinator.startAll()
+
+        return NextResponse.json({
+          success: true,
+          message: `Started ${enabledConnections.length} trade engines`,
+          count: enabledConnections.length,
+        })
+      } catch (startAllError) {
+        console.error("[v0] [Trade Engine] Failed to start all engines:", startAllError)
+        return NextResponse.json({
+          error: "Failed to start all trade engines",
+          details: startAllError instanceof Error ? startAllError.message : "Unknown error",
+        }, { status: 500 })
+      }
+    }
+
     // Check if already running
     const existingManager = coordinator.getEngineManager(connectionId)
     if (existingManager) {

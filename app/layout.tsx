@@ -4,6 +4,7 @@ import "./globals.css"
 import { AuthProvider } from "@/lib/auth-context"
 import { SidebarProvider } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
+import { Toaster } from "@/components/ui/sonner"
 
 export const dynamic = "force-dynamic"
 
@@ -26,6 +27,7 @@ export default function RootLayout({
             <AppSidebar />
             <main className="flex-1 w-full">{children}</main>
           </SidebarProvider>
+          <Toaster richColors />
         </AuthProvider>
       </body>
     </html>
