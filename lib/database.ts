@@ -162,6 +162,11 @@ class DatabaseManagerClass {
     return DatabaseManagerClass.instance
   }
 
+  // Instance method so callers can do DatabaseManager.getInstance() on the exported instance
+  getInstance(): DatabaseManagerClass {
+    return this
+  }
+
   async query<T = any>(sql: string, params: any[] = []): Promise<T[]> {
     return query<T>(sql, params)
   }
@@ -192,6 +197,58 @@ class DatabaseManagerClass {
 
   async initialize() {
     return initializeDatabase()
+  }
+
+  // CRUD methods for entity-based storage via Redis
+  async insert(entityType: string, subType: string, data: any): Promise<any> {
+    const { getRedisClient } = await import("./redis-db")
+    const client = getRedisClient()
+    const id = data.id || `${entityType}:${subType}:${Date.now()}:${Math.random().toString(36).substr(2, 9)}`
+    const record = { ...data, id, entity_type: entityType, sub_type: subType, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }
+    const key = `entity:${entityType}:${subType}:${id}`
+    await client.hSet(key, Object.fromEntries(Object.entries(record).map(([k, v]) => [k, typeof v === "string" ? v : JSON.stringify(v)])))
+    await client.sAdd(`entities:${entityType}:${subType}`, id)
+    return record
+  }
+
+  async getAll(entityType: string, subType: string): Promise<any[]> {
+    const { getRedisClient } = await import("./redis-db")
+    const client = getRedisClient()
+    const ids = await client.sMembers(`entities:${entityType}:${subType}`)
+    if (ids.length === 0) return []
+    const results = await Promise.all(ids.map(async (id) => {
+      const data = await client.hGetAll(`entity:${entityType}:${subType}:${id}`)
+      return Object.keys(data).length > 0 ? data : null
+    }))
+    return results.filter(Boolean)
+  }
+
+  async getById(entityType: string, subType: string, id: string): Promise<any | null> {
+    const { getRedisClient } = await import("./redis-db")
+    const client = getRedisClient()
+    const data = await client.hGetAll(`entity:${entityType}:${subType}:${id}`)
+    return Object.keys(data).length > 0 ? data : null
+  }
+
+  async find(entityType: string, subType: string, filter: Record<string, any>): Promise<any[]> {
+    const all = await this.getAll(entityType, subType)
+    return all.filter((item) => Object.entries(filter).every(([k, v]) => item[k] === String(v)))
+  }
+
+  async update(entityType: string, subType: string, id: string, data: any): Promise<any> {
+    const { getRedisClient } = await import("./redis-db")
+    const client = getRedisClient()
+    const key = `entity:${entityType}:${subType}:${id}`
+    const record = { ...data, updated_at: new Date().toISOString() }
+    await client.hSet(key, Object.fromEntries(Object.entries(record).map(([k, v]) => [k, typeof v === "string" ? v : JSON.stringify(v)])))
+    return record
+  }
+
+  async delete(entityType: string, subType: string, id: string): Promise<void> {
+    const { getRedisClient } = await import("./redis-db")
+    const client = getRedisClient()
+    await client.sRem(`entities:${entityType}:${subType}`, id)
+    await client.del(`entity:${entityType}:${subType}:${id}`)
   }
 }
 
