@@ -1,13 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { successResponse, errorResponse } from "@/lib/api-toast"
-import { loadSettings, saveSettings } from "@/lib/file-storage"
-import { resetDatabaseClients } from "@/lib/db"
+import { getSettings, setSettings } from "@/lib/redis-db"
 
 export async function GET(request: NextRequest) {
   try {
-    const settings = loadSettings()
+    const settings = await getSettings("system") || {}
 
-    console.log("[v0] Loaded settings from file:", Object.keys(settings).length, "keys")
+    console.log("[v0] Loaded system settings from Redis:", Object.keys(settings).length, "keys")
     return NextResponse.json(settings)
   } catch (error) {
     console.error("[v0] Failed to fetch system settings:", error)
@@ -18,6 +17,17 @@ export async function GET(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json()
+    
+    await setSettings("system", body)
+    console.log("[v0] System settings saved to Redis")
+    
+    return NextResponse.json({ success: true, data: body })
+  } catch (error) {
+    console.error("[v0] Failed to save system settings:", error)
+    return NextResponse.json({ success: false, error: String(error) }, { status: 500 })
+  }
+}
+
     console.log("[v0] Updating system settings:", Object.keys(body))
 
     const currentSettings = loadSettings()

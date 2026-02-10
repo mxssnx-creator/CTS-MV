@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
-import { query, insertReturning, getDatabaseType } from "@/lib/db"
+import { getSettings } from "@/lib/redis-db"
 
 export async function GET(request: NextRequest) {
   try {
@@ -9,15 +9,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 })
     }
 
-    const strategies = await query("SELECT * FROM strategies WHERE user_id = $1 ORDER BY created_at DESC", [user.id])
+    const strategies = await getSettings("strategies")
 
     return NextResponse.json({
       success: true,
-      data: strategies,
+      data: strategies || [],
     })
   } catch (error) {
     console.error("[v0] Get strategies error:", error)
     return NextResponse.json({ success: false, error: "Internal server error" }, { status: 500 })
+  }
+}
+
   }
 }
 

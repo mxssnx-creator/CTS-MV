@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
-import { query, insertReturning } from "@/lib/db"
+import { getConnectionPositions } from "@/lib/redis-db"
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,14 +10,27 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url)
-    const portfolioId = searchParams.get("portfolio_id")
+    const connectionId = searchParams.get("connection_id")
     const status = searchParams.get("status") || "open"
 
-    let queryText = `
-      SELECT p.*, tp.symbol, tp.base_currency, tp.quote_currency, e.name as exchange_name
-      FROM positions p
-      JOIN trading_pairs tp ON p.trading_pair_id = tp.id
-      JOIN exchanges e ON tp.exchange_id = e.id
+    if (!connectionId) {
+      return NextResponse.json({ success: false, error: "connection_id required" }, { status: 400 })
+    }
+
+    const positions = await getConnectionPositions(connectionId)
+    const filtered = status ? positions.filter((p) => p.status === status) : positions
+
+    return NextResponse.json({
+      success: true,
+      data: filtered,
+      count: filtered.length,
+    })
+  } catch (error) {
+    console.error("[v0] Get positions error:", error)
+    return NextResponse.json({ success: false, error: "Internal server error" }, { status: 500 })
+  }
+}
+
       JOIN portfolios pf ON p.portfolio_id = pf.id
       WHERE pf.user_id = $1 AND p.status = $2
     `
