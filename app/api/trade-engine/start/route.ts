@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { loadConnections, loadSettings } from "@/lib/file-storage"
+import { initRedis, getAllConnections, getConnection } from "@/lib/redis-db"
 import { getGlobalTradeEngineCoordinator } from "@/lib/trade-engine"
 import { SystemLogger } from "@/lib/system-logger"
 
@@ -33,7 +33,8 @@ export async function POST(request: NextRequest) {
     if (!connectionId) {
       console.log("[v0] [Trade Engine] Starting all enabled connections")
       try {
-        const connections = loadConnections()
+        await initRedis()
+        const connections = await getAllConnections()
         const enabledConnections = connections.filter((c) => c.is_enabled)
         
         if (enabledConnections.length === 0) {
@@ -71,19 +72,13 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Load connection from file storage
+    // Load connection from Redis
     let connection
     try {
-      const connections = loadConnections()
-      
-      if (!Array.isArray(connections)) {
-        console.error("[v0] [Trade Engine] Connections is not an array:", typeof connections)
-        return NextResponse.json({ error: "Invalid connections data" }, { status: 500 })
-      }
+      await initRedis()
+      connection = await getConnection(connectionId)
 
-      connection = connections.find((c) => c.id === connectionId && c.is_enabled)
-
-      if (!connection) {
+      if (!connection || !connection.is_enabled) {
         console.error("[v0] [Trade Engine] Connection not found or not enabled:", connectionId)
         await SystemLogger.logTradeEngine(`Connection not found or not enabled: ${connectionId}`, "error", {
           connectionId,
@@ -91,25 +86,26 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Connection not found or not enabled" }, { status: 404 })
       }
 
-      console.log("[v0] [Trade Engine] Loaded connection from file storage:", connection.name)
-    } catch (fileError) {
-      console.error("[v0] [Trade Engine] Failed to load connection from file:", fileError)
+      console.log("[v0] [Trade Engine] Loaded connection from Redis:", connection.name)
+    } catch (redisError) {
+      console.error("[v0] [Trade Engine] Failed to load connection from Redis:", redisError)
       return NextResponse.json({ error: "Failed to load connection configuration" }, { status: 500 })
     }
 
-    // Load settings from file storage
+    // Load settings from Redis
     let indicationInterval = 5
     let strategyInterval = 10
     let realtimeInterval = 3
 
     try {
-      const settings = loadSettings()
+      const { getSettings } = await import("@/lib/redis-db")
+      const settings = await getSettings("all_settings") || {}
       indicationInterval = settings.mainEngineIntervalMs ? settings.mainEngineIntervalMs / 1000 : 5
       strategyInterval = settings.strategyUpdateIntervalMs ? settings.strategyUpdateIntervalMs / 1000 : 10
       realtimeInterval = settings.realtimeIntervalMs ? settings.realtimeIntervalMs / 1000 : 3
       console.log("[v0] [Trade Engine] Loaded settings - indicationInterval:", indicationInterval, "strategyInterval:", strategyInterval, "realtimeInterval:", realtimeInterval)
     } catch (settingsError) {
-      console.warn("[v0] [Trade Engine] Could not load settings from file, using defaults:", settingsError)
+      console.warn("[v0] [Trade Engine] Could not load settings from Redis, using defaults:", settingsError)
     }
 
     try {

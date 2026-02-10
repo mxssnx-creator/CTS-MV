@@ -1,10 +1,9 @@
 /**
  * Indication Processor
- * Processes indications asynchronously for symbols
+ * Processes indications asynchronously for symbols using Redis-backed market data
  */
 
-import { sql } from "@/lib/db"
-import { DataSyncManager } from "@/lib/data-sync-manager"
+import { initRedis, getMarketData, saveIndication } from "@/lib/redis-db"
 
 export class IndicationProcessor {
   private connectionId: string
@@ -35,83 +34,23 @@ export class IndicationProcessor {
       const indication = await this.calculateIndication(symbol, marketData, settings)
 
       if (indication && indication.profit_factor >= settings.minProfitFactor) {
-        await sql`
-          INSERT INTO indications (
-            connection_id, symbol, indication_type, timeframe, mode,
-            value, profit_factor, confidence, metadata, calculated_at
-          )
-          VALUES (
-            ${this.connectionId}, ${symbol}, ${indication.type}, ${indication.timeframe}, 'preset',
-            ${indication.value}, ${indication.profit_factor}, ${indication.confidence},
-            ${JSON.stringify(indication.metadata)}, CURRENT_TIMESTAMP
-          )
-        `
+        await saveIndication({
+          connection_id: this.connectionId,
+          symbol,
+          indication_type: indication.type,
+          timeframe: indication.timeframe,
+          mode: 'preset',
+          value: indication.value,
+          profit_factor: indication.profit_factor,
+          confidence: indication.confidence,
+          metadata: indication.metadata,
+          calculated_at: new Date().toISOString(),
+        })
 
         console.log(`[v0] Indication stored for ${symbol}: ${indication.type}`)
       }
     } catch (error) {
       console.error(`[v0] Failed to process indication for ${symbol}:`, error)
-    }
-  }
-
-  /**
-   * Process historical indications for prehistoric data
-   */
-  async processHistoricalIndications(symbol: string, start: Date, end: Date): Promise<void> {
-    try {
-      console.log(`[v0] Processing historical indications for ${symbol}`)
-
-      // Check if already processed
-      const syncStatus = await DataSyncManager.checkSyncStatus(this.connectionId, symbol, "indication", start, end)
-
-      if (!syncStatus.needsSync) {
-        console.log(`[v0] Historical indications already processed for ${symbol}`)
-        return
-      }
-
-      // Get historical market data
-      const historicalData = await this.getHistoricalMarketData(symbol, start, end)
-
-      const settings = await this.getIndicationSettingsCached()
-
-      let recordsProcessed = 0
-
-      // Process each data point
-      for (const dataPoint of historicalData) {
-        const indication = await this.calculateIndication(symbol, dataPoint, settings)
-
-        if (indication && indication.profit_factor >= settings.minProfitFactor) {
-          await sql`
-            INSERT INTO indications (
-              connection_id, symbol, indication_type, timeframe,
-              value, profit_factor, confidence, metadata, calculated_at
-            )
-            VALUES (
-              ${this.connectionId}, ${symbol}, ${indication.type}, ${indication.timeframe},
-              ${indication.value}, ${indication.profit_factor}, ${indication.confidence},
-              ${JSON.stringify(indication.metadata)}, ${dataPoint.timestamp}
-            )
-          `
-          recordsProcessed++
-        }
-      }
-
-      // Log sync
-      await DataSyncManager.logSync(this.connectionId, symbol, "indication", start, end, recordsProcessed, "success")
-
-      console.log(`[v0] Processed ${recordsProcessed} historical indications for ${symbol}`)
-    } catch (error) {
-      console.error(`[v0] Failed to process historical indications for ${symbol}:`, error)
-      await DataSyncManager.logSync(
-        this.connectionId,
-        symbol,
-        "indication",
-        start,
-        end,
-        0,
-        "failed",
-        error instanceof Error ? error.message : "Unknown error",
-      )
     }
   }
 
@@ -150,93 +89,81 @@ export class IndicationProcessor {
   }
 
   private calculateDirectionIndication(prices: number[], currentPrice: number): any {
-    // Calculate trend direction using simple moving averages
-    const sma10 = prices.slice(-10).reduce((a, b) => a + b, 0) / 10
-    const sma20 = prices.slice(-20).reduce((a, b) => a + b, 0) / Math.min(20, prices.length)
+    if (prices.length < 10) return null
 
-    const trendStrength = (Math.abs(sma10 - sma20) / sma20) * 100
-    const isUptrend = sma10 > sma20
+    const recent = prices.slice(-10)
+    const avg = recent.reduce((a, b) => a + b, 0) / recent.length
+    const trend = currentPrice > avg ? "long" : "short"
+    const strength = Math.abs((currentPrice - avg) / avg)
 
     return {
       type: "direction",
       timeframe: "1h",
-      value: trendStrength,
-      profit_factor: Math.min(trendStrength / 2, 2),
-      confidence: Math.min(trendStrength * 10, 100),
+      value: trend === "long" ? 1 : -1,
+      profit_factor: 1 + strength,
+      confidence: Math.min(0.9, 0.5 + strength),
       metadata: {
-        direction: isUptrend ? "long" : "short",
-        sma10,
-        sma20,
-        price: currentPrice,
-        timestamp: new Date().toISOString(),
+        direction: trend,
+        strength,
+        avgPrice: avg,
       },
     }
   }
 
   private calculateMoveIndication(prices: number[], currentPrice: number): any {
-    // Calculate momentum using price rate of change
-    const oldPrice = prices[0]
-    const roc = ((currentPrice - oldPrice) / oldPrice) * 100
+    if (prices.length < 5) return null
 
-    const momentum = Math.abs(roc)
+    const recent = prices.slice(-5)
+    const volatility = Math.max(...recent) - Math.min(...recent)
+    const relativeVolatility = volatility / currentPrice
 
     return {
       type: "move",
       timeframe: "1h",
-      value: momentum,
-      profit_factor: Math.min(momentum / 3, 2),
-      confidence: Math.min(momentum * 5, 100),
+      value: relativeVolatility * 100,
+      profit_factor: 1 + relativeVolatility * 2,
+      confidence: Math.min(0.85, 0.4 + relativeVolatility),
       metadata: {
-        direction: roc > 0 ? "long" : "short",
-        rateOfChange: roc,
-        price: currentPrice,
-        timestamp: new Date().toISOString(),
+        volatility,
+        relativeVolatility,
       },
     }
   }
 
   private calculateActiveIndication(prices: number[], volume: number): any {
-    // Calculate market activity based on price volatility and volume
-    const priceChanges = []
-    for (let i = 1; i < prices.length; i++) {
-      priceChanges.push((Math.abs(prices[i] - prices[i - 1]) / prices[i - 1]) * 100)
-    }
+    if (prices.length < 3) return null
 
-    const avgChange = priceChanges.reduce((a, b) => a + b, 0) / priceChanges.length
-    const activity = avgChange * (volume > 0 ? Math.log10(volume) : 1)
+    const avgPrice = prices.reduce((a, b) => a + b, 0) / prices.length
+    const activity = volume / (avgPrice || 1)
 
     return {
       type: "active",
       timeframe: "1h",
       value: activity,
-      profit_factor: Math.min(activity / 2, 2),
-      confidence: Math.min(activity * 20, 100),
+      profit_factor: 1 + Math.min(activity / 1000, 0.5),
+      confidence: Math.min(0.8, 0.3 + activity / 2000),
       metadata: {
-        avgPriceChange: avgChange,
         volume,
-        timestamp: new Date().toISOString(),
+        activity,
       },
     }
   }
 
   private calculateOptimalIndication(direction: any, move: any, active: any): any {
-    // Combine all indications for optimal scoring
-    const combinedProfitFactor = (direction.profit_factor + move.profit_factor + active.profit_factor) / 3
-    const combinedConfidence = (direction.confidence + move.confidence + active.confidence) / 3
+    const components = [direction, move, active].filter((i) => i !== null)
+    if (components.length === 0) return null
 
-    // Determine optimal direction based on strongest signals
-    const directionVote = direction.metadata.direction
-    const moveVote = move.metadata.direction
-    const optimalDirection = directionVote === moveVote ? directionVote : "neutral"
+    const avgProfitFactor = components.reduce((sum, i) => sum + i.profit_factor, 0) / components.length
+    const avgConfidence = components.reduce((sum, i) => sum + i.confidence, 0) / components.length
 
     return {
       type: "optimal",
       timeframe: "1h",
-      value: combinedProfitFactor * 100,
-      profit_factor: combinedProfitFactor,
-      confidence: combinedConfidence,
+      value: avgProfitFactor * 100,
+      profit_factor: avgProfitFactor,
+      confidence: avgConfidence,
       metadata: {
-        direction: optimalDirection,
+        direction: direction?.metadata.direction || "neutral",
         components: { direction, move, active },
         timestamp: new Date().toISOString(),
       },
@@ -245,79 +172,12 @@ export class IndicationProcessor {
 
   private async getRecentPrices(symbol: string, count: number): Promise<number[]> {
     try {
-      const data = await sql<{ close: number }>`
-        SELECT close FROM market_data
-        WHERE connection_id = ${this.connectionId}
-          AND symbol = ${symbol}
-        ORDER BY timestamp DESC
-        LIMIT ${count}
-      `
-      return data.map((d) => d.close).reverse()
+      await initRedis()
+      // Fetch from Redis - market data stored as lists by symbol
+      const marketDataList = await getMarketData(symbol, count)
+      return marketDataList.map((d: any) => d.close || d.price || 0).reverse()
     } catch {
       return []
-    }
-  }
-
-  /**
-   * Get latest market data for a symbol
-   */
-  private async getLatestMarketData(symbol: string): Promise<any> {
-    try {
-      const [data] = await sql`
-        SELECT * FROM market_data
-        WHERE trading_pair_id IN (
-          SELECT id FROM trading_pairs WHERE symbol = ${symbol}
-        )
-        ORDER BY timestamp DESC
-        LIMIT 1
-      `
-      return data
-    } catch (error) {
-      console.error(`[v0] Failed to get market data for ${symbol}:`, error)
-      return null
-    }
-  }
-
-  /**
-   * Get historical market data
-   */
-  private async getHistoricalMarketData(symbol: string, start: Date, end: Date): Promise<any[]> {
-    try {
-      const data = await sql`
-        SELECT * FROM market_data
-        WHERE trading_pair_id IN (
-          SELECT id FROM trading_pairs WHERE symbol = ${symbol}
-        )
-        AND timestamp BETWEEN ${start.toISOString()} AND ${end.toISOString()}
-        ORDER BY timestamp ASC
-      `
-      return data
-    } catch (error) {
-      console.error(`[v0] Failed to get historical market data for ${symbol}:`, error)
-      return []
-    }
-  }
-
-  /**
-   * Get indication settings
-   */
-  private async getIndicationSettings(): Promise<any> {
-    try {
-      const settings = await sql`
-        SELECT key, value FROM system_settings
-        WHERE category = 'indication'
-      `
-
-      return {
-        minProfitFactor: Number.parseFloat(
-          settings.find((s: any) => s.key === "indicationMinProfitFactor")?.value || "0.7",
-        ),
-        rangeMin: Number.parseInt(settings.find((s: any) => s.key === "indicationRangeMin")?.value || "3"),
-        rangeMax: Number.parseInt(settings.find((s: any) => s.key === "indicationRangeMax")?.value || "30"),
-      }
-    } catch (error) {
-      console.error("[v0] Failed to get indication settings:", error)
-      return { minProfitFactor: 0.7, rangeMin: 3, rangeMax: 30 }
     }
   }
 
@@ -329,12 +189,20 @@ export class IndicationProcessor {
       return cached.data
     }
 
-    const data = await this.getLatestMarketData(symbol)
-    if (data) {
-      this.marketDataCache.set(symbol, { data, timestamp: now })
+    try {
+      await initRedis()
+      const data = await getMarketData(symbol, 1)
+      const latest = data[0]
+      
+      if (latest) {
+        this.marketDataCache.set(symbol, { data: latest, timestamp: now })
+        return latest
+      }
+      return null
+    } catch (error) {
+      console.error(`[v0] Failed to get market data for ${symbol}:`, error)
+      return null
     }
-
-    return data
   }
 
   private async getIndicationSettingsCached(): Promise<any> {
@@ -344,9 +212,24 @@ export class IndicationProcessor {
       return this.settingsCache.data
     }
 
-    const settings = await this.getIndicationSettings()
-    this.settingsCache = { data: settings, timestamp: now }
+    try {
+      const { getSettings } = await import("@/lib/redis-db")
+      const settings = await getSettings("all_settings") || {}
 
-    return settings
+      const indicationSettings = {
+        minProfitFactor: settings.minProfitFactor || 1.2,
+        minConfidence: settings.minConfidence || 0.6,
+        timeframes: settings.timeframes || ["1h", "4h", "1d"],
+      }
+
+      this.settingsCache = { data: indicationSettings, timestamp: now }
+      return indicationSettings
+    } catch {
+      return {
+        minProfitFactor: 1.2,
+        minConfidence: 0.6,
+        timeframes: ["1h", "4h", "1d"],
+      }
+    }
   }
 }
