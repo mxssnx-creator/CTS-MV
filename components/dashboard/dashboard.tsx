@@ -1,35 +1,197 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { useAuth } from "@/lib/auth-context"
+import { SystemOverview } from "./system-overview"
+import { GlobalTradeEngineControls } from "./global-trade-engine-controls"
+import { ConnectionCard } from "./connection-card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Plus, RefreshCw } from "lucide-react"
+import { toast } from "@/lib/simple-toast"
+import type { ExchangeConnection } from "@/lib/types"
 
 export function Dashboard() {
   const { user } = useAuth()
+  const [connections, setConnections] = useState<ExchangeConnection[]>([])
+  const [loading, setLoading] = useState(true)
+  const [stats, setStats] = useState({
+    activeConnections: 0,
+    totalPositions: 0,
+    dailyPnL: 0,
+    totalBalance: 0,
+    indicationsActive: 0,
+    strategiesActive: 0,
+    systemLoad: 45,
+    databaseSize: 128,
+  })
+
+  useEffect(() => {
+    loadConnections()
+    loadStats()
+    
+    const interval = setInterval(() => {
+      loadStats()
+    }, 5000)
+    
+    return () => clearInterval(interval)
+  }, [])
+
+  const loadConnections = async () => {
+    try {
+      const response = await fetch("/api/settings/connections")
+      if (response.ok) {
+        const data = await response.json()
+        setConnections(data.connections || [])
+      }
+    } catch (error) {
+      console.error("[v0] Failed to load connections:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const loadStats = async () => {
+    try {
+      const response = await fetch("/api/monitoring/stats")
+      if (response.ok) {
+        const data = await response.json()
+        setStats({
+          activeConnections: data.activeConnections || 0,
+          totalPositions: data.totalPositions || 0,
+          dailyPnL: data.dailyPnL || 0,
+          totalBalance: data.totalBalance || 0,
+          indicationsActive: data.indicationsActive || 0,
+          strategiesActive: data.strategiesActive || 0,
+          systemLoad: data.systemLoad || 45,
+          databaseSize: data.databaseSize || 128,
+        })
+      }
+    } catch (error) {
+      console.error("[v0] Failed to load stats:", error)
+    }
+  }
+
+  const handleToggleEnable = async (id: string, enabled: boolean) => {
+    try {
+      const response = await fetch(`/api/settings/connections/${id}/toggle`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      })
+
+      if (response.ok) {
+        toast.success(`Connection ${enabled ? "enabled" : "disabled"}`)
+        await loadConnections()
+      } else {
+        toast.error("Failed to toggle connection")
+      }
+    } catch (error) {
+      console.error("[v0] Failed to toggle connection:", error)
+      toast.error("Failed to toggle connection")
+    }
+  }
+
+  const handleToggleLiveTrade = async (id: string, enabled: boolean) => {
+    try {
+      const response = await fetch(`/api/settings/connections/${id}/live-trade`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      })
+
+      if (response.ok) {
+        toast.success(`Live trading ${enabled ? "enabled" : "disabled"}`)
+        await loadConnections()
+      } else {
+        toast.error("Failed to toggle live trading")
+      }
+    } catch (error) {
+      console.error("[v0] Failed to toggle live trading:", error)
+      toast.error("Failed to toggle live trading")
+    }
+  }
+
+  const handleDeleteConnection = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this connection?")) return
+
+    try {
+      const response = await fetch(`/api/settings/connections/${id}`, {
+        method: "DELETE",
+      })
+
+      if (response.ok) {
+        toast.success("Connection deleted")
+        await loadConnections()
+      } else {
+        toast.error("Failed to delete connection")
+      }
+    } catch (error) {
+      console.error("[v0] Failed to delete connection:", error)
+      toast.error("Failed to delete connection")
+    }
+  }
 
   return (
     <div className="flex-1 space-y-6 p-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">CTS v3.2 Dashboard</h1>
           <p className="text-muted-foreground">Welcome back, {user?.username || "Administrator"}</p>
         </div>
+        <Button onClick={loadConnections} size="sm" variant="outline">
+          <RefreshCw className="h-4 w-4 mr-2" />
+          Refresh
+        </Button>
       </div>
 
-      <div className="grid grid-cols-1 gap-4">
-        <div className="p-4 border rounded-lg bg-card">
-          <h2 className="text-lg font-semibold">System Status</h2>
-          <p className="text-sm text-muted-foreground mt-2">All systems operational</p>
+      {/* System Overview & Trade Engine Controls */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2">
+          <SystemOverview stats={stats} />
         </div>
-        
-        <div className="p-4 border rounded-lg bg-card">
-          <h2 className="text-lg font-semibold">Redis Migrations</h2>
-          <p className="text-sm text-muted-foreground mt-2">Schema v10 initialized</p>
-        </div>
-
-        <div className="p-4 border rounded-lg bg-card">
-          <h2 className="text-lg font-semibold">User</h2>
-          <p className="text-sm text-muted-foreground mt-2">Logged in as: {user?.username}</p>
+        <div>
+          <GlobalTradeEngineControls />
         </div>
       </div>
+
+      {/* Exchange Connections */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Exchange Connections</CardTitle>
+          <Button size="sm">
+            <Plus className="h-4 w-4 mr-2" />
+            Add Connection
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <p className="text-center text-muted-foreground py-8">Loading connections...</p>
+          ) : connections.length === 0 ? (
+            <p className="text-center text-muted-foreground py-8">No connections configured</p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {connections.map((connection) => (
+                <ConnectionCard
+                  key={connection.id}
+                  connection={connection}
+                  onToggleEnable={handleToggleEnable}
+                  onToggleLiveTrade={handleToggleLiveTrade}
+                  onDelete={handleDeleteConnection}
+                  status={
+                    !connection.is_enabled
+                      ? "disabled"
+                      : connection.is_live_trade
+                        ? "connected"
+                        : "connecting"
+                  }
+                />
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }
