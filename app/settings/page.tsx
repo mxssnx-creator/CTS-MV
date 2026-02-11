@@ -1926,24 +1926,10 @@ export default function SettingsPage() {
     <AuthGuard>
       <div className="flex flex-col h-screen">
         <PageHeader title="Settings" description="Configure system parameters and trading strategies">
-          <div className="flex gap-2">
-            <Button onClick={exportSettings} disabled={exporting} variant="outline" size="sm">
-              <Download className="h-4 w-4 mr-2" />
-              Export
-            </Button>
-            <Button onClick={importSettings} disabled={importing} variant="outline" size="sm">
-              <Upload className="h-4 w-4 mr-2" />
-              Import
-            </Button>
-            <Button onClick={handleRunMigrations} disabled={migrating} variant="outline" size="sm">
-              <RefreshCw className={`h-4 w-4 mr-2 ${migrating ? 'animate-spin' : ''}`} />
-              {migrating ? "Running..." : "Migrate"}
-            </Button>
-            <Button onClick={saveAllSettings} disabled={saving} size="sm">
-              <Save className="h-4 w-4 mr-2" />
-              {reorganizing ? "Reorganizing..." : saving ? "Saving..." : "Save Changes"}
-            </Button>
-          </div>
+          <Button onClick={saveAllSettings} disabled={saving} size="sm">
+            <Save className="h-4 w-4 mr-2" />
+            {reorganizing ? "Reorganizing..." : saving ? "Saving..." : "Save Changes"}
+          </Button>
         </PageHeader>
         <div className="flex-1 overflow-auto p-6">
           <div className="max-w-7xl mx-auto space-y-6">
