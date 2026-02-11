@@ -1819,7 +1819,6 @@ export default function SettingsPage() {
             database_type: dbData.database_type || "sqlite",
             database_url: dbData.database_url || "",
           }))
-          setOriginalDatabaseType(dbData.database_type || "sqlite")
         }
 
         loadConnections() // Load connections on initial mount as well
