@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth-context"
 import { SystemOverview } from "./system-overview"
 import { GlobalTradeEngineControls } from "./global-trade-engine-controls"
 import { ConnectionCard } from "./connection-card"
+import { AddConnectionDialog } from "@/components/settings/add-connection-dialog"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Plus, RefreshCw } from "lucide-react"
@@ -15,6 +16,7 @@ export function Dashboard() {
   const { user } = useAuth()
   const [connections, setConnections] = useState<ExchangeConnection[]>([])
   const [loading, setLoading] = useState(true)
+  const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [stats, setStats] = useState({
     activeConnections: 0,
     totalPositions: 0,
@@ -188,7 +190,7 @@ export function Dashboard() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Exchange Connections</CardTitle>
-          <Button size="sm">
+          <Button size="sm" onClick={() => setAddDialogOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />
             Add Connection
           </Button>
@@ -220,6 +222,15 @@ export function Dashboard() {
           )}
         </CardContent>
       </Card>
+
+      <AddConnectionDialog
+        open={addDialogOpen}
+        onOpenChange={setAddDialogOpen}
+        onSuccess={() => {
+          loadConnections()
+          setAddDialogOpen(false)
+        }}
+      />
     </div>
   )
 }
