@@ -96,6 +96,24 @@ const menuItems = [
   },
 ]
 
+// Testing menu items
+const testingItems: Array<{
+  title: string
+  href: string
+  icon: React.ComponentType<{ className?: string }>
+}> = [
+  {
+    title: "Connection",
+    href: "/testing/connection",
+    icon: FlaskConical,
+  },
+  {
+    title: "Engine",
+    href: "/testing/engine",
+    icon: Activity,
+  },
+]
+
 // Adding Additional menu items section for new features
 const additionalItems: Array<{
   title: string
@@ -164,26 +182,47 @@ export function AppSidebar() {
 
         {/* Adding Additional section for new features */}
         {additionalItems.length > 0 && (
-          <SidebarGroup>
-            <SidebarGroupLabel className="text-xs">Additional</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {additionalItems.map((item) => {
-                  const isActive = pathname === item.href
-                  return (
-                    <SidebarMenuItem key={item.href}>
-                      <SidebarMenuButton asChild isActive={isActive} tooltip={item.title} className="h-9">
-                        <Link href={item.href} className="flex items-center gap-2">
-                          <item.icon className="h-4 w-4" />
-                          <span className="text-sm">{item.title}</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  )
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
+        <SidebarGroup>
+          <SidebarGroupLabel className="text-xs">Testing</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {testingItems.map((item) => {
+                const isActive = pathname === item.href
+                return (
+                  <SidebarMenuItem key={item.href}>
+                    <SidebarMenuButton asChild isActive={isActive}>
+                      <Link href={item.href}>
+                        <item.icon className="w-4 h-4" />
+                        <span className="text-sm">{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel className="text-xs">Additional</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {additionalItems.map((item) => {
+                const isActive = pathname === item.href
+                return (
+                  <SidebarMenuItem key={item.href}>
+                    <SidebarMenuButton asChild isActive={isActive}>
+                      <Link href={item.href}>
+                        <item.icon className="w-4 h-4" />
+                        <span className="text-sm">{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
         )}
       </SidebarContent>
       <SidebarFooter className="border-t border-sidebar-border p-1.5 space-y-2">
