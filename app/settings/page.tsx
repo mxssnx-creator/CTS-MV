@@ -1586,13 +1586,16 @@ export default function SettingsPage() {
   useEffect(() => {
     async function loadSettingsAndDB() {
       try {
+        console.log("[v0] Loading settings from API...")
         // Fetch settings
         const settingsResponse = await fetch("/api/settings")
         if (settingsResponse.ok) {
           const data = await settingsResponse.json()
           if (!data.settings) {
             console.error("[v0] No settings found in response")
+            toast.error("Failed to load settings")
           } else {
+            console.log("[v0] Settings loaded:", Object.keys(data.settings).length, "keys")
             setSettings((prevSettings: Settings) => {
               const updatedSettings = { ...prevSettings, ...data.settings }
               // Ensure arrays are not overwritten if empty in the loaded data
