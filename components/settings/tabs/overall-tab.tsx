@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import ExchangeConnectionManager from "@/components/settings/exchange-connection-manager"
 import InstallManager from "@/components/settings/install-manager"
-import { X, Plus } from "lucide-react"
+import { X, Plus, Download, Upload, RefreshCw } from "lucide-react"
 import type { ExchangeConnection } from "@/lib/types"
 import { LogsViewer } from "@/components/settings/logs-viewer"
 import { Badge } from "@/components/ui/badge"
@@ -34,6 +34,10 @@ interface OverallTabProps {
   databaseType: "sqlite" | "postgresql" | "remote"
   setDatabaseType: (value: "sqlite" | "postgresql" | "remote") => void
   databaseChanged: boolean
+  exportSettings: () => void
+  importSettings: () => void
+  exporting: boolean
+  importing: boolean
 }
 
 export function OverallTab({
@@ -51,6 +55,10 @@ export function OverallTab({
   databaseType,
   setDatabaseType,
   databaseChanged,
+  exportSettings,
+  importSettings,
+  exporting,
+  importing,
 }: OverallTabProps) {
   const [overallSubTab, setOverallSubTab] = useState("main")
 
@@ -587,11 +595,78 @@ export function OverallTab({
           <StatisticsOverview settings={settings} />
         </TabsContent>
 
-        <TabsContent value="install" className="space-y-4">
+        <TabsContent value="install" className="space-y-6 mt-6">
           <InstallManager />
+          
+          <Card>
+            <CardHeader>
+              <CardTitle>Database Migrations</CardTitle>
+              <CardDescription>Run Redis migrations to update schema</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Button 
+                onClick={async () => {
+                  try {
+                    const { toast } = await import("sonner")
+                    toast.info("Running migrations...")
+                    const response = await fetch("/api/install/database/migrate", { method: "POST" })
+                    const data = await response.json()
+                    if (response.ok) {
+                      toast.success("Migrations completed successfully")
+                    } else {
+                      toast.error(data.error || "Migration failed")
+                    }
+                  } catch (error) {
+                    const { toast } = await import("sonner")
+                    toast.error("Failed to run migrations")
+                  }
+                }} 
+                variant="default"
+                className="w-full"
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Run Migrations
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Runs all pending Redis migrations to ensure your database schema is up to date.
+              </p>
+            </CardContent>
+          </Card>
         </TabsContent>
 
-        <TabsContent value="backup" className="space-y-4">
+        <TabsContent value="backup" className="space-y-6 mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Backup & Restore</CardTitle>
+              <CardDescription>Export or import your complete system configuration</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex gap-4">
+                <Button 
+                  onClick={exportSettings} 
+                  variant="outline" 
+                  className="flex-1"
+                  disabled={exporting}
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  {exporting ? "Exporting..." : "Export Settings"}
+                </Button>
+                <Button 
+                  onClick={importSettings} 
+                  variant="outline" 
+                  className="flex-1"
+                  disabled={importing}
+                >
+                  <Upload className="mr-2 h-4 w-4" />
+                  {importing ? "Importing..." : "Import Settings"}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Exports include all settings, connections, and configurations. Import will overwrite current settings.
+              </p>
+            </CardContent>
+          </Card>
+          
           <LogsViewer />
         </TabsContent>
       </Tabs>
