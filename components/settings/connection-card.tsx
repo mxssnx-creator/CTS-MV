@@ -55,6 +55,20 @@ export function ConnectionCard({
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [showTestLogInstant, setShowTestLogInstant] = useState(false)
   const [testLogs, setTestLogs] = useState<string[]>([])
+  const [workingStatus, setWorkingStatus] = useState<"idle" | "testing" | "success" | "error">("idle")
+  const [savingSettings, setSavingSettings] = useState(false)
+  const [editFormData, setEditFormData] = useState({
+    api_key: connection.api_key,
+    api_secret: connection.api_secret,
+    name: connection.name,
+    api_type: connection.api_type,
+    connection_method: connection.connection_method,
+    connection_library: connection.connection_library,
+    margin_type: connection.margin_type,
+    position_mode: connection.position_mode,
+    is_testnet: connection.is_testnet,
+    api_passphrase: connection.api_passphrase || "",
+  })
 
   const handleTestConnection = async () => {
     setTestingConnection(true)
