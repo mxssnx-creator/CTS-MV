@@ -1,92 +1,113 @@
-import fs from "fs"
-import path from "path"
+/**
+ * File-based settings storage - Edge Runtime compatible
+ * Uses in-memory cache with lazy file I/O only in Node.js runtime
+ */
 
-const DATA_DIR =
-  process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME
-    ? path.join("/tmp", "cts-data")
-    : path.join(process.cwd(), "data")
+let settingsCache: Record<string, any> | null = null
 
-const SETTINGS_FILE = path.join(DATA_DIR, "settings.json")
-
-function ensureDataDir() {
-  try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true })
-      console.log("[v0] Created settings directory:", DATA_DIR)
-    }
-  } catch (error) {
-    console.error("[v0] Error creating settings directory:", error)
-  }
-}
-
-export function loadSettings(): Record<string, any> {
-  try {
-    ensureDataDir()
-    
-    if (!fs.existsSync(SETTINGS_FILE)) {
-      console.log("[v0] No settings file found, returning defaults")
-      return getDefaultSettings()
-    }
-
-    const data = fs.readFileSync(SETTINGS_FILE, "utf-8")
-    const settings = JSON.parse(data)
-    console.log("[v0] Loaded settings from file:", Object.keys(settings).length, "keys")
-    
-    // Merge with defaults to ensure all required keys exist
-    return { ...getDefaultSettings(), ...settings }
-  } catch (error) {
-    console.error("[v0] Error loading settings:", error)
-    return getDefaultSettings()
-  }
-}
-
-export function saveSettings(settings: Record<string, any>): void {
-  try {
-    ensureDataDir()
-    
-    const data = JSON.stringify(settings, null, 2)
-    fs.writeFileSync(SETTINGS_FILE, data, "utf-8")
-    console.log("[v0] Saved settings to file:", Object.keys(settings).length, "keys")
-  } catch (error) {
-    console.error("[v0] Error saving settings:", error)
-    throw error
-  }
-}
-
-export function getDefaultSettings(): Record<string, any> {
+function getDefaultSettings(): Record<string, any> {
   return {
-    // Engine intervals
     mainEngineIntervalMs: 60000,
     presetEngineIntervalMs: 120000,
     strategyUpdateIntervalMs: 10000,
     realtimeIntervalMs: 3000,
-    
-    // Engine toggles
     mainEngineEnabled: true,
     presetEngineEnabled: true,
-    
-    // Connection settings
     minimum_connect_interval: 200,
-    
-    // UI settings
     theme: "dark",
     language: "en",
     notifications_enabled: true,
-    
-    // Trading defaults
     default_leverage: 10,
     default_volume: 100,
     max_open_positions: 10,
-    
-    // Risk management
     max_drawdown_percent: 20,
     daily_loss_limit: 1000,
-    
-    // Symbols
     main_symbols: ["BTCUSDT", "ETHUSDT", "BNBUSDT"],
     forced_symbols: [],
-    
-    // Database
     database_type: "redis",
   }
 }
+
+function isNodeRuntime(): boolean {
+  return typeof process !== "undefined" && typeof process.cwd === "function" && typeof require !== "undefined"
+}
+
+async function getFilePaths() {
+  const path = await import("path")
+  const dataDir =
+    process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME
+      ? path.join("/tmp", "cts-data")
+      : path.join(process.cwd(), "data")
+  return { dataDir, settingsFile: path.join(dataDir, "settings.json") }
+}
+
+async function readFromDisk(): Promise<Record<string, any> | null> {
+  try {
+    const fs = await import("fs")
+    const { dataDir, settingsFile } = await getFilePaths()
+
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true })
+    }
+
+    if (!fs.existsSync(settingsFile)) {
+      return null
+    }
+
+    const data = fs.readFileSync(settingsFile, "utf-8")
+    return JSON.parse(data)
+  } catch {
+    return null
+  }
+}
+
+async function writeToDisk(settings: Record<string, any>): Promise<void> {
+  try {
+    const fs = await import("fs")
+    const { dataDir, settingsFile } = await getFilePaths()
+
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true })
+    }
+
+    fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2), "utf-8")
+  } catch (error) {
+    console.warn("[v0] Could not write settings to disk:", error)
+  }
+}
+
+export function loadSettings(): Record<string, any> {
+  if (settingsCache) {
+    return { ...getDefaultSettings(), ...settingsCache }
+  }
+  return getDefaultSettings()
+}
+
+export async function loadSettingsAsync(): Promise<Record<string, any>> {
+  if (settingsCache) {
+    return { ...getDefaultSettings(), ...settingsCache }
+  }
+
+  try {
+    const diskSettings = await readFromDisk()
+    if (diskSettings) {
+      settingsCache = diskSettings
+      return { ...getDefaultSettings(), ...diskSettings }
+    }
+  } catch {
+    // Ignore - Edge runtime or other non-Node environment
+  }
+
+  return getDefaultSettings()
+}
+
+export function saveSettings(settings: Record<string, any>): void {
+  settingsCache = { ...settings }
+
+  // Fire-and-forget disk write
+  writeToDisk(settings).catch(() => {
+    // Ignore disk write errors
+  })
+}
+
+export { getDefaultSettings }

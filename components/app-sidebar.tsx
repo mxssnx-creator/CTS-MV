@@ -223,7 +223,6 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-        )}
       </SidebarContent>
       <SidebarFooter className="border-t border-sidebar-border p-1.5 space-y-2">
         {user && (

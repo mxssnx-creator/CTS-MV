@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { loadSettings, saveSettings as saveSettingsToFile } from "@/lib/settings-storage"
+import { loadSettingsAsync, saveSettings as saveSettingsToFile } from "@/lib/settings-storage"
 import { SystemLogger } from "@/lib/system-logger"
 
 export const runtime = "nodejs"
@@ -9,7 +9,7 @@ export async function GET() {
     console.log("[v0] GET /api/settings - Loading settings from file...")
     await SystemLogger.logAPI("Loading system settings from file", "info", "GET /api/settings")
 
-    const settings = loadSettings()
+    const settings = await loadSettingsAsync()
     
     console.log("[v0] Settings loaded successfully from file:", Object.keys(settings).length, "keys")
     return NextResponse.json({ settings })

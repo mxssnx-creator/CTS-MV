@@ -6,7 +6,7 @@
 import { initRedis, createConnection, getAllConnections, saveMarketData } from "@/lib/redis-db"
 import { runMigrations } from "@/lib/redis-migrations"
 import { getPredefinedAsExchangeConnections } from "@/lib/connection-predefinitions"
-import { loadSettings, saveSettings as saveSettingsToFile, getDefaultSettings } from "@/lib/settings-storage"
+import { loadSettingsAsync, saveSettings as saveSettingsToFile, getDefaultSettings } from "@/lib/settings-storage"
 
 async function seedMarketData() {
   console.log("[v0] [Seed] Starting market data seeding...")
@@ -95,17 +95,16 @@ async function seedPredefinedConnections() {
 }
 
 async function initializeDefaultSettings() {
-  console.log("[v0] [Seed] Initializing default settings file...")
+  console.log("[v0] [Seed] Initializing default settings...")
   try {
-    const existing = loadSettings()
+    const existing = await loadSettingsAsync()
     
-    // Always ensure file exists with at least defaults
-    if (!existing || Object.keys(existing).length === 0) {
+    if (!existing || Object.keys(existing).length <= Object.keys(getDefaultSettings()).length) {
       const defaults = getDefaultSettings()
       saveSettingsToFile(defaults)
-      console.log("[v0] [Seed] ✓ Default settings initialized in file")
+      console.log("[v0] [Seed] Default settings initialized")
     } else {
-      console.log("[v0] [Seed] ✓ Settings file exists:", Object.keys(existing).length, "keys")
+      console.log("[v0] [Seed] Settings already exist:", Object.keys(existing).length, "keys")
     }
   } catch (error) {
     console.warn("[v0] [Seed] Failed to initialize default settings:", error)
