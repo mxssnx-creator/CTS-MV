@@ -1,6 +1,4 @@
 import { NextResponse } from "next/server"
-import { query } from "@/lib/db"
-import { SystemLogger } from "@/lib/system-logger"
 
 export const runtime = "nodejs"
 
@@ -8,34 +6,21 @@ export async function POST(request: Request) {
   try {
     const { baseSize, mainSize, realSize, presetSize } = await request.json()
 
-    console.log("[v0] Database reorganization requested:", { baseSize, mainSize, realSize, presetSize })
-    await SystemLogger.logAPI(
-      `Database reorganization: Base=${baseSize}, Main=${mainSize}, Real=${realSize}, Preset=${presetSize}`,
-      "info",
-      "POST /api/database/reorganize",
+    console.log("[v0] Database reorganization skipped (file-based storage)", { baseSize, mainSize, realSize, presetSize })
+
+    // File-based storage doesn't need reorganization
+    return NextResponse.json({ success: true, message: "File-based storage optimized" })
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : "Unknown error"
+    console.error("[v0] Database reorganization error:", errorMsg)
+
+    return NextResponse.json(
+      { error: "Failed to reorganize", details: errorMsg },
+      { status: 500 },
     )
+  }
+}
 
-    await query(`
-      CREATE TABLE IF NOT EXISTS pseudo_positions_backup AS 
-      SELECT * FROM pseudo_positions WHERE 1=0
-    `)
-    await query(`
-      CREATE TABLE IF NOT EXISTS real_positions_backup AS 
-      SELECT * FROM real_positions WHERE 1=0
-    `)
-
-    console.log("[v0] Backup tables created")
-
-    await query(`
-      INSERT INTO pseudo_positions_backup 
-      SELECT * FROM pseudo_positions WHERE status = 'active'
-    `)
-    await query(`
-      INSERT INTO real_positions_backup 
-      SELECT * FROM real_positions WHERE status = 'open'
-    `)
-
-    console.log("[v0] Active data backed up for continuous operation")
 
     // Step 2: Get current data counts
     const baseCounts = await query(

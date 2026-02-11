@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server"
 import { getTradeEngine } from "@/lib/trade-engine"
-import { SystemLogger } from "@/lib/system-logger"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -19,7 +18,7 @@ export async function POST() {
     }
 
     await coordinator.pause()
-    await SystemLogger.logTradeEngine("Global Trade Engine Coordinator paused via API", "info")
+    console.log("[v0] Global Trade Engine Coordinator paused via API")
 
     return NextResponse.json({
       success: true,
@@ -27,7 +26,7 @@ export async function POST() {
     })
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error"
-    await SystemLogger.logError(error, "trade-engine", "Pause API")
+    console.error("[v0] Pause API error:", errorMessage)
 
     return NextResponse.json({ success: false, error: errorMessage }, { status: 500 })
   }

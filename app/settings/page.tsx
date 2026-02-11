@@ -1292,11 +1292,11 @@ export default function SettingsPage() {
       }
 
       if (!settingsResponse.ok) {
-        const errorMsg = settingsData?.error || settingsData?.message || "Failed to save settings to database"
+        const errorMsg = settingsData?.error || settingsData?.message || "Failed to save settings to file"
         throw new Error(errorMsg)
       }
       
-      console.log("[v0] Settings saved to database successfully")
+      console.log("[v0] Settings saved to file successfully")
 
       toast.success("Settings saved!", {
         description: "All changes have been applied successfully.",
