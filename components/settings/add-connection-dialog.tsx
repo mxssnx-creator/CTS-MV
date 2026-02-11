@@ -213,7 +213,16 @@ export function AddConnectionDialog({ open, onOpenChange, onConnectionAdded }: A
       })
 
       if (!response.ok) {
-        throw new Error(`API error: ${response.status} ${response.statusText}`)
+        // Try to get error details from response
+        let errorMsg = `API error: ${response.status} ${response.statusText}`
+        try {
+          const errorData = await response.json()
+          errorMsg = errorData.error || errorData.message || errorMsg
+          console.error("[v0] [Test Connection] Server error:", errorData)
+        } catch (e) {
+          console.error("[v0] [Test Connection] HTTP error:", response.status)
+        }
+        throw new Error(errorMsg)
       }
 
       let data
@@ -222,6 +231,21 @@ export function AddConnectionDialog({ open, onOpenChange, onConnectionAdded }: A
       } catch (parseError) {
         console.error("[v0] JSON parse error:", parseError)
         throw new Error("Invalid response format from server")
+      }
+      
+      // Check for errors in response data
+      if (data.error) {
+        const errorMsg = data.error
+        setTestLog(data.log || [`Error: ${errorMsg}`])
+        toast.error(errorMsg)
+        return
+      }
+      
+      if (!data.success) {
+        const errorMsg = data.error || "Connection test failed"
+        setTestLog(data.log || [`Error: ${errorMsg}`])
+        toast.error(errorMsg)
+        return
       }
       
       // Extract and format log

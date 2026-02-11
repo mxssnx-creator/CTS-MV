@@ -3,13 +3,23 @@ import { createExchangeConnector } from "@/lib/exchange-connectors"
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
+    let body
+    try {
+      body = await request.json()
+    } catch (parseError) {
+      console.error("[v0] [Test Connection] Failed to parse request body:", parseError)
+      return NextResponse.json(
+        { success: false, log: ["Error: Invalid request body - expected JSON"], error: "Invalid request format" },
+        { status: 200 }
+      )
+    }
+
     const { exchange, api_key, api_secret, api_passphrase, is_testnet, connection_method, connection_library, api_type } = body
 
     if (!exchange || !api_key || !api_secret) {
       return NextResponse.json(
-        { success: false, log: ["Error: API Key and Secret are required"] },
-        { status: 400 }
+        { success: false, log: ["Error: API Key and Secret are required"], error: "Missing required fields" },
+        { status: 200 }
       )
     }
 
@@ -58,7 +68,7 @@ export async function POST(request: NextRequest) {
             log: testLog,
             error: result.error || "Connection test failed"
           }, 
-          { status: 400 }
+          { status: 200 }
         )
       }
     } catch (error) {
@@ -71,18 +81,19 @@ export async function POST(request: NextRequest) {
           log: testLog,
           error: errorMsg
         }, 
-        { status: 500 }
+        { status: 200 }
       )
     }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : "Invalid request"
+    console.error("[v0] [Test Connection] Unexpected error:", errorMsg)
     return NextResponse.json(
       { 
         success: false, 
         log: [`Error: ${errorMsg}`],
         error: errorMsg
       },
-      { status: 400 }
+      { status: 200 }
     )
   }
 }
