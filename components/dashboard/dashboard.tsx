@@ -47,6 +47,21 @@ export function Dashboard() {
   }, [exchangeConnectionsActive, selectedExchange])
 
   useEffect(() => {
+    // Initialize trade engine on dashboard load
+    const initializeEngine = async () => {
+      try {
+        const response = await fetch("/api/init")
+        if (response.ok) {
+          console.log("[v0] [Dashboard] Trade engine initialized")
+        } else {
+          console.warn("[v0] [Dashboard] Trade engine initialization returned non-OK status")
+        }
+      } catch (error) {
+        console.error("[v0] [Dashboard] Failed to initialize trade engine:", error)
+      }
+    }
+    
+    initializeEngine()
     loadStats()
     
     const interval = setInterval(() => {

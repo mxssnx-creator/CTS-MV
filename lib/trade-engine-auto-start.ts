@@ -6,7 +6,6 @@
 import { getGlobalTradeEngineCoordinator } from "./trade-engine"
 import { getAllConnections } from "./redis-db"
 import { loadSettingsAsync } from "./settings-storage"
-import { SystemLogger } from "./system-logger"
 
 let autoStartInitialized = false
 let autoStartTimer: NodeJS.Timeout | null = null
@@ -70,14 +69,9 @@ export async function initializeTradeEngineAutoStart(): Promise<void> {
           realtimeInterval,
         })
         successCount++
-
-        await SystemLogger.logTradeEngine(
-          `Auto-started engine for ${connection.name}`,
-          "info",
-          { connectionId: connection.id }
-        )
+        console.log(`[v0] [Auto-Start] Successfully started engine for ${connection.name}`)
       } catch (error) {
-        await SystemLogger.logError(error, "trade-engine", `Failed to start ${connection.name}`)
+        console.error(`[v0] [Auto-Start] Failed to start ${connection.name}:`, error)
       }
     }
 
@@ -86,7 +80,6 @@ export async function initializeTradeEngineAutoStart(): Promise<void> {
     startConnectionMonitoring()
   } catch (error) {
     console.error("[v0] Auto-start initialization failed:", error)
-    await SystemLogger.logError(error, "trade-engine", "Auto-start failed")
     autoStartInitialized = true
   }
 }
