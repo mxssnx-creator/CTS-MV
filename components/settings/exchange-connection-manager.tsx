@@ -645,7 +645,24 @@ export default function ExchangeConnectionManager() {
             <span className="ml-2">Loading connections...</span>
           </CardContent>
         </Card>
-        <AddConnectionDialog open={showAddDialog} onOpenChange={setShowAddDialog} onConnectionAdded={loadConnections} />
+        <AddConnectionDialog 
+          open={showAddDialog} 
+          onOpenChange={setShowAddDialog} 
+          onConnectionAdded={async (connectionId) => {
+            console.log("[v0] Connection added:", connectionId)
+            if (connectionId) {
+              setRecentlyInsertedBase((prev) => new Set(prev).add(connectionId))
+              setTimeout(() => {
+                setRecentlyInsertedBase((prev) => {
+                  const next = new Set(prev)
+                  next.delete(connectionId)
+                  return next
+                })
+              }, 10000)
+            }
+            await loadConnections()
+          }} 
+        />
       </div>
     )
   }
@@ -668,7 +685,24 @@ export default function ExchangeConnectionManager() {
             </Button>
           </CardContent>
         </Card>
-        <AddConnectionDialog open={showAddDialog} onOpenChange={setShowAddDialog} onConnectionAdded={loadConnections} />
+        <AddConnectionDialog 
+          open={showAddDialog} 
+          onOpenChange={setShowAddDialog} 
+          onConnectionAdded={async (connectionId) => {
+            console.log("[v0] Connection added:", connectionId)
+            if (connectionId) {
+              setRecentlyInsertedBase((prev) => new Set(prev).add(connectionId))
+              setTimeout(() => {
+                setRecentlyInsertedBase((prev) => {
+                  const next = new Set(prev)
+                  next.delete(connectionId)
+                  return next
+                })
+              }, 10000)
+            }
+            await loadConnections()
+          }} 
+        />
       </div>
     )
   }
