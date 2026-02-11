@@ -17,7 +17,7 @@ export function GlobalExchangeSelector() {
     return (
       <div className="flex items-center gap-2">
         <Badge variant="outline" className="text-xs">
-          No Active Exchanges
+          No Exchanges
         </Badge>
       </div>
     )
@@ -45,9 +45,6 @@ export function GlobalExchangeSelector() {
           ))}
         </SelectContent>
       </Select>
-      <Badge variant="secondary" className="text-xs">
-        {activeConnections.length} Active
-      </Badge>
     </div>
   )
 }

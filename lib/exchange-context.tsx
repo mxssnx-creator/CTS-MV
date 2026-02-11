@@ -17,15 +17,16 @@ export function ExchangeProvider({ children }: { children: ReactNode }) {
 
   const loadActiveConnections = async () => {
     try {
-      console.log("[v0] [Exchange Context] Loading active connections...")
-      const response = await fetch("/api/settings/connections?enabled=true&active=true")
+      console.log("[v0] [Exchange Context] Loading all connections for exchange selector...")
+      // Load ALL connections, not just enabled/active ones
+      const response = await fetch("/api/settings/connections")
       if (response.ok) {
         const data = await response.json()
         const connections = data.connections || []
         setActiveConnections(connections)
-        console.log("[v0] [Exchange Context] Loaded", connections.length, "active connections")
+        console.log("[v0] [Exchange Context] Loaded", connections.length, "connections")
         
-        // Auto-select first active connection if none selected
+        // Auto-select first connection if none selected
         if (!selectedExchange && connections.length > 0) {
           setSelectedExchange(connections[0].exchange)
           console.log("[v0] [Exchange Context] Auto-selected:", connections[0].exchange)
