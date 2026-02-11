@@ -12,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Loader2, AlertCircle, Lock, ExternalLink, Check, Eye, EyeOff, Zap, ChevronDown } from "lucide-react"
 import { toast } from "@/lib/simple-toast"
+import { isHTMLResponse, parseHTMLResponse } from "@/lib/html-response-parser"
 import type { Connection } from "@/lib/file-storage"
 import { 
   CONNECTION_PREDEFINITIONS, 
@@ -207,10 +208,21 @@ export function AddConnectionDialog({ open, onOpenChange, onConnectionAdded, sho
       if (!response.ok) {
         // Try to get error details from response
         let errorMsg = `API error: ${response.status} ${response.statusText}`
+        const contentType = response.headers.get("content-type") || ""
+        
         try {
-          const errorData = await response.json()
-          errorMsg = errorData.error || errorData.message || errorMsg
-          console.error("[v0] [Test Connection] Server error:", errorData)
+          const responseText = await response.text()
+          
+          // Check if response is HTML (error page)
+          if (isHTMLResponse(contentType, responseText)) {
+            const parsed = parseHTMLResponse(responseText)
+            errorMsg = parsed.message || errorMsg
+          } else {
+            // Try to parse as JSON
+            const errorData = JSON.parse(responseText)
+            errorMsg = errorData.error || errorData.message || errorMsg
+          }
+          console.error("[v0] [Test Connection] Server error:", errorMsg)
         } catch (e) {
           console.error("[v0] [Test Connection] HTTP error:", response.status)
         }

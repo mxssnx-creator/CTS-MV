@@ -1282,6 +1282,8 @@ export default function SettingsPage() {
             console.error("[v0] Server returned HTML error response. Status:", settingsResponse.status)
             throw new Error(`Server Error (HTTP ${settingsResponse.status}): ${settingsResponse.statusText || "Unknown error"}. Try again in a moment.`)
           }
+          // Try to extract error message from response
+          settingsData = { error: responseText.substring(0, 200) }
         }
       } catch (parseError) {
         if (parseError instanceof Error && parseError.message.includes("Server Error")) {
