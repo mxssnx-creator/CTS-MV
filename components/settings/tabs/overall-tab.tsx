@@ -17,7 +17,7 @@ import { LogsViewer } from "@/components/settings/logs-viewer"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { StatisticsOverview } from "@/components/settings/statistics-overview"
-import { Settings } from "../types"
+import type { Settings } from "@/lib/file-storage"
 
 interface OverallTabProps {
   settings: Settings
