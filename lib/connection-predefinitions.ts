@@ -376,3 +376,38 @@ export const CONNECTION_PREDEFINITIONS: ConnectionPredefinition[] = [
 export function getPredefinedConnectionsAsStatic(): ConnectionPredefinition[] {
   return CONNECTION_PREDEFINITIONS
 }
+
+/**
+ * Convert predefined connections to ExchangeConnection format with defaults
+ */
+export function getPredefinedAsExchangeConnections(): ExchangeConnection[] {
+  // Default enabled exchanges
+  const defaultEnabled = ["bybit", "bingx", "pionex", "orangex"]
+  
+  return CONNECTION_PREDEFINITIONS.map(pred => ({
+    id: pred.id,
+    name: pred.name,
+    exchange: pred.exchange,
+    api_type: pred.apiType,
+    connection_method: pred.connectionMethod,
+    connection_library: pred.connectionLibrary,
+    api_key: pred.apiKey || "",
+    api_secret: pred.apiSecret || "",
+    margin_type: pred.marginType,
+    position_mode: pred.positionMode,
+    is_testnet: false,
+    is_enabled: defaultEnabled.includes(pred.exchange.toLowerCase()),
+    is_active: false,
+    is_predefined: true,
+    is_live_trade: false,
+    is_preset_trade: false,
+    last_test_status: null,
+    last_test_balance: null,
+    last_test_log: [],
+    api_capabilities: [],
+    rate_limits: null,
+    volume_factor: 1.0,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }))
+}

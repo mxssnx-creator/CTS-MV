@@ -5,7 +5,7 @@
 
 import { initRedis, setSettings, createConnection, getAllConnections, saveMarketData } from "@/lib/redis-db"
 import { runMigrations } from "@/lib/redis-migrations"
-import { getPredefinedConnectionsAsStatic } from "@/lib/connection-predefinitions"
+import { getPredefinedAsExchangeConnections } from "@/lib/connection-predefinitions"
 
 async function seedMarketData() {
   console.log("[v0] Seeding market data...")
@@ -66,7 +66,7 @@ async function seedMarketData() {
 async function seedPredefinedConnections() {
   console.log("[v0] Seeding predefined connections...")
   try {
-    const predefined = getPredefinedConnectionsAsStatic()
+    const predefined = getPredefinedAsExchangeConnections()
     const existing = await getAllConnections() || []
     let seededCount = 0
     
@@ -74,6 +74,7 @@ async function seedPredefinedConnections() {
       try {
         const exists = existing.some((c: any) => c.id === conn.id)
         if (!exists) {
+          console.log(`[v0] Creating connection: ${conn.name} (enabled: ${conn.is_enabled})`)
           await createConnection(conn)
           seededCount++
         }

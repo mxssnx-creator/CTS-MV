@@ -39,9 +39,10 @@ export function Dashboard() {
 
   const loadConnections = async () => {
     try {
-      const response = await fetch("/api/settings/connections")
+      const response = await fetch("/api/settings/connections?enabled=true")
       if (response.ok) {
         const data = await response.json()
+        console.log("[v0] Loaded connections:", data.connections?.length || 0)
         setConnections(data.connections || [])
       }
     } catch (error) {

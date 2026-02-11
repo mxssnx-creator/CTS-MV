@@ -67,6 +67,7 @@ export function ConnectionCard({
   const [expanded, setExpanded] = useState(false)
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<any>(null)
+  const [autoTested, setAutoTested] = useState(false)
   const [showLogs, setShowLogs] = useState(false)
   const [showInfo, setShowInfo] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
@@ -123,6 +124,18 @@ export function ConnectionCard({
   })
 
   const [logs, setLogs] = useState<Array<{ timestamp: string; level: string; message: string }>>([])
+
+  // Auto-test on mount if not tested
+  useEffect(() => {
+    if (!autoTested && !connection.last_test_status && connection.is_enabled) {
+      console.log("[v0] Auto-testing connection:", connection.name)
+      setAutoTested(true)
+      // Delay auto-test by 2 seconds to avoid overwhelming the API
+      setTimeout(() => {
+        handleTestConnection()
+      }, 2000)
+    }
+  }, [connection.id])
 
   const addLog = (level: string, message: string) => {
     const timestamp = new Date().toISOString()
@@ -661,11 +674,24 @@ export function ConnectionCard({
             >
               {testing ? "Testing..." : "Test"}
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              onClick={() => setShowLogs(true)}
+            >
+              Logs
+            </Button>
+            {connection.last_test_status && (
+              <Badge 
+                variant={connection.last_test_status === "success" ? "default" : "destructive"}
+                className="text-xs px-1.5 py-0"
+              >
+                {connection.last_test_status === "success" ? "✓ Tested" : "✗ Failed"}
+              </Badge>
+            )}
             <Badge variant="outline" className="text-xs px-1.5 py-0">
               {connection.api_type}
-            </Badge>
-            <Badge variant="outline" className="text-xs px-1.5 py-0">
-              {connection.connection_method}
             </Badge>
           </div>
         </div>
