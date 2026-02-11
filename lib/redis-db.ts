@@ -545,6 +545,58 @@ export async function isRedisConnected(): Promise<boolean> {
   }
 }
 
+// Market data functions
+export async function getMarketData(symbol: string, limit: number = 100): Promise<any[]> {
+  const client = getRedisClient()
+  try {
+    const data = await client.lRange(`market_data:${symbol}`, 0, limit - 1)
+    return (data || []).map((item: string) => {
+      try { return JSON.parse(item) } catch { return null }
+    }).filter(Boolean)
+  } catch (error) {
+    console.warn(`[v0] Failed to get market data for ${symbol}:`, error)
+    return []
+  }
+}
+
+export async function saveMarketData(symbol: string, data: any): Promise<void> {
+  const client = getRedisClient()
+  try {
+    await client.lPush(`market_data:${symbol}`, JSON.stringify({ ...data, timestamp: new Date().toISOString() }))
+    await client.lTrim(`market_data:${symbol}`, 0, 499) // Keep last 500 entries
+  } catch (error) {
+    console.warn(`[v0] Failed to save market data for ${symbol}:`, error)
+  }
+}
+
+// Indication functions
+export async function saveIndication(data: any): Promise<string> {
+  const client = getRedisClient()
+  const id = data.id || `ind_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`
+  try {
+    const indication = { ...data, id, created_at: data.calculated_at || new Date().toISOString() }
+    await client.lPush(`indications:${data.connection_id}`, JSON.stringify(indication))
+    await client.lTrim(`indications:${data.connection_id}`, 0, 999) // Keep last 1000
+    return id
+  } catch (error) {
+    console.warn(`[v0] Failed to save indication:`, error)
+    return id
+  }
+}
+
+export async function getIndications(connectionId: string, limit: number = 100): Promise<any[]> {
+  const client = getRedisClient()
+  try {
+    const data = await client.lRange(`indications:${connectionId}`, 0, limit - 1)
+    return (data || []).map((item: string) => {
+      try { return JSON.parse(item) } catch { return null }
+    }).filter(Boolean)
+  } catch (error) {
+    console.warn(`[v0] Failed to get indications:`, error)
+    return []
+  }
+}
+
 export async function getRedisStats(): Promise<any> {
   const client = getRedisClient()
 
