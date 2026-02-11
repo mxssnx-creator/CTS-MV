@@ -5,6 +5,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { 
   CheckCircle2, 
@@ -16,7 +18,7 @@ import {
   AlertCircle,
   Server,
 } from "lucide-react"
-import { toast } from "@/lib/simple-toast"
+import { toast } from "sonner"
 
 interface InstallStatus {
   isInstalled: boolean
