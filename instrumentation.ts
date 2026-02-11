@@ -1,26 +1,18 @@
 /**
  * Application instrumentation - runs on app startup
- * Initializes Redis, runs migrations, and starts trade engine
+ * Initializes Redis, runs migrations, seeds data, and starts trade engine
  */
 
 export async function register() {
   console.log("[v0] CTS v3.2 - Initializing application")
 
   try {
-    // Initialize Redis with graceful fallback to memory store
+    // Pre-startup: Run critical initialization tasks
     try {
-      const { initRedis } = await import("@/lib/redis-db")
-      await initRedis()
-    } catch (error) {
-      console.log("[v0] Database initialization: Using in-memory fallback")
-    }
-
-    // Run migrations
-    try {
-      const { runMigrations } = await import("@/lib/redis-migrations")
-      await runMigrations()
-    } catch (error) {
-      // Migrations are optional, continue regardless
+      const { runPreStartup } = await import("@/lib/pre-startup")
+      await runPreStartup()
+    } catch (preStartupError) {
+      console.warn("[v0] Pre-startup notice:", preStartupError instanceof Error ? preStartupError.message : "unknown")
     }
 
     console.log("[v0] Application ready")
