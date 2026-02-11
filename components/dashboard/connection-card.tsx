@@ -74,7 +74,6 @@ export function ConnectionCard({
   const [autoTested, setAutoTested] = useState(false)
   const [showLogs, setShowLogs] = useState(false)
   const [showInfo, setShowInfo] = useState(false)
-  const [showSettings, setShowSettings] = useState(false)
   const [showPresetConfig, setShowPresetConfig] = useState(false)
   const [showPresetDialog, setShowPresetDialog] = useState(false)
   const [showStrategyDialog, setShowStrategyDialog] = useState(false)
@@ -965,7 +964,8 @@ export function ConnectionCard({
               variant="outline"
               size="sm"
               className="h-8 w-8 p-0 bg-transparent"
-              onClick={() => setShowSettings(true)}
+              title="Edit settings in Settings > Overall > Connection"
+              disabled
             >
               <Settings className="h-3.5 w-3.5" />
             </Button>
@@ -1086,12 +1086,7 @@ export function ConnectionCard({
         )}
       </CardContent>
 
-      <ExchangeConnectionSettingsDialog
-        open={showSettings}
-        onOpenChange={setShowSettings}
-        connectionId={connection.id}
-        connectionName={connection.name}
-      />
+      {/* Settings handled in Settings > Overall > Connection tab */}
 
       <Dialog open={showPresetDialog} onOpenChange={setShowPresetDialog}>
         <DialogContent className="max-w-md">
