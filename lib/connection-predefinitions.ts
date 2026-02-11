@@ -381,8 +381,10 @@ export function getPredefinedConnectionsAsStatic(): ConnectionPredefinition[] {
  * Convert predefined connections to ExchangeConnection format with defaults
  */
 export function getPredefinedAsExchangeConnections(): ExchangeConnection[] {
-  // Default enabled exchanges
+  // Default enabled exchanges - Bybit, BingX, Pionex, OrangeX
   const defaultEnabled = ["bybit", "bingx", "pionex", "orangex"]
+  
+  console.log("[v0] Creating predefined connections with defaults:", defaultEnabled)
   
   return CONNECTION_PREDEFINITIONS.map(pred => ({
     id: pred.id,

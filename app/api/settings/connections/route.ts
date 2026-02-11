@@ -41,12 +41,14 @@ export async function GET(request: NextRequest) {
       connections = await getAllConnections()
       if (!Array.isArray(connections) || connections.length === 0) {
         console.log("[v0] No connections in Redis, seeding predefined connections...")
-        const predefined = getPredefinedConnectionsAsStatic()
+        const { getPredefinedAsExchangeConnections } = await import("@/lib/connection-predefinitions")
+        const predefined = getPredefinedAsExchangeConnections()
         
-        // Save all predefined connections to Redis
+        // Save all predefined connections to Redis with proper defaults
         for (const conn of predefined) {
           try {
             await createConnection(conn)
+            console.log(`[v0] Seeded ${conn.name} (enabled: ${conn.is_enabled})`)
           } catch (createError) {
             console.warn(`[v0] Failed to seed connection ${conn.name}:`, createError)
           }
@@ -58,7 +60,8 @@ export async function GET(request: NextRequest) {
       }
     } catch (error) {
       console.log("[v0] Failed to load connections from Redis:", error)
-      connections = getPredefinedConnectionsAsStatic()
+      const { getPredefinedAsExchangeConnections } = await import("@/lib/connection-predefinitions")
+      connections = getPredefinedAsExchangeConnections()
     }
 
     // Apply filters

@@ -741,13 +741,17 @@ export default function ExchangeConnectionManager() {
                         </Button>
 
                         <Button
-                          variant="destructive"
+                          variant="ghost"
                           size="sm"
+                          onClick={() => {
+                            if (window.confirm(`Are you sure you want to delete ${conn.name}? This action cannot be undone.`)) {
+                              handleDeleteConnection(conn.id)
+                            }
+                          }}
+                          className="text-red-600 hover:text-red-700"
                           title="Delete Connection"
-                          className="justify-center"
-                          onClick={() => deleteConnection(conn.id)}
                         >
-                          <Trash2 className="h-4 w-4 mr-2" />
+                          <Trash2 className="h-4 w-4 mr-1" />
                           Delete
                         </Button>
                       </div>
