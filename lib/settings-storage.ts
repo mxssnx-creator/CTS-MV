@@ -33,17 +33,19 @@ function isNodeRuntime(): boolean {
 }
 
 async function getFilePaths() {
-  const path = await import("path")
+  const path = (await import("path")).default || await import("path")
+  const cwd = typeof process !== "undefined" && typeof process.cwd === "function" ? process.cwd() : "/tmp"
   const dataDir =
-    process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME
+    (typeof process !== "undefined" && (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME))
       ? path.join("/tmp", "cts-data")
-      : path.join(process.cwd(), "data")
+      : path.join(cwd, "data")
   return { dataDir, settingsFile: path.join(dataDir, "settings.json") }
 }
 
 async function readFromDisk(): Promise<Record<string, any> | null> {
+  if (!isNodeRuntime()) return null
   try {
-    const fs = await import("fs")
+    const fs = (await import("fs")).default || await import("fs")
     const { dataDir, settingsFile } = await getFilePaths()
 
     if (!fs.existsSync(dataDir)) {
@@ -62,8 +64,9 @@ async function readFromDisk(): Promise<Record<string, any> | null> {
 }
 
 async function writeToDisk(settings: Record<string, any>): Promise<void> {
+  if (!isNodeRuntime()) return
   try {
-    const fs = await import("fs")
+    const fs = (await import("fs")).default || await import("fs")
     const { dataDir, settingsFile } = await getFilePaths()
 
     if (!fs.existsSync(dataDir)) {

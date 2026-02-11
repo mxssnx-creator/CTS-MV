@@ -6,6 +6,7 @@
 import { initRedis, createConnection, getAllConnections, saveMarketData } from "@/lib/redis-db"
 import { runMigrations } from "@/lib/redis-migrations"
 import { getPredefinedAsExchangeConnections } from "@/lib/connection-predefinitions"
+import { loadSettingsAsync, saveSettings as saveSettingsToFile, getDefaultSettings } from "@/lib/settings-storage"
 
 async function seedMarketData() {
   console.log("[v0] [Seed] Starting market data seeding...")
@@ -95,16 +96,7 @@ async function seedPredefinedConnections() {
 
 async function initializeDefaultSettings() {
   console.log("[v0] [Seed] Initializing default settings...")
-  
-  // Skip in Edge Runtime - file system not available
-  if (typeof process !== "undefined" && process.env.NEXT_RUNTIME === "edge") {
-    console.log("[v0] [Seed] Skipped (Edge Runtime)")
-    return
-  }
-  
   try {
-    // Dynamic import to avoid loading fs/path in Edge Runtime
-    const { loadSettingsAsync, saveSettings: saveSettingsToFile, getDefaultSettings } = await import("@/lib/settings-storage")
     const existing = await loadSettingsAsync()
     
     if (!existing || Object.keys(existing).length <= Object.keys(getDefaultSettings()).length) {

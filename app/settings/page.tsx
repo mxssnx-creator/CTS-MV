@@ -1924,15 +1924,8 @@ export default function SettingsPage() {
 
   return (
     <AuthGuard>
-      <div className="container mx-auto p-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" className="h-8 w-8"><Menu className="h-4 w-4" /></Button>
-            <div>
-              <h1 className="text-3xl font-bold">Settings</h1>
-              <p className="text-muted-foreground">Configure system parameters and trading strategies</p>
-            </div>
-          </div>
+      <div className="flex flex-col h-screen">
+        <PageHeader title="Settings" description="Configure system parameters and trading strategies">
           <div className="flex gap-2">
             <Button onClick={exportSettings} disabled={exporting} variant="outline" size="sm">
               <Download className="h-4 w-4 mr-2" />
@@ -1951,7 +1944,9 @@ export default function SettingsPage() {
               {reorganizing ? "Reorganizing..." : saving ? "Saving..." : "Save Changes"}
             </Button>
           </div>
-        </div>
+        </PageHeader>
+        <div className="flex-1 overflow-auto p-6">
+          <div className="max-w-7xl mx-auto space-y-6">
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid w-full grid-cols-5">
@@ -2021,6 +2016,8 @@ export default function SettingsPage() {
             />
           </TabsContent>
         </Tabs>
+          </div>
+        </div>
       </div>
     </AuthGuard>
   )
