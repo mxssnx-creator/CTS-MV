@@ -2,14 +2,16 @@
 
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
+import { GlobalExchangeSelector } from "@/components/global-exchange-selector"
 
 interface PageHeaderProps {
   title?: string
   description?: string
   children?: React.ReactNode
+  showExchangeSelector?: boolean
 }
 
-export function PageHeader({ title, description, children }: PageHeaderProps) {
+export function PageHeader({ title, description, children, showExchangeSelector = true }: PageHeaderProps) {
   return (
     <div className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
       <div className="flex h-16 items-center gap-4 px-4">
@@ -23,7 +25,10 @@ export function PageHeader({ title, description, children }: PageHeaderProps) {
             )}
           </div>
         )}
-        {children && <div className="flex items-center gap-2">{children}</div>}
+        <div className="flex items-center gap-4">
+          {showExchangeSelector && <GlobalExchangeSelector />}
+          {children && <div className="flex items-center gap-2">{children}</div>}
+        </div>
       </div>
     </div>
   )

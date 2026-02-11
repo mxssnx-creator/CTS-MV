@@ -10,6 +10,8 @@ import { Separator } from "@/components/ui/separator"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Plus, X } from "lucide-react"
+import { useExchange } from "@/lib/exchange-context"
+import { Badge } from "@/components/ui/badge"
 import type { ExchangeConnection } from "@/components/settings/connection-card"
 
 interface ExchangeTabProps {
@@ -39,13 +41,26 @@ export function ExchangeTab({
   removeForcedSymbol,
   connections,
 }: ExchangeTabProps) {
+  const { selectedExchange } = useExchange()
+  
   return (
     <Tabs defaultValue="exchange">
       <TabsContent value="exchange" className="space-y-4">
+        {selectedExchange && (
+          <div className="bg-muted/50 border rounded-lg p-3">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium">Active Exchange:</span>
+              <Badge variant="secondary">{selectedExchange.toUpperCase()}</Badge>
+              <span className="text-xs text-muted-foreground ml-auto">
+                Settings below apply to this exchange
+              </span>
+            </div>
+          </div>
+        )}
         <Card>
           <CardHeader>
             <CardTitle>Main Configuration</CardTitle>
-            <CardDescription>Core trading parameters and symbol selection</CardDescription>
+            <CardDescription>Core trading parameters and symbol selection for {selectedExchange || "all exchanges"}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-4">

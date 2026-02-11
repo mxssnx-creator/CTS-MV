@@ -2,6 +2,7 @@ import type React from "react"
 import type { Metadata } from "next"
 import "./globals.css"
 import { AuthProvider } from "@/lib/auth-context"
+import { ExchangeProvider } from "@/lib/exchange-context"
 import { SidebarProvider } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
 import { Toaster } from "@/components/ui/sonner"
@@ -23,11 +24,13 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className="min-h-screen bg-background font-sans">
         <AuthProvider>
-          <SidebarProvider defaultOpen={true}>
-            <AppSidebar />
-            <main className="flex-1 w-full">{children}</main>
-          </SidebarProvider>
-          <Toaster richColors />
+          <ExchangeProvider>
+            <SidebarProvider defaultOpen={true}>
+              <AppSidebar />
+              <main className="flex-1 w-full">{children}</main>
+            </SidebarProvider>
+            <Toaster richColors />
+          </ExchangeProvider>
         </AuthProvider>
       </body>
     </html>

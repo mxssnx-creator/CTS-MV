@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useAuth } from "@/lib/auth-context"
+import { useExchange } from "@/lib/exchange-context"
 import { SystemOverview } from "./system-overview"
 import { GlobalTradeEngineControls } from "./global-trade-engine-controls"
 import { ConnectionCard } from "./connection-card"
@@ -14,6 +15,7 @@ import type { ExchangeConnection } from "@/lib/types"
 
 export function Dashboard() {
   const { user } = useAuth()
+  const { selectedExchange, activeConnections } = useExchange()
   const [connections, setConnections] = useState<ExchangeConnection[]>([])
   const [loading, setLoading] = useState(true)
   const [addDialogOpen, setAddDialogOpen] = useState(false)
@@ -39,16 +41,28 @@ export function Dashboard() {
     return () => clearInterval(interval)
   }, [])
 
+  // Reload connections and stats when selected exchange changes
+  useEffect(() => {
+    console.log("[v0] [Dashboard] Exchange changed to:", selectedExchange)
+    loadConnections()
+    loadStats()
+  }, [selectedExchange])
+
   const loadConnections = async () => {
     try {
-      const response = await fetch("/api/settings/connections?enabled=true")
+      const url = selectedExchange 
+        ? `/api/settings/connections?enabled=true&exchange=${selectedExchange}`
+        : "/api/settings/connections?enabled=true"
+      
+      console.log("[v0] [Dashboard] Loading connections for exchange:", selectedExchange || "all")
+      const response = await fetch(url)
       if (response.ok) {
         const data = await response.json()
-        console.log("[v0] Loaded connections:", data.connections?.length || 0)
+        console.log("[v0] [Dashboard] Loaded connections:", data.connections?.length || 0)
         setConnections(data.connections || [])
       }
     } catch (error) {
-      console.error("[v0] Failed to load connections:", error)
+      console.error("[v0] [Dashboard] Failed to load connections:", error)
     } finally {
       setLoading(false)
     }
@@ -56,7 +70,12 @@ export function Dashboard() {
 
   const loadStats = async () => {
     try {
-      const response = await fetch("/api/monitoring/stats")
+      const url = selectedExchange 
+        ? `/api/monitoring/stats?exchange=${selectedExchange}`
+        : "/api/monitoring/stats"
+      
+      console.log("[v0] [Dashboard] Loading stats for exchange:", selectedExchange || "all")
+      const response = await fetch(url)
       if (response.ok) {
         const data = await response.json()
         setStats({
@@ -71,7 +90,7 @@ export function Dashboard() {
         })
       }
     } catch (error) {
-      console.error("[v0] Failed to load stats:", error)
+      console.error("[v0] [Dashboard] Failed to load stats:", error)
     }
   }
 
