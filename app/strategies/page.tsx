@@ -11,8 +11,11 @@ import { StrategyEngine } from "@/lib/strategies"
 import type { StrategyResult } from "@/lib/strategies"
 import { Activity, TrendingUp, BarChart3, Settings, RefreshCw, Target } from "lucide-react"
 import { toast } from "@/lib/simple-toast"
+import { useExchange } from "@/lib/exchange-context"
+import { PageHeader } from "@/components/page-header"
 
 export default function StrategiesPage() {
+  const { selectedExchange } = useExchange()
   const [activeTab, setActiveTab] = useState("overview")
   const [minimalProfitFactor, setMinimalProfitFactor] = useState(0.4)
   const [strategies, setStrategies] = useState<StrategyResult[]>([])
@@ -32,10 +35,15 @@ export default function StrategiesPage() {
   useEffect(() => {
     const loadStrategies = async () => {
       try {
-        const connectionsResponse = await fetch("/api/settings/connections")
+        const url = selectedExchange 
+          ? `/api/settings/connections?exchange=${selectedExchange}`
+          : "/api/settings/connections"
+        
+        console.log("[v0] [Strategies] Loading connections for exchange:", selectedExchange || "all")
+        const connectionsResponse = await fetch(url)
         if (connectionsResponse.ok) {
           const connectionsData = await connectionsResponse.json()
-          const enabledConnections = connectionsData.filter((c: any) => c.is_enabled)
+          const enabledConnections = connectionsData.connections?.filter((c: any) => c.is_enabled) || []
           setHasRealConnections(enabledConnections.length > 0)
         }
 
@@ -81,7 +89,7 @@ export default function StrategiesPage() {
     }
 
     loadStrategies()
-  }, [])
+  }, [selectedExchange])
 
   const handleToggleStrategy = (id: string, active: boolean) => {
     setStrategies((prev) => prev.map((strategy) => (strategy.id === id ? { ...strategy, isActive: active } : strategy)))

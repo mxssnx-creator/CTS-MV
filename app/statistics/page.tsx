@@ -29,8 +29,11 @@ import { AdjustStrategyStats } from "@/components/statistics/adjust-strategy-sta
 import { BlockStrategyStats } from "@/components/statistics/block-strategy-stats"
 import { PresetTradeStats } from "@/components/statistics/preset-trade-stats"
 import { StatisticsOverview } from "@/components/settings/statistics-overview"
+import { useExchange } from "@/lib/exchange-context"
+import { PageHeader } from "@/components/page-header"
 
 export default function StatisticsPage() {
+  const { selectedExchange } = useExchange()
   const [activeTab, setActiveTab] = useState("overview")
   const [analyticsEngine, setAnalyticsEngine] = useState<AnalyticsEngine | null>(null)
   const [hasRealConnections, setHasRealConnections] = useState(false)
@@ -59,7 +62,12 @@ export default function StatisticsPage() {
       setIsLoading(true)
 
       try {
-        const response = await fetch("/api/settings/connections")
+        const url = selectedExchange 
+          ? `/api/settings/connections?exchange=${selectedExchange}`
+          : "/api/settings/connections"
+        
+        console.log("[v0] [Statistics] Loading connections for exchange:", selectedExchange || "all")
+        const response = await fetch(url)
         const data = await response.json()
         const activeConnections = data.connections?.filter((c: any) => c.is_enabled) || []
         setHasRealConnections(activeConnections.length > 0)
@@ -94,7 +102,7 @@ export default function StatisticsPage() {
     }
 
     initialize()
-  }, [])
+  }, [selectedExchange])
 
   const updateAnalytics = (engine: AnalyticsEngine, currentFilter: AnalyticsFilter) => {
     const strategies = engine.generateStrategyAnalytics(currentFilter)

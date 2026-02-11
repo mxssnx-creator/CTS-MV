@@ -9,8 +9,11 @@ import { IndicationBar } from "@/components/indications/indication-bar"
 import { IndicationFilters } from "@/components/indications/indication-filters"
 import { Activity, TrendingUp, BarChart3, Settings, RefreshCw, AlertTriangle } from "lucide-react"
 import { toast } from "@/lib/simple-toast"
+import { useExchange } from "@/lib/exchange-context"
+import { PageHeader } from "@/components/page-header"
 
 export default function IndicationsPage() {
+  const { selectedExchange } = useExchange()
   const [activeTab, setActiveTab] = useState("overview")
   const [hasRealConnections, setHasRealConnections] = useState(false)
   const [isLoading, setIsLoading] = useState(true)

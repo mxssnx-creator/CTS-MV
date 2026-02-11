@@ -11,8 +11,11 @@ import type { TradingPosition, TradingStats, TimeRangeStats } from "@/lib/tradin
 import { TradingEngine } from "@/lib/trading"
 import { Activity, RefreshCw, BarChart3, History } from "lucide-react"
 import { toast } from "@/lib/simple-toast"
+import { useExchange } from "@/lib/exchange-context"
+import { PageHeader } from "@/components/page-header"
 
 export default function LiveTradingPage() {
+  const { selectedExchange } = useExchange()
   // ... existing state ...
   
   const handleStartEngine = async () => {
@@ -79,31 +82,26 @@ export default function LiveTradingPage() {
 
   const loadConnections = async () => {
     try {
-      console.log("[v0] Loading connections from /api/settings/connections")
-      const response = await fetch("/api/settings/connections")
-      if (!response.ok) throw new Error("Failed to load connections")
-
-      const data = await response.json()
-      console.log("[v0] Loaded connections:", data.length, "total,", data.filter((c: any) => c.is_enabled).length, "enabled")
-
-      // Filter for enabled connections (base exchange connections)
-      const enabledConnections = data.filter((c: any) => c.is_enabled === true)
-
-      if (enabledConnections.length > 0) {
-        console.log("[v0] Found", enabledConnections.length, "enabled connections - using real data")
-        setHasRealConnections(true)
-        const mappedConnections = enabledConnections.map((c: any) => ({
-          id: c.id,
-          name: `${c.name} (${c.exchange.toUpperCase()})`,
-          is_enabled: true,
-        }))
-        setConnections(mappedConnections)
+      const url = selectedExchange 
+        ? `/api/settings/connections?enabled=true&exchange=${selectedExchange}`
+        : "/api/settings/connections?enabled=true"
+      
+      console.log("[v0] [Live Trading] Loading connections for exchange:", selectedExchange || "all")
+      const response = await fetch(url)
+      if (response.ok) {
+        const data = await response.json()
+        const connectionsList = data.connections || []
+        setConnections(connectionsList)
+        setHasRealConnections(connectionsList.length > 0)
         
-        // Set first enabled connection as default
-        if (!selectedConnection || selectedConnection === "") {
-          setSelectedConnection(mappedConnections[0].id)
-          console.log("[v0] Auto-selected first connection:", mappedConnections[0].name)
+        if (connectionsList.length > 0 && !selectedConnection) {
+          setSelectedConnection(connectionsList[0].id)
         }
+      }
+    } catch (error) {
+      console.error("[v0] [Live Trading] Failed to load connections:", error)
+    }
+  }
         return
       }
 
@@ -127,7 +125,7 @@ export default function LiveTradingPage() {
 
   useEffect(() => {
     loadConnections()
-  }, [])
+  }, [selectedExchange])
 
   useEffect(() => {
     if (!hasRealConnections) {
