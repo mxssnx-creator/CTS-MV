@@ -180,8 +180,6 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {/* Adding Additional section for new features */}
-        {additionalItems.length > 0 && (
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs">Testing</SidebarGroupLabel>
           <SidebarGroupContent>
