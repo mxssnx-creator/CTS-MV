@@ -75,6 +75,7 @@
     "@radix-ui/react-toggle-group": "1.1.1",
     "@radix-ui/react-tooltip": "1.1.6",
     "@tailwindcss/postcss": "^4.1.9",
+    "@upstash/redis": "1.36.2",
     "autoprefixer": "10.4.20",
     "axios": "1.7.9",
     "bcryptjs": "2.4.3",

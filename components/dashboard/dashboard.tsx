@@ -180,7 +180,7 @@ export function Dashboard() {
           <h1 className="text-3xl font-bold">CTS v3.2 Dashboard</h1>
           <p className="text-muted-foreground">Welcome back, {user?.username || "Administrator"}</p>
         </div>
-        <Button onClick={loadConnections} size="sm" variant="outline">
+        <Button onClick={loadActiveConnections} size="sm" variant="outline">
           <RefreshCw className="h-4 w-4 mr-2" />
           Refresh
         </Button>

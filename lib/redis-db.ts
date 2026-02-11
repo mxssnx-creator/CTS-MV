@@ -1,11 +1,12 @@
 /**
  * Redis Database Module - Core Database Layer
- * Replaces SQLite/PostgreSQL with Redis for high-performance data storage
+ * Uses Upstash Redis (REST-based) for persistent storage
  * Includes fallback in-memory store for development/preview environments
  */
 
-// Only import redis library if we have a valid Redis URL configured
-let redisClient: any = null
+import { Redis } from "@upstash/redis"
+
+let redisClient: Redis | null = null
 let isConnected = false
 let isUsingFallback = false
 
@@ -14,98 +15,51 @@ const memoryStore = new Map<string, Map<string, any>>()
 const memorySets = new Map<string, Set<string>>()
 const memoryLists = new Map<string, string[]>()
 
-const REDIS_URL = process.env.REDIS_URL || process.env.UPSTASH_REDIS_REST_URL || ""
-const REDIS_PASSWORD = process.env.REDIS_PASSWORD || process.env.UPSTASH_REDIS_REST_TOKEN || ""
-
 /**
- * Initialize Redis connection with fallback to memory store
+ * Initialize Upstash Redis connection with fallback to memory store
  */
 export async function initRedis(): Promise<void> {
   if (isConnected) {
-    // Already connected, silently reuse connection
     return
   }
 
-  console.log("[v0] [Redis] Initializing connection...")
-  console.log("[v0] [Redis] REDIS_URL configured:", REDIS_URL ? "YES (length: " + REDIS_URL.length + ")" : "NO")
-  console.log("[v0] [Redis] REDIS_PASSWORD configured:", REDIS_PASSWORD ? "YES" : "NO")
+  const restUrl = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || ""
+  const restToken = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || ""
+
+  console.log("[v0] [Redis] Initializing Upstash Redis connection...")
+  console.log("[v0] [Redis] KV_REST_API_URL configured:", restUrl ? "YES" : "NO")
+  console.log("[v0] [Redis] KV_REST_API_TOKEN configured:", restToken ? "YES" : "NO")
 
   try {
-    // Only try to connect to Redis if we have a valid URL (not localhost, not empty)
-    if (REDIS_URL && !REDIS_URL.includes("localhost") && REDIS_URL.trim().length > 0) {
-      console.log("[v0] [Redis] Attempting to connect to Redis at:", REDIS_URL.substring(0, 30) + "...")
-      try {
-        // Lazy import of redis library only when needed
-        const { createClient, RedisClientType, RedisModules } = await import("redis")
+    if (restUrl && restToken) {
+      console.log("[v0] [Redis] Connecting to Upstash Redis...")
+      
+      redisClient = new Redis({
+        url: restUrl,
+        token: restToken,
+      })
 
-        const options: any = {
-          url: REDIS_URL,
-          socket: {
-            reconnectStrategy: (retries: number) => {
-              // Stop reconnecting after 3 attempts
-              if (retries > 3) {
-                console.warn("[v0] Redis max reconnection attempts reached, using fallback")
-                return new Error("Max reconnection attempts")
-              }
-              return Math.min(retries * 50, 500)
-            },
-            connectTimeout: 5000,
-          },
-        }
-
-        if (REDIS_PASSWORD && REDIS_PASSWORD.trim().length > 0) {
-          options.password = REDIS_PASSWORD
-        }
-
-        redisClient = createClient(options)
-
-        // Set error handler to suppress repeated errors
-        let hasError = false
-        redisClient.on("error", (err: any) => {
-          if (!hasError) {
-            console.warn("[v0] Redis connection error, using fallback:", err?.message || "unknown error")
-            hasError = true
-          }
-          isUsingFallback = true
-        })
-
-        redisClient.on("connect", () => {
-          console.log("[v0] Redis connected")
-          isUsingFallback = false
-        })
-
-        // Connect with timeout
-        await Promise.race([
-          redisClient.connect(),
-          new Promise((_, reject) => 
-            setTimeout(() => reject(new Error("Connection timeout")), 10000)
-          ),
-        ])
-
+      // Test connection with a ping
+      const pong = await redisClient.ping()
+      if (pong === "PONG") {
         isConnected = true
         isUsingFallback = false
-        await initializeIndexes()
-        console.log("[v0] [Redis] ✓ Redis database initialized successfully with persistent storage")
+        console.log("[v0] [Redis] ✓ Upstash Redis connected successfully (persistent storage)")
         return
-      } catch (error) {
-        // Clean up failed connection attempt
-        redisClient = null
-        console.error("[v0] [Redis] ✗ Connection failed:", error instanceof Error ? error.message : error)
-        console.warn("[v0] [Redis] Falling back to in-memory store (data will be lost on restart)")
-        isUsingFallback = true
-        isConnected = true
+      } else {
+        throw new Error("Unexpected ping response: " + pong)
       }
     } else {
-      // No Redis URL - use fallback immediately
-      console.warn("[v0] [Redis] ✗ No Redis URL configured!")
-      console.warn("[v0] [Redis] Set REDIS_URL or UPSTASH_REDIS_REST_URL environment variable for persistent storage")
+      console.warn("[v0] [Redis] No Upstash Redis credentials configured")
+      console.warn("[v0] [Redis] Set KV_REST_API_URL and KV_REST_API_TOKEN for persistent storage")
       console.warn("[v0] [Redis] Using fallback in-memory store (data will be lost on restart)")
       isUsingFallback = true
       isConnected = true
     }
   } catch (error) {
-    console.error("[v0] [Redis] Initialization error:", error instanceof Error ? error.message : error)
-    console.warn("[v0] [Redis] Using fallback in-memory store (data will be lost on restart)")
+    console.error("[v0] [Redis] Connection failed:", error instanceof Error ? error.message : error)
+    console.warn("[v0] [Redis] Falling back to in-memory store")
+    redisClient = null
     isUsingFallback = true
     isConnected = true
   }
@@ -113,24 +67,151 @@ export async function initRedis(): Promise<void> {
 
 
 /**
- * Get Redis client
+ * Get Redis client - returns a unified interface that works with both
+ * Upstash Redis and the in-memory fallback store
  */
 export function getRedisClient(): any {
-  // Auto-initialize if not already initialized
   if (!isConnected) {
-    // Initialize synchronously in fallback mode if needed
     isUsingFallback = true
     isConnected = true
   }
 
-  // Return fallback implementation if not using real Redis
   if (isUsingFallback || !redisClient) {
     return createMemoryStoreProxy()
   }
 
-  return redisClient
+  // Wrap Upstash Redis client in a compatibility layer
+  // Upstash uses lowercase methods and slightly different signatures
+  return createUpstashProxy(redisClient)
 }
 
+/**
+ * Wrap Upstash Redis client to normalize the API for the rest of the codebase.
+ * The codebase uses node-redis style (hSet, hGetAll, sAdd etc.)
+ * Upstash uses (hset, hgetall, sadd etc.) but the @upstash/redis SDK
+ * actually exposes them in the same casing, just with different arg handling.
+ */
+function createUpstashProxy(client: Redis): any {
+  return {
+    async hSet(key: string, ...args: any[]): Promise<number> {
+      let obj: Record<string, string> = {}
+      if (args.length === 1 && typeof args[0] === "object") {
+        obj = args[0]
+      } else {
+        for (let i = 0; i < args.length; i += 2) {
+          obj[String(args[i])] = String(args[i + 1])
+        }
+      }
+      // Upstash hset accepts (key, obj)
+      const result = await client.hset(key, obj)
+      return typeof result === "number" ? result : Object.keys(obj).length
+    },
+
+    async hGetAll(key: string): Promise<Record<string, string>> {
+      const result = await client.hgetall(key)
+      if (!result || Object.keys(result).length === 0) return {}
+      // Upstash returns values as their original types, normalize to strings
+      const normalized: Record<string, string> = {}
+      for (const [k, v] of Object.entries(result)) {
+        normalized[k] = String(v)
+      }
+      return normalized
+    },
+
+    async hGet(key: string, field: string): Promise<string | null> {
+      const result = await client.hget(key, field)
+      return result !== null && result !== undefined ? String(result) : null
+    },
+
+    async sAdd(key: string, ...members: string[]): Promise<number> {
+      const result = await client.sadd(key, ...members)
+      return typeof result === "number" ? result : members.length
+    },
+
+    async sMembers(key: string): Promise<string[]> {
+      const result = await client.smembers(key)
+      return (result || []).map(String)
+    },
+
+    async sRem(key: string, ...members: string[]): Promise<number> {
+      const result = await client.srem(key, ...members)
+      return typeof result === "number" ? result : 0
+    },
+
+    async lPush(key: string, ...values: string[]): Promise<number> {
+      const result = await client.lpush(key, ...values)
+      return typeof result === "number" ? result : values.length
+    },
+
+    async lRange(key: string, start: number, end: number): Promise<string[]> {
+      const result = await client.lrange(key, start, end)
+      return (result || []).map(String)
+    },
+
+    async lTrim(key: string, start: number, end: number): Promise<string> {
+      await client.ltrim(key, start, end)
+      return "OK"
+    },
+
+    async del(...keys: string[]): Promise<number> {
+      if (keys.length === 0) return 0
+      const result = await client.del(...keys)
+      return typeof result === "number" ? result : keys.length
+    },
+
+    async keys(pattern: string): Promise<string[]> {
+      // Upstash supports SCAN-based key listing
+      const allKeys: string[] = []
+      let cursor = 0
+      do {
+        const [nextCursor, keys] = await client.scan(cursor, { match: pattern, count: 100 })
+        allKeys.push(...keys.map(String))
+        cursor = nextCursor
+      } while (cursor !== 0)
+      return allKeys
+    },
+
+    async expire(key: string, seconds: number): Promise<boolean> {
+      const result = await client.expire(key, seconds)
+      return !!result
+    },
+
+    async ttl(key: string): Promise<number> {
+      return await client.ttl(key)
+    },
+
+    async set(key: string, value: string): Promise<string> {
+      await client.set(key, value)
+      return "OK"
+    },
+
+    async get(key: string): Promise<string | null> {
+      const result = await client.get(key)
+      return result !== null && result !== undefined ? String(result) : null
+    },
+
+    async flushDb(): Promise<string> {
+      await client.flushdb()
+      return "OK"
+    },
+
+    async ping(): Promise<string> {
+      return await client.ping()
+    },
+
+    async info(): Promise<string> {
+      return "Upstash Redis - Persistent Storage"
+    },
+
+    async dbSize(): Promise<number> {
+      return await client.dbsize()
+    },
+
+    async quit(): Promise<void> {
+      // Upstash REST client doesn't need explicit disconnect
+    },
+  }
+}
 
 /**
  * Create a proxy object that mimics Redis client interface using memory store
@@ -241,8 +322,6 @@ function createMemoryStoreProxy(): any {
         ...Array.from(memorySets.keys()),
         ...Array.from(memoryLists.keys()),
       ]
-
-      // Simple pattern matching
       if (pattern === "*") return allKeys
       if (pattern.endsWith("*")) {
         const prefix = pattern.slice(0, -1)
@@ -252,12 +331,10 @@ function createMemoryStoreProxy(): any {
     },
 
     async expire(key: string, seconds: number): Promise<boolean> {
-      // In-memory store doesn't have real TTL, just return success
       return true
     },
 
     async ttl(key: string): Promise<number> {
-      // Return a large number to indicate it exists
       return memoryStore.has(key) || memorySets.has(key) || memoryLists.has(key) ? 86400 : -2
     },
 
@@ -547,17 +624,16 @@ export async function flushAll(): Promise<void> {
 /**
  * Connection pooling and utilities
  */
-export async function closeRedis(): Promise<void> {
+  export async function closeRedis(): Promise<void> {
   if (isUsingFallback) {
-    // Close memory store
-    memoryStore.clear()
-    memorySets.clear()
-    memoryLists.clear()
-    isConnected = false
-    console.log("[v0] In-memory database closed")
+  memoryStore.clear()
+  memorySets.clear()
+  memoryLists.clear()
+  isConnected = false
+  console.log("[v0] In-memory database closed")
   } else if (redisClient && isConnected) {
-    try {
-      await redisClient.quit()
+  try {
+  // Upstash REST client doesn't need explicit disconnect
     } catch (error) {
       console.warn("[v0] Error closing Redis:", error)
     }
