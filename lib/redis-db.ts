@@ -545,58 +545,6 @@ export async function isRedisConnected(): Promise<boolean> {
   }
 }
 
-// Market data functions
-export async function getMarketData(symbol: string, limit: number = 100): Promise<any[]> {
-  const client = getRedisClient()
-  try {
-    const data = await client.lRange(`market_data:${symbol}`, 0, limit - 1)
-    return (data || []).map((item: string) => {
-      try { return JSON.parse(item) } catch { return null }
-    }).filter(Boolean)
-  } catch (error) {
-    console.warn(`[v0] Failed to get market data for ${symbol}:`, error)
-    return []
-  }
-}
-
-export async function saveMarketData(symbol: string, data: any): Promise<void> {
-  const client = getRedisClient()
-  try {
-    await client.lPush(`market_data:${symbol}`, JSON.stringify({ ...data, timestamp: new Date().toISOString() }))
-    await client.lTrim(`market_data:${symbol}`, 0, 499) // Keep last 500 entries
-  } catch (error) {
-    console.warn(`[v0] Failed to save market data for ${symbol}:`, error)
-  }
-}
-
-// Indication functions
-export async function saveIndication(data: any): Promise<string> {
-  const client = getRedisClient()
-  const id = data.id || `ind_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`
-  try {
-    const indication = { ...data, id, created_at: data.calculated_at || new Date().toISOString() }
-    await client.lPush(`indications:${data.connection_id}`, JSON.stringify(indication))
-    await client.lTrim(`indications:${data.connection_id}`, 0, 999) // Keep last 1000
-    return id
-  } catch (error) {
-    console.warn(`[v0] Failed to save indication:`, error)
-    return id
-  }
-}
-
-export async function getIndications(connectionId: string, limit: number = 100): Promise<any[]> {
-  const client = getRedisClient()
-  try {
-    const data = await client.lRange(`indications:${connectionId}`, 0, limit - 1)
-    return (data || []).map((item: string) => {
-      try { return JSON.parse(item) } catch { return null }
-    }).filter(Boolean)
-  } catch (error) {
-    console.warn(`[v0] Failed to get indications:`, error)
-    return []
-  }
-}
-
 export async function getRedisStats(): Promise<any> {
   const client = getRedisClient()
 
@@ -631,4 +579,75 @@ export async function getRedisStats(): Promise<any> {
       error: String(error),
     }
   }
+}
+
+/**
+ * Market Data operations
+ */
+export async function getMarketData(symbol: string, limit: number = 100): Promise<any[]> {
+  const client = getRedisClient()
+  const ids = await client.lRange(`marketdata:${symbol}`, 0, limit - 1)
+  
+  const data = await Promise.all(
+    ids.map(async (id) => {
+      const item = await client.hGetAll(`marketdata:item:${id}`)
+      return Object.keys(item).length > 0 ? item : null
+    })
+  )
+  
+  return data.filter(Boolean)
+}
+
+export async function saveMarketData(symbol: string, data: any): Promise<void> {
+  const client = getRedisClient()
+  const id = `${symbol}:${Date.now()}`
+  
+  await client.hSet(`marketdata:item:${id}`, {
+    ...data,
+    symbol,
+    timestamp: new Date().toISOString(),
+  })
+  
+  await client.lPush(`marketdata:${symbol}`, id)
+  await client.lTrim(`marketdata:${symbol}`, 0, 999) // Keep last 1000 entries
+  await client.expire(`marketdata:item:${id}`, 7 * 24 * 60 * 60) // 7 days TTL
+}
+
+/**
+ * Indication operations
+ */
+export async function saveIndication(data: any): Promise<string> {
+  const client = getRedisClient()
+  const id = `ind:${data.connection_id}:${Date.now()}:${Math.random().toString(36).substr(2, 9)}`
+  
+  const indicationData = {
+    id,
+    ...data,
+    created_at: new Date().toISOString(),
+  }
+  
+  await client.hSet(`indication:${id}`, indicationData)
+  await client.sAdd(`indications:${data.connection_id}`, id)
+  await client.sAdd(`indications:${data.symbol}`, id)
+  await client.sAdd("indications:all", id)
+  
+  // TTL: 7 days
+  await client.expire(`indication:${id}`, 7 * 24 * 60 * 60)
+  
+  return id
+}
+
+export async function getIndications(connectionId: string, symbol?: string): Promise<any[]> {
+  const client = getRedisClient()
+  const key = symbol ? `indications:${symbol}` : `indications:${connectionId}`
+  const ids = await client.sMembers(key)
+  
+  const indications = await Promise.all(
+    ids.map(async (id) => {
+      const data = await client.hGetAll(`indication:${id}`)
+      return Object.keys(data).length > 0 ? data : null
+    })
+  )
+  
+  return indications.filter(Boolean)
 }

@@ -358,38 +358,6 @@ export function ConnectionCard({
   //   // In a real app, you'd add this to a log state or send it to a logging service
   // }
 
-  const handleTestConnection = async () => {
-    console.log("[v0] Testing connection:", connection.id, connection.name)
-    addLog("info", `Testing connection to ${connection.exchange}...`)
-
-    try {
-      const response = await fetch(`/api/settings/connections/${connection.id}/test`, {
-        method: "POST",
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: "Unknown error" }))
-        throw new Error(errorData.details || errorData.error || "Connection test failed")
-      }
-
-      const data = await response.json()
-
-      console.log("[v0] Connection test result:", data)
-
-      if (data.success || data.balance !== undefined) {
-        addLog("success", `Connection test successful! Balance: $${data.balance.toFixed(2)}`)
-        toast.success(`Connection successful! Balance: $${data.balance.toFixed(2)}`)
-      } else {
-        throw new Error(data.error || "Unknown error")
-      }
-    } catch (error) {
-      console.error("[v0] Connection test error:", error)
-      const errorMessage = error instanceof Error ? error.message : "Connection test failed"
-      addLog("error", `Connection test error: ${errorMessage}`)
-      toast.error(errorMessage)
-    }
-  }
-
   const handlePresetTypeChange = async (presetTypeId: string) => {
     try {
       const response = await fetch(`/api/settings/connections/${connection.id}/preset-type`, {
