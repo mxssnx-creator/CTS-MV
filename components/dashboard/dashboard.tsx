@@ -206,7 +206,7 @@ export function Dashboard() {
           </Button>
         </CardHeader>
         <CardContent>
-          {loading ? (
+           {isActiveLoading ? (
             <p className="text-center text-muted-foreground py-8">Loading connections...</p>
           ) : connections.length === 0 ? (
             <p className="text-center text-muted-foreground py-8">No connections configured</p>
