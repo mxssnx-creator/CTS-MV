@@ -74,11 +74,8 @@ export class IndicationProcessor {
    */
   async processIndication(symbol: string): Promise<void> {
     try {
-      console.log(`[v0] Processing indication for ${symbol}`)
-
       const marketData = await this.getLatestMarketDataCached(symbol)
       if (!marketData) {
-        console.log(`[v0] No market data available for ${symbol}`)
         return
       }
 
@@ -102,7 +99,8 @@ export class IndicationProcessor {
           calculated_at: new Date().toISOString(),
         })
 
-        console.log(`[v0] Indication stored for ${symbol}: ${indication.type}`)
+        // Only log when indications are actually saved
+        console.log(`[v0] Indication stored for ${symbol}: ${indication.type} (PF: ${indication.profit_factor.toFixed(2)})`)
       }
     } catch (error) {
       console.error(`[v0] Failed to process indication for ${symbol}:`, error)

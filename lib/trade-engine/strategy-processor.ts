@@ -19,8 +19,6 @@ export class StrategyProcessor {
    */
   async processStrategy(symbol: string): Promise<void> {
     try {
-      console.log(`[v0] Processing strategy for ${symbol}`)
-
       await initRedis()
       const indications = await this.getActiveIndications(symbol)
 
@@ -29,6 +27,7 @@ export class StrategyProcessor {
       }
 
       const settings = await this.getStrategySettings()
+      let processedCount = 0
 
       const batchSize = 5
       for (let i = 0; i < indications.length; i += batchSize) {
@@ -40,9 +39,15 @@ export class StrategyProcessor {
 
             if (strategySignal && strategySignal.profit_factor >= settings.minProfitFactor) {
               await this.createPseudoPosition(symbol, indication, strategySignal)
+              processedCount++
             }
           }),
         )
+      }
+      
+      // Only log when strategies are actually created
+      if (processedCount > 0) {
+        console.log(`[v0] Created ${processedCount} strategies for ${symbol}`)
       }
     } catch (error) {
       console.error(`[v0] Failed to process strategy for ${symbol}:`, error)
