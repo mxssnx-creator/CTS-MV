@@ -1263,14 +1263,39 @@ export default function SettingsPage() {
       // Step 4: Save settings to database
       console.log("[v0] Saving settings to database...")
       const settingsResponse = await fetch("/api/settings", {
-        method: "PUT", // Changed from POST to PUT as per original logic
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ settings }),
       })
 
-      if (!settingsResponse.ok) {
-        throw new Error("Failed to save settings to database")
+      // Handle potential HTML responses (server errors, gateway timeouts, etc.)
+      const contentType = settingsResponse.headers.get("content-type") || ""
+      let settingsData = null
+      
+      try {
+        if (contentType.includes("application/json")) {
+          settingsData = await settingsResponse.json()
+        } else if (contentType.includes("text/html") || !settingsResponse.ok) {
+          // Server returned HTML or error - likely 500, 502, 503
+          const responseText = await settingsResponse.text()
+          if (responseText.includes("<!DOCTYPE") || responseText.includes("<html")) {
+            console.error("[v0] Server returned HTML error response. Status:", settingsResponse.status)
+            throw new Error(`Server Error (HTTP ${settingsResponse.status}): ${settingsResponse.statusText || "Unknown error"}. Try again in a moment.`)
+          }
+        }
+      } catch (parseError) {
+        if (parseError instanceof Error && parseError.message.includes("Server Error")) {
+          throw parseError
+        }
+        console.error("[v0] Failed to parse settings response:", parseError)
+        throw new Error("Failed to parse server response. Server may be experiencing issues.")
       }
+
+      if (!settingsResponse.ok) {
+        const errorMsg = settingsData?.error || settingsData?.message || "Failed to save settings to database"
+        throw new Error(errorMsg)
+      }
+      
       console.log("[v0] Settings saved to database successfully")
 
       toast.success("Settings saved!", {
@@ -1295,8 +1320,30 @@ export default function SettingsPage() {
           }),
         })
 
+        // Handle potential HTML responses
+        const reorganizeContentType = reorganizeResponse.headers.get("content-type") || ""
+        let reorganizeData = null
+        
+        try {
+          if (reorganizeContentType.includes("application/json")) {
+            reorganizeData = await reorganizeResponse.json()
+          } else if (reorganizeContentType.includes("text/html") || !reorganizeResponse.ok) {
+            const responseText = await reorganizeResponse.text()
+            if (responseText.includes("<!DOCTYPE") || responseText.includes("<html")) {
+              console.error("[v0] Database reorganize returned HTML error. Status:", reorganizeResponse.status)
+              throw new Error(`Database reorganize failed: Server error (HTTP ${reorganizeResponse.status})`)
+            }
+          }
+        } catch (parseError) {
+          if (parseError instanceof Error && parseError.message.includes("Database reorganize")) {
+            throw parseError
+          }
+          console.error("[v0] Failed to parse reorganize response:", parseError)
+        }
+
         if (!reorganizeResponse.ok) {
-          const errorData = await reorganizeResponse.json()
+          const errorMsg = reorganizeData?.error || reorganizeData?.message || "Database reorganization failed"
+          throw new Error(errorMsg)
           console.error("[v0] Database reorganization failed:", errorData)
           toast.error("Database reorganization failed", {
             description: "Settings saved but limits not applied. Please check logs.",
