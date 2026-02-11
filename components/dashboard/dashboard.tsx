@@ -18,9 +18,11 @@ export function Dashboard() {
   const { user } = useAuth()
   const { selectedExchange } = useExchange()
   const { 
-    activeConnections, 
-    loadActiveConnections, 
-    isActiveLoading,
+    exchangeConnectionsActive, 
+    loadExchangeConnectionsActive, 
+    isExchangeConnectionsActiveLoading,
+    exchangeConnectionsActiveStatus,
+    toggleExchangeConnectionsActiveStatus,
     recentlyInsertedActive,
     markAsInserted 
   } = useConnectionState()
@@ -36,13 +38,13 @@ export function Dashboard() {
     databaseSize: 128,
   })
 
-  // Filter active connections by selected exchange
+  // Filter ExchangeConnectionsActive by selected exchange
   const filteredConnections = useMemo(() => {
     if (!selectedExchange) {
-      return activeConnections
+      return exchangeConnectionsActive
     }
-    return activeConnections.filter(conn => conn.exchange === selectedExchange)
-  }, [activeConnections, selectedExchange])
+    return exchangeConnectionsActive.filter(conn => conn.exchange === selectedExchange)
+  }, [exchangeConnectionsActive, selectedExchange])
 
   useEffect(() => {
     loadStats()
@@ -206,7 +208,7 @@ export function Dashboard() {
           </Button>
         </CardHeader>
         <CardContent>
-           {isActiveLoading ? (
+           {isExchangeConnectionsActiveLoading ? (
             <p className="text-center text-muted-foreground py-8">Loading connections...</p>
           ) : filteredConnections.length === 0 ? (
             <p className="text-center text-muted-foreground py-8">No connections configured</p>
@@ -219,6 +221,8 @@ export function Dashboard() {
                   onToggleEnable={handleToggleEnable}
                   onToggleLiveTrade={handleToggleLiveTrade}
                   onDelete={handleDeleteConnection}
+                  isActive={exchangeConnectionsActiveStatus.get(connection.id) ?? false}
+                  onToggleActive={() => toggleExchangeConnectionsActiveStatus(connection.id)}
                   status={
                     !connection.is_enabled
                       ? "disabled"
@@ -239,7 +243,7 @@ export function Dashboard() {
         showOnlyEnabled={true}
         onConnectionAdded={async (connectionId) => {
           console.log("[v0] [Dashboard] New connection added:", connectionId)
-          await loadActiveConnections()
+          await loadExchangeConnectionsActive()
           if (connectionId) {
             markAsInserted(connectionId, "active")
           }

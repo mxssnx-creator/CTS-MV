@@ -10,11 +10,15 @@ interface ConnectionState {
   loadBaseConnections: () => Promise<void>
   isBaseLoading: boolean
   
-  // Active connections (enabled only) - used in Dashboard
-  activeConnections: ExchangeConnection[]
-  setActiveConnections: (connections: ExchangeConnection[]) => void
-  loadActiveConnections: () => Promise<void>
-  isActiveLoading: boolean
+  // ExchangeConnectionsActive (enabled only) - used in Dashboard with independent status
+  exchangeConnectionsActive: ExchangeConnection[]
+  setExchangeConnectionsActive: (connections: ExchangeConnection[]) => void
+  loadExchangeConnectionsActive: () => Promise<void>
+  isExchangeConnectionsActiveLoading: boolean
+  
+  // ExchangeConnectionsActive status management - independent from settings
+  exchangeConnectionsActiveStatus: Map<string, boolean> // id -> is_active
+  toggleExchangeConnectionsActiveStatus: (id: string) => void
   
   // Recently inserted connections for tracking
   recentlyInsertedBase: Set<string>
@@ -31,9 +35,10 @@ export function ConnectionStateProvider({ children }: { children: ReactNode }) {
   const [isBaseLoading, setIsBaseLoading] = useState(false)
   const [recentlyInsertedBase, setRecentlyInsertedBase] = useState<Set<string>>(new Set())
   
-  // Active connections state (Dashboard)
-  const [activeConnections, setActiveConnections] = useState<ExchangeConnection[]>([])
-  const [isActiveLoading, setIsActiveLoading] = useState(false)
+  // ExchangeConnectionsActive state (Dashboard - independent status)
+  const [exchangeConnectionsActive, setExchangeConnectionsActive] = useState<ExchangeConnection[]>([])
+  const [isExchangeConnectionsActiveLoading, setIsExchangeConnectionsActiveLoading] = useState(false)
+  const [exchangeConnectionsActiveStatus, setExchangeConnectionsActiveStatus] = useState<Map<string, boolean>>(new Map())
   const [recentlyInsertedActive, setRecentlyInsertedActive] = useState<Set<string>>(new Set())
 
   // Load all connections for Settings
@@ -54,22 +59,41 @@ export function ConnectionStateProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // Load enabled connections for Dashboard
-  const loadActiveConnections = async () => {
-    setIsActiveLoading(true)
+  // Load enabled connections for Dashboard with independent status tracking
+  const loadExchangeConnectionsActive = async () => {
+    setIsExchangeConnectionsActiveLoading(true)
     try {
-      console.log("[v0] [ConnectionState] Loading active connections (enabled only)")
+      console.log("[v0] [ConnectionState] Loading ExchangeConnectionsActive (enabled only)")
       const response = await fetch("/api/settings/connections?enabled=true")
       if (response.ok) {
         const data = await response.json()
-        console.log("[v0] [ConnectionState] Loaded", data.connections?.length || 0, "active connections")
-        setActiveConnections(data.connections || [])
+        const connections = data.connections || []
+        console.log("[v0] [ConnectionState] Loaded", connections.length, "ExchangeConnectionsActive")
+        setExchangeConnectionsActive(connections)
+        
+        // Initialize status map for each connection (default: inactive/disabled)
+        const statusMap = new Map<string, boolean>()
+        connections.forEach((conn: ExchangeConnection) => {
+          statusMap.set(conn.id, false) // default: not active in dashboard
+        })
+        setExchangeConnectionsActiveStatus(statusMap)
       }
     } catch (error) {
-      console.error("[v0] [ConnectionState] Failed to load active connections:", error)
+      console.error("[v0] [ConnectionState] Failed to load ExchangeConnectionsActive:", error)
     } finally {
-      setIsActiveLoading(false)
+      setIsExchangeConnectionsActiveLoading(false)
     }
+  }
+
+  // Toggle ExchangeConnectionsActive status independently
+  const toggleExchangeConnectionsActiveStatus = (id: string) => {
+    setExchangeConnectionsActiveStatus(prev => {
+      const next = new Map(prev)
+      const currentStatus = next.get(id) ?? false
+      next.set(id, !currentStatus)
+      console.log("[v0] [ConnectionState] Toggled ExchangeConnectionsActive", id, "to", !currentStatus)
+      return next
+    })
   }
 
   // Mark connection as recently inserted
@@ -107,12 +131,13 @@ export function ConnectionStateProvider({ children }: { children: ReactNode }) {
   // Initial load on mount
   useEffect(() => {
     loadBaseConnections()
-    loadActiveConnections()
+    loadExchangeConnectionsActive()
     
-    // Refresh active connections periodically
+    // Refresh every 30 seconds
     const interval = setInterval(() => {
-      loadActiveConnections()
-    }, 30000) // Every 30 seconds
+      loadBaseConnections()
+      loadExchangeConnectionsActive()
+    }, 30000)
     
     return () => clearInterval(interval)
   }, [])
@@ -124,10 +149,12 @@ export function ConnectionStateProvider({ children }: { children: ReactNode }) {
         setBaseConnections,
         loadBaseConnections,
         isBaseLoading,
-        activeConnections,
-        setActiveConnections,
-        loadActiveConnections,
-        isActiveLoading,
+        exchangeConnectionsActive,
+        setExchangeConnectionsActive,
+        loadExchangeConnectionsActive,
+        isExchangeConnectionsActiveLoading,
+        exchangeConnectionsActiveStatus,
+        toggleExchangeConnectionsActiveStatus,
         recentlyInsertedBase,
         recentlyInsertedActive,
         markAsInserted,

@@ -28,6 +28,8 @@ interface ConnectionCardProps {
   onToggleEnable: (id: string, enabled: boolean) => void
   onToggleLiveTrade: (id: string, enabled: boolean) => void
   onDelete: (id: string) => void
+  isActive?: boolean // Independent active status for dashboard
+  onToggleActive?: () => void
   balance?: number
   status: "connected" | "connecting" | "error" | "disabled"
   progress?: number
@@ -60,6 +62,8 @@ export function ConnectionCard({
   onToggleEnable,
   onToggleLiveTrade,
   onDelete,
+  isActive = false,
+  onToggleActive,
   balance = 0,
   status,
   progress = 0,
