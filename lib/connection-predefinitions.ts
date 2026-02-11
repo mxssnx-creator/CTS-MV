@@ -53,20 +53,21 @@ export interface ExchangeConnection {
   updated_at: string
 }
 
+// Exchange API Type Support (based on official documentation)
 export const EXCHANGE_API_TYPES: Record<string, string[]> = {
-  bybit: ["unified", "contract", "spot"],
-  bingx: ["perpetual_futures", "spot"],
-  binance: ["perpetual_futures", "spot", "margin"],
-  okx: ["unified", "perpetual_futures", "spot"],
-  gateio: ["perpetual_futures", "spot", "margin"],
-  kucoin: ["perpetual_futures", "spot", "margin"],
-  mexc: ["perpetual_futures", "spot"],
-  bitget: ["perpetual_futures", "spot", "margin"],
-  pionex: ["perpetual_futures", "spot"],
-  orangex: ["perpetual_futures", "spot"],
-  huobi: ["perpetual_futures", "spot", "margin"],
-  kraken: ["spot", "futures"],
-  coinbase: ["spot", "advanced"],
+  bybit: ["unified", "contract", "spot", "inverse"], // V5 API: Unified Trading Account, Contract, Spot, Inverse
+  bingx: ["perpetual_futures", "spot", "standard"], // Standard Futures, Perpetual Swap, Spot
+  binance: ["spot", "perpetual_futures", "futures", "margin", "portfolio"], // Spot, USD-M Futures, COIN-M Futures, Margin, Portfolio Margin
+  okx: ["unified", "spot", "perpetual", "futures", "swap"], // Unified Account, Spot, Perpetual Swap, Futures, Options
+  gateio: ["spot", "perpetual", "margin", "futures"], // Spot, Perpetual Swap, Margin, Delivery Futures
+  kucoin: ["spot", "perpetual", "margin", "futures"], // Spot, Perpetual Futures, Margin, Delivery Futures
+  mexc: ["spot", "perpetual"], // Spot, Perpetual Swap
+  bitget: ["spot", "perpetual", "margin", "usdt_futures"], // Spot, USDT Futures, USDC Futures, Coin Futures
+  pionex: ["spot", "perpetual"], // Spot, Perpetual
+  orangex: ["spot", "perpetual"], // Spot, Perpetual Futures
+  huobi: ["spot", "perpetual", "margin", "futures"], // Spot, Linear Swap, Inverse Swap, Margin
+  kraken: ["spot", "futures"], // Spot, Futures
+  coinbase: ["spot", "advanced"], // Spot, Advanced Trade API
 }
 
 export const EXCHANGE_LIBRARY_PACKAGES: Record<string, string> = {
@@ -87,9 +88,10 @@ export const EXCHANGE_LIBRARY_PACKAGES: Record<string, string> = {
 
 // Connection Methods
 export const CONNECTION_METHODS = {
-  rest: { label: "REST API", description: "HTTP-based REST API (lower latency)" },
-  websocket: { label: "WebSocket", description: "Real-time data streaming (fastest)" },
-  hybrid: { label: "Hybrid", description: "REST + WebSocket combined" },
+  rest: { label: "REST API", description: "Standard HTTP REST API connection" },
+  library: { label: "Library SDK", description: "Official Exchange Library SDK" },
+  websocket: { label: "WebSocket", description: "Real-time WebSocket connection" },
+  hybrid: { label: "Hybrid", description: "Combined REST + WebSocket for optimal performance" },
 }
 
 // API Subtypes/Trading Types
@@ -120,19 +122,19 @@ export const EXCHANGE_SUBTYPES: Record<string, string[]> = {
 
 // Exchange connection method support
 export const EXCHANGE_CONNECTION_METHODS: Record<string, string[]> = {
-  bybit: ["rest", "websocket", "hybrid"],
-  bingx: ["rest", "websocket"],
-  binance: ["rest", "websocket", "hybrid"],
-  okx: ["rest", "websocket", "hybrid"],
-  gateio: ["rest", "websocket"],
-  kucoin: ["rest", "websocket"],
-  mexc: ["rest", "websocket"],
-  bitget: ["rest", "websocket"],
-  pionex: ["rest", "websocket"],
-  orangex: ["rest"],
-  huobi: ["rest", "websocket"],
-  kraken: ["rest", "websocket"],
-  coinbase: ["rest"],
+  bybit: ["rest", "library", "websocket", "hybrid"],
+  bingx: ["rest", "library", "websocket"],
+  binance: ["rest", "library", "websocket", "hybrid"],
+  okx: ["rest", "library", "websocket", "hybrid"],
+  gateio: ["rest", "library", "websocket"],
+  kucoin: ["rest", "library", "websocket"],
+  mexc: ["rest", "library", "websocket"],
+  bitget: ["rest", "library", "websocket"],
+  pionex: ["rest", "library", "websocket"],
+  orangex: ["rest", "library"],
+  huobi: ["rest", "library", "websocket"],
+  kraken: ["rest", "library", "websocket"],
+  coinbase: ["rest", "library"],
 }
 
 export const CONNECTION_PREDEFINITIONS: ConnectionPredefinition[] = [
