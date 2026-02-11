@@ -448,6 +448,14 @@ export default function ExchangeConnectionManager() {
   const [testingId, setTestingId] = useState<string | null>(null)
   const [recentlyInsertedBase, setRecentlyInsertedBase] = useState<Set<string>>(new Set())
 
+  // Default exchanges to display
+  const DEFAULT_EXCHANGES = ["bybit", "bingx", "pionex", "orangex"]
+
+  // Filter connections to show only default exchanges
+  const displayedConnections = connections.filter((c) => 
+    DEFAULT_EXCHANGES.some((exchange) => c.exchange?.toLowerCase().includes(exchange.toLowerCase()))
+  )
+
   useEffect(() => {
     loadConnections()
   }, [])
@@ -681,10 +689,10 @@ export default function ExchangeConnectionManager() {
           </Button>
         </div>
 
-        {connections.length === 0 ? (
+        {displayedConnections.length === 0 ? (
           <Card>
             <CardContent className="pt-6 text-center">
-              <p className="text-muted-foreground mb-4">No connections configured yet</p>
+              <p className="text-muted-foreground mb-4">No default connections configured yet</p>
               <Button onClick={() => setShowAddDialog(true)}>
                 <Plus className="h-4 w-4 mr-2" />
                 Create First Connection
@@ -693,7 +701,7 @@ export default function ExchangeConnectionManager() {
           </Card>
         ) : (
           <div className="space-y-4">
-            {connections.map((conn) => (
+            {displayedConnections.map((conn) => (
               <ConnectionCard
                 key={conn.id}
                 connection={conn}

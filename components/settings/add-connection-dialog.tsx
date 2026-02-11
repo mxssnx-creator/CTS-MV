@@ -12,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Loader2, AlertCircle, Lock, ExternalLink, Check, Eye, EyeOff, Zap, ChevronDown } from "lucide-react"
 import { toast } from "@/lib/simple-toast"
-import { isHTMLResponse, parseHTMLResponse } from "@/lib/html-response-parser"
+import { isHTMLResponse, parseHTMLResponse, parseCloudflareError } from "@/lib/html-response-parser"
 import type { Connection } from "@/lib/file-storage"
 import { 
   CONNECTION_PREDEFINITIONS, 
@@ -215,12 +215,26 @@ export function AddConnectionDialog({ open, onOpenChange, onConnectionAdded, sho
           
           // Check if response is HTML (error page)
           if (isHTMLResponse(contentType, responseText)) {
-            const parsed = parseHTMLResponse(responseText)
-            errorMsg = parsed.message || errorMsg
+            // Check for Cloudflare errors first
+            if (responseText.includes("cf-error-code") || responseText.includes("Cloudflare")) {
+              const cfError = parseCloudflareError(responseText)
+              errorMsg = `Cloudflare Error (${cfError.code}): ${cfError.message}`
+            } else {
+              const parsed = parseHTMLResponse(responseText)
+              errorMsg = `API Error: ${parsed.message}`
+              if (parsed.title) {
+                errorMsg = `${parsed.title} - ${parsed.message}`
+              }
+            }
           } else {
             // Try to parse as JSON
-            const errorData = JSON.parse(responseText)
-            errorMsg = errorData.error || errorData.message || errorMsg
+            try {
+              const errorData = JSON.parse(responseText)
+              errorMsg = errorData.error || errorData.message || errorMsg
+            } catch (e) {
+              // Not JSON, use generic error
+              errorMsg = responseText.substring(0, 200) || errorMsg
+            }
           }
           console.error("[v0] [Test Connection] Server error:", errorMsg)
         } catch (e) {

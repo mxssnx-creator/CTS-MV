@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card"
 import { Power, Trash2, Settings, ChevronDown, Loader2, AlertCircle, CheckCircle2, Edit2 } from "lucide-react"
 import { useState, useEffect } from "react"
 import { toast } from "@/lib/simple-toast"
+import { isHTMLResponse, parseHTMLResponse, parseCloudflareError } from "@/lib/html-response-parser"
 import {
   Dialog,
   DialogContent,
@@ -96,7 +97,41 @@ export function ConnectionCard({
         }),
       })
 
-      const data = await response.json()
+      const contentType = response.headers.get("content-type") || ""
+      let data
+      const responseText = await response.text()
+
+      // Try to parse response
+      if (contentType.includes("application/json")) {
+        try {
+          data = JSON.parse(responseText)
+        } catch (parseError) {
+          console.error("[v0] Failed to parse JSON response:", parseError)
+          throw new Error("Server returned invalid response. Check API status.")
+        }
+      } else if (isHTMLResponse(contentType, responseText)) {
+        // Server returned HTML error page
+        console.error("[v0] Server returned HTML error response. Status:", response.status)
+        
+        let errorMsg = `Server Error (HTTP ${response.status})`
+        if (responseText.includes("Cloudflare") || responseText.includes("cf-error")) {
+          const cfError = parseCloudflareError(responseText)
+          errorMsg = `Cloudflare (${cfError.code}): ${cfError.message}`
+        } else {
+          const parsed = parseHTMLResponse(responseText)
+          errorMsg = parsed.message
+        }
+        
+        setWorkingStatus("error")
+        toast.error("Connection Error", {
+          description: errorMsg,
+        })
+        setLogsExpanded(true)
+        setTestingConnection(false)
+        return
+      } else {
+        throw new Error("Unexpected response format from server")
+      }
 
       if (data.error) {
         setWorkingStatus("error")
@@ -123,11 +158,12 @@ export function ConnectionCard({
         description: `Balance: ${data.balance?.toFixed(2) || "N/A"} USDT`,
       })
       onTestConnection?.(data.log || [])
-      setLogsExpanded(true) // Auto-show logs on test completion
+      setLogsExpanded(true)
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Unknown error"
       setWorkingStatus("error")
       toast.error("Test Connection Error", {
-        description: error instanceof Error ? error.message : "Unknown error",
+        description: errorMsg,
       })
       setLogsExpanded(true)
     } finally {
