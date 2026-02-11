@@ -43,13 +43,27 @@ export default function InstallManager() {
       const response = await fetch("/api/system/init-status")
       const data = await response.json()
       
+      // Consider installed if migrations are applied (version > 0) OR if keys exist
+      const hasMigrations = (data.migrations?.current_version || 0) > 0
+      const hasKeys = (data.statistics?.total_keys || 0) > 0
+      const isInstalled = data.initialized || hasMigrations || hasKeys
+      
       setStatus({
-        isInstalled: data.initialized,
+        isInstalled,
         databaseConnected: data.database?.connected || false,
         databaseType: data.database?.type || "redis",
         tableCount: data.statistics?.total_keys || 0,
         migrationsApplied: data.migrations?.current_version || 0,
         error: data.status === "error" ? data.message : null,
+      })
+      
+      console.log("[v0] Install status loaded:", { 
+        initialized: data.initialized, 
+        hasMigrations, 
+        hasKeys, 
+        isInstalled,
+        keys: data.statistics?.total_keys,
+        version: data.migrations?.current_version
       })
     } catch (error) {
       console.error("[v0] Error loading init status:", error)
