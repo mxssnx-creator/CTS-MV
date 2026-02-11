@@ -4,7 +4,8 @@
  */
 
 import { getGlobalTradeEngineCoordinator } from "./trade-engine"
-import { loadConnections, loadSettings } from "./file-storage"
+import { getAllConnections } from "./redis-db"
+import { loadSettingsAsync } from "./settings-storage"
 import { SystemLogger } from "./system-logger"
 
 let autoStartInitialized = false
@@ -24,7 +25,7 @@ export async function initializeTradeEngineAutoStart(): Promise<void> {
 
   try {
     const coordinator = getGlobalTradeEngineCoordinator()
-    const connections = loadConnections()
+    const connections = await getAllConnections()
 
     // Ensure connections is an array
     if (!Array.isArray(connections)) {
@@ -35,13 +36,16 @@ export async function initializeTradeEngineAutoStart(): Promise<void> {
 
     const activeConnections = connections.filter((c) => c.is_enabled === true && c.is_active === true)
 
+    console.log(`[v0] Auto-start: Found ${activeConnections.length} active connections out of ${connections.length} total`)
+
     if (activeConnections.length === 0) {
+      console.log("[v0] Auto-start: No active connections to start, monitoring for changes...")
       autoStartInitialized = true
       startConnectionMonitoring()
       return
     }
 
-    const settings = loadSettings()
+    const settings = await loadSettingsAsync()
     const indicationInterval = settings.mainEngineIntervalMs ? settings.mainEngineIntervalMs / 1000 : 5
     const strategyInterval = settings.strategyUpdateIntervalMs ? settings.strategyUpdateIntervalMs / 1000 : 10
     const realtimeInterval = settings.realtimeIntervalMs ? settings.realtimeIntervalMs / 1000 : 3
@@ -86,7 +90,7 @@ function startConnectionMonitoring(): void {
 
   autoStartTimer = setInterval(async () => {
     try {
-      const connections = loadConnections()
+      const connections = await getAllConnections()
 
       // Ensure connections is an array before filtering
       if (!Array.isArray(connections)) {

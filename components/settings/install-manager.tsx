@@ -80,8 +80,10 @@ export default function InstallManager() {
         setInstallLog(prev => [
           ...prev,
           "✓ Redis migrations completed successfully",
-          `Schema version: ${data.status.migration_status.latest_version}`,
-          `Total keys in database: ${data.status.database_stats.total_keys}`,
+          `Schema version: ${data.status?.schema_version || "N/A"}`,
+          `Total keys in database: ${data.stats?.total_keys || 0}`,
+          `Indexes created: ${data.status?.indexes_created ? "Yes" : "No"}`,
+          `TTL configured: ${data.status?.ttl_configured ? "Yes" : "No"}`,
           "Installation complete!",
         ])
         toast.success("Redis migrations completed!")
