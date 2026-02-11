@@ -53,21 +53,8 @@ export function ConnectionCard({
   const [testingConnection, setTestingConnection] = useState(false)
   const [logsExpanded, setLogsExpanded] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
-  const [editFormData, setEditFormData] = useState({
-    api_key: connection.api_key,
-    api_secret: connection.api_secret,
-    name: connection.name,
-    api_type: connection.api_type,
-    connection_method: connection.connection_method,
-    connection_library: connection.connection_library,
-    margin_type: connection.margin_type,
-    position_mode: connection.position_mode,
-    is_testnet: connection.is_testnet,
-    api_passphrase: connection.api_passphrase || "",
-  })
-  const [savingSettings, setSavingSettings] = useState(false)
-  const [workingStatus, setWorkingStatus] = useState<"idle" | "testing" | "success" | "error">("idle")
   const [showTestLogInstant, setShowTestLogInstant] = useState(false)
+  const [testLogs, setTestLogs] = useState<string[]>([])
 
   const handleTestConnection = async () => {
     setTestingConnection(true)
@@ -138,8 +125,10 @@ export function ConnectionCard({
         toast.error("Connection Test Failed", {
           description: data.error || "Failed to test connection",
         })
-        onTestConnection?.(data.log || [])
+        setTestLogs(data.log || [])
+        setShowTestLogInstant(true)
         setLogsExpanded(true)
+        onTestConnection?.(data.log || [])
         return
       }
 
@@ -148,8 +137,10 @@ export function ConnectionCard({
         toast.error("Connection Test Failed", {
           description: data.error || data.message || "Failed to test connection",
         })
-        onTestConnection?.(data.log || [])
+        setTestLogs(data.log || [])
+        setShowTestLogInstant(true)
         setLogsExpanded(true)
+        onTestConnection?.(data.log || [])
         return
       }
 
@@ -157,14 +148,18 @@ export function ConnectionCard({
       toast.success("Connection Test Successful", {
         description: `Balance: ${data.balance?.toFixed(2) || "N/A"} USDT`,
       })
-      onTestConnection?.(data.log || [])
+      setTestLogs(data.log || [])
+      setShowTestLogInstant(true)
       setLogsExpanded(true)
+      onTestConnection?.(data.log || [])
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : "Unknown error"
       setWorkingStatus("error")
       toast.error("Test Connection Error", {
         description: errorMsg,
       })
+      setTestLogs([errorMsg])
+      setShowTestLogInstant(true)
       setLogsExpanded(true)
     } finally {
       setTestingConnection(false)
@@ -375,7 +370,7 @@ export function ConnectionCard({
             </Button>
 
             <div className="flex items-center gap-2">
-              {(showTestLogInstant || (connection.last_test_log && connection.last_test_log.length > 0)) && (
+              {(showTestLogInstant || testLogs.length > 0 || (connection.last_test_log && connection.last_test_log.length > 0)) && (
                 <Button
                   size="sm"
                   variant="ghost"
@@ -402,7 +397,7 @@ export function ConnectionCard({
           </div>
 
           {/* Logs Section */}
-          {connection.last_test_log && connection.last_test_log.length > 0 && (
+          {(testLogs.length > 0 || (connection.last_test_log && connection.last_test_log.length > 0)) && (
             <div className="space-y-2 border-t pt-3">
               <Button
                 size="sm"
@@ -415,7 +410,7 @@ export function ConnectionCard({
               </Button>
               {logsExpanded && (
                 <div className="bg-muted p-3 rounded text-xs font-mono max-h-48 overflow-y-auto space-y-0.5 border">
-                  {(Array.isArray(connection.last_test_log) ? connection.last_test_log : []).map((line, i) => (
+                  {(testLogs.length > 0 ? testLogs : (Array.isArray(connection.last_test_log) ? connection.last_test_log : [])).map((line, i) => (
                     <div key={i} className="text-muted-foreground">
                       {line}
                     </div>
