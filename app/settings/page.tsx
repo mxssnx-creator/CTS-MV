@@ -1888,6 +1888,10 @@ export default function SettingsPage() {
               newForcedSymbol={newForcedSymbol}
               setNewForcedSymbol={setNewForcedSymbol}
               connections={connections}
+              exportSettings={exportSettings}
+              importSettings={importSettings}
+              exporting={exporting}
+              importing={importing}
             />
           </TabsContent>
 

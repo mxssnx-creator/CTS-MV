@@ -28,6 +28,10 @@ interface OverallTabProps {
   removeForcedSymbol: (symbol: string) => void
   newMainSymbol: string
   setNewMainSymbol: (value: string) => void
+  exportSettings: () => void
+  importSettings: () => void
+  exporting: boolean
+  importing: boolean
   newForcedSymbol: string
   setNewForcedSymbol: (value: string) => void
   connections: ExchangeConnection[]
@@ -45,6 +49,10 @@ export function OverallTab({
   newForcedSymbol,
   setNewForcedSymbol,
   connections,
+  exportSettings,
+  importSettings,
+  exporting,
+  importing,
 }: OverallTabProps) {
   const [overallSubTab, setOverallSubTab] = useState("main")
 
@@ -621,6 +629,38 @@ export function OverallTab({
         </TabsContent>
 
         <TabsContent value="backup" className="space-y-6 mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Export & Import Settings</CardTitle>
+              <CardDescription>
+                Back up your configuration or restore from a previous backup file.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium">Export Configuration</h4>
+                  <p className="text-xs text-muted-foreground">
+                    Download all settings, connections, and strategies as a JSON file.
+                  </p>
+                  <Button onClick={exportSettings} disabled={exporting} variant="outline" className="w-full">
+                    <Download className="h-4 w-4 mr-2" />
+                    {exporting ? "Exporting..." : "Export Settings"}
+                  </Button>
+                </div>
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium">Import Configuration</h4>
+                  <p className="text-xs text-muted-foreground">
+                    Restore settings from a previously exported JSON backup file.
+                  </p>
+                  <Button onClick={importSettings} disabled={importing} variant="outline" className="w-full">
+                    <Upload className="h-4 w-4 mr-2" />
+                    {importing ? "Importing..." : "Import Settings"}
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
           <LogsViewer />
         </TabsContent>
       </Tabs>
