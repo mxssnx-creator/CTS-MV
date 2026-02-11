@@ -80,8 +80,13 @@ async function seedPredefinedConnections() {
       try {
         const exists = existing.some((c: any) => c.id === conn.id)
         if (!exists) {
-          console.log(`[v0] [Seed] Creating: ${conn.name} (enabled: ${conn.is_enabled})`)
-          await createConnection(conn)
+          // Ensure enabled connections are also active for trade engine auto-start
+          const connectionData = {
+            ...conn,
+            is_active: conn.is_enabled !== false, // Active if enabled
+          }
+          console.log(`[v0] [Seed] Creating: ${conn.name} (enabled: ${conn.is_enabled}, active: ${connectionData.is_active})`)
+          await createConnection(connectionData)
           seededCount++
         }
       } catch (error) {
@@ -89,6 +94,11 @@ async function seedPredefinedConnections() {
       }
     }
     console.log(`[v0] [Seed] Complete: ${seededCount} new connections created`)
+    
+    // Log summary of active connections for trade engine startup
+    const allConnections = await getAllConnections()
+    const activeConnections = allConnections.filter((c: any) => c.is_active)
+    console.log(`[v0] [Seed] Connection Summary: ${activeConnections.length}/${allConnections.length} active and ready for trade engines`)
   } catch (error) {
     console.error("[v0] [Seed] Failed to seed predefined connections:", error)
   }

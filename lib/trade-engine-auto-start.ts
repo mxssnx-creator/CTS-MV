@@ -20,23 +20,32 @@ export function isAutoStartInitialized(): boolean {
  */
 export async function initializeTradeEngineAutoStart(): Promise<void> {
   if (autoStartInitialized) {
+    console.log("[v0] [Auto-Start] Already initialized, skipping")
     return
   }
 
   try {
+    console.log("[v0] [Auto-Start] Starting trade engine auto-initialization...")
     const coordinator = getGlobalTradeEngineCoordinator()
     const connections = await getAllConnections()
 
+    console.log("[v0] [Auto-Start] Retrieved", connections?.length || 0, "connections from database")
+
     // Ensure connections is an array
     if (!Array.isArray(connections)) {
-      console.error("[v0] Auto-start: connections is not an array", typeof connections)
+      console.error("[v0] [Auto-Start] ERROR: connections is not an array", typeof connections)
       autoStartInitialized = true
       return
     }
 
+    // Log connection details for debugging
+    connections.forEach(conn => {
+      console.log(`[v0] [Auto-Start] Connection: ${conn.name} - enabled:${conn.is_enabled}, active:${conn.is_active}`)
+    })
+
     const activeConnections = connections.filter((c) => c.is_enabled === true && c.is_active === true)
 
-    console.log(`[v0] Auto-start: Found ${activeConnections.length} active connections out of ${connections.length} total`)
+    console.log(`[v0] [Auto-Start] Found ${activeConnections.length} active connections out of ${connections.length} total`)
 
     if (activeConnections.length === 0) {
       console.log("[v0] Auto-start: No active connections to start, monitoring for changes...")

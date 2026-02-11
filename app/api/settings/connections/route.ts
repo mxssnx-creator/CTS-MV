@@ -44,11 +44,18 @@ export async function GET(request: NextRequest) {
         const { getPredefinedAsExchangeConnections } = await import("@/lib/connection-predefinitions")
         const predefined = getPredefinedAsExchangeConnections()
         
+        console.log(`[v0] [Seeding] Starting to seed ${predefined.length} connections...`)
+        
         // Save all predefined connections to Redis with proper defaults
         for (const conn of predefined) {
           try {
-            await createConnection(conn)
-            console.log(`[v0] Seeded ${conn.name} (enabled: ${conn.is_enabled})`)
+            // Ensure enabled connections are also active for trade engine auto-start
+            const connectionData = {
+              ...conn,
+              is_active: conn.is_enabled !== false, // Active if enabled
+            }
+            await createConnection(connectionData)
+            console.log(`[v0] Seeded ${conn.name} (enabled: ${conn.is_enabled}, active: ${connectionData.is_active})`)
           } catch (createError) {
             console.warn(`[v0] Failed to seed connection ${conn.name}:`, createError)
           }
@@ -57,6 +64,10 @@ export async function GET(request: NextRequest) {
         // Fetch the saved connections
         connections = await getAllConnections()
         console.log(`[v0] Seeded and loaded ${connections.length} predefined connections`)
+        
+        // Log active connections for debugging
+        const activeCount = connections.filter(c => c.is_active).length
+        console.log(`[v0] Active connections: ${activeCount}/${connections.length}`)
       }
     } catch (error) {
       console.log("[v0] Failed to load connections from Redis:", error)

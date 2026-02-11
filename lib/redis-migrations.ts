@@ -454,8 +454,13 @@ const migrations: Migration[] = [
           const existing = await getConnection(connection.id)
           
           if (!existing) {
-            await createConnection(connection)
-            console.log(`[v0] Seeded predefined connection: ${connection.name}`)
+            // Ensure enabled connections are also active for trade engine auto-start
+            const connectionData = {
+              ...connection,
+              is_active: connection.is_enabled !== false, // Active if enabled
+            }
+            await createConnection(connectionData)
+            console.log(`[v0] Seeded predefined connection: ${connection.name} (enabled: ${connection.is_enabled}, active: ${connectionData.is_active})`)
             seededCount++
           }
         } catch (error) {
