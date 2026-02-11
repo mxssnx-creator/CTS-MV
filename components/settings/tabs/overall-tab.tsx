@@ -31,13 +31,6 @@ interface OverallTabProps {
   newForcedSymbol: string
   setNewForcedSymbol: (value: string) => void
   connections: ExchangeConnection[]
-  databaseType: "sqlite" | "postgresql" | "remote"
-  setDatabaseType: (value: "sqlite" | "postgresql" | "remote") => void
-  databaseChanged: boolean
-  exportSettings: () => void
-  importSettings: () => void
-  exporting: boolean
-  importing: boolean
 }
 
 export function OverallTab({
@@ -52,13 +45,6 @@ export function OverallTab({
   newForcedSymbol,
   setNewForcedSymbol,
   connections,
-  databaseType,
-  setDatabaseType,
-  databaseChanged,
-  exportSettings,
-  importSettings,
-  exporting,
-  importing,
 }: OverallTabProps) {
   const [overallSubTab, setOverallSubTab] = useState("main")
 
@@ -636,37 +622,6 @@ export function OverallTab({
 
         <TabsContent value="backup" className="space-y-6 mt-6">
           <Card>
-            <CardHeader>
-              <CardTitle>Backup & Restore</CardTitle>
-              <CardDescription>Export or import your complete system configuration</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex gap-4">
-                <Button 
-                  onClick={exportSettings} 
-                  variant="outline" 
-                  className="flex-1"
-                  disabled={exporting}
-                >
-                  <Download className="mr-2 h-4 w-4" />
-                  {exporting ? "Exporting..." : "Export Settings"}
-                </Button>
-                <Button 
-                  onClick={importSettings} 
-                  variant="outline" 
-                  className="flex-1"
-                  disabled={importing}
-                >
-                  <Upload className="mr-2 h-4 w-4" />
-                  {importing ? "Importing..." : "Import Settings"}
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Exports include all settings, connections, and configurations. Import will overwrite current settings.
-              </p>
-            </CardContent>
-          </Card>
-          
           <LogsViewer />
         </TabsContent>
       </Tabs>

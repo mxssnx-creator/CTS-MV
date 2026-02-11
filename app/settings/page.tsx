@@ -1888,13 +1888,6 @@ export default function SettingsPage() {
               newForcedSymbol={newForcedSymbol}
               setNewForcedSymbol={setNewForcedSymbol}
               connections={connections}
-              databaseType={settings.database_type as "sqlite" | "postgresql" | "remote"}
-              setDatabaseType={(type) => handleSettingChange("database_type" as any, type)}
-              databaseChanged={false}
-              exportSettings={exportSettings}
-              importSettings={importSettings}
-              exporting={exporting}
-              importing={importing}
             />
           </TabsContent>
 
@@ -1930,7 +1923,6 @@ export default function SettingsPage() {
             <SystemTab
               settings={settings}
               handleSettingChange={handleSettingChange}
-              databaseChanged={databaseChanged}
             />
           </TabsContent>
         </Tabs>
