@@ -1,5 +1,6 @@
 import crypto from "crypto"
 import { BaseExchangeConnector, type ExchangeConnectorResult } from "./base-connector"
+import { safeParseResponse } from "@/lib/safe-response-parser"
 
 export class PionexConnector extends BaseExchangeConnector {
   private getBaseUrl(): string {
@@ -50,11 +51,13 @@ export class PionexConnector extends BaseExchangeConnector {
         },
       )
 
-      const data = await response.json()
+      const data = await safeParseResponse(response)
 
-      if (!response.ok || !data.result) {
-        this.logError(`API Error: ${data.message || "Unknown error"}`)
-        throw new Error(data.message || "Pionex API error")
+      // Check for error responses or HTML error pages
+      if (!response.ok || data.error || !data.result) {
+        const errorMsg = data.error || data.message || `HTTP ${response.status}: ${response.statusText}`
+        this.logError(`API Error: ${errorMsg}`)
+        throw new Error(errorMsg)
       }
 
       this.log("Successfully retrieved account data")

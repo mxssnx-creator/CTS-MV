@@ -1,5 +1,6 @@
 import crypto from "crypto"
 import { BaseExchangeConnector, type ExchangeConnectorResult } from "./base-connector"
+import { safeParseResponse } from "@/lib/safe-response-parser"
 
 export class BybitConnector extends BaseExchangeConnector {
   private getBaseUrl(): string {
@@ -62,9 +63,16 @@ export class BybitConnector extends BaseExchangeConnector {
         signal: AbortSignal.timeout(this.timeout),
       })
 
-      const data = await response.json()
+      const data = await safeParseResponse(response)
 
-      if (!response.ok || data.retCode !== 0) {
+      // Check for error responses or HTML error pages
+      if (!response.ok || data.error) {
+        const errorMsg = data.error || data.retMsg || `HTTP ${response.status}: ${response.statusText}`
+        this.logError(`API Error: ${errorMsg}`)
+        throw new Error(errorMsg)
+      }
+
+      if (data.retCode !== 0) {
         this.logError(`API Error: ${data.retMsg || "Unknown error"}`)
         throw new Error(data.retMsg || "Bybit API error")
       }
