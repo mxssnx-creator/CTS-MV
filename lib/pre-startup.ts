@@ -131,9 +131,10 @@ export async function runPreStartup() {
     await initRedis()
     console.log("[v0] [1/5] ✓ Redis initialized")
     
-    console.log("[v0] [2/5] Running database migrations...")
-    await runMigrations()
-    console.log("[v0] [2/5] ✓ Migrations completed")
+    console.log("[v0] [2/5] Running ALL Redis migrations (automatic)...")
+    const migrationResult = await runMigrations()
+    console.log(`[v0] [2/5] ✓ Migrations completed: ${migrationResult.message}`)
+    console.log(`[v0] [2/5] ✓ Current schema version: ${migrationResult.version}`)
     
     console.log("[v0] [3/5] Initializing settings...")
     await initializeDefaultSettings()

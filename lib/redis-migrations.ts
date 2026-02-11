@@ -479,38 +479,77 @@ const migrations: Migration[] = [
 /**
  * Run all pending migrations
  */
-export async function runMigrations(): Promise<void> {
+export async function runMigrations(): Promise<{ success: boolean; message: string; version: number }> {
   try {
+    console.log("[v0] [Migrations] ==========================================")
+    console.log("[v0] [Migrations] Starting Redis database migrations...")
+    console.log("[v0] [Migrations] ==========================================")
+    
     await initRedis()
     const client = getRedisClient()
 
     // Get current schema version
     const versionStr = await client.get("_schema_version")
     const currentVersion = versionStr ? parseInt(versionStr) : 0
+    const finalVersion = Math.max(...migrations.map((m) => m.version))
+    const totalMigrations = migrations.length
 
-    console.log(`[v0] Current Redis schema version: ${currentVersion}`)
+    console.log(`[v0] [Migrations] Current schema version: ${currentVersion}`)
+    console.log(`[v0] [Migrations] Target schema version: ${finalVersion}`)
+    console.log(`[v0] [Migrations] Total migrations available: ${totalMigrations}`)
 
     // Run pending migrations
-    for (const migration of migrations) {
-      if (migration.version > currentVersion) {
-        console.log(`[v0] Running migration: ${migration.name}`)
+    const pendingMigrations = migrations.filter((m) => m.version > currentVersion)
+    
+    if (pendingMigrations.length === 0) {
+      console.log("[v0] [Migrations] ✓ Database already at latest version")
+      console.log("[v0] [Migrations] ==========================================")
+      return {
+        success: true,
+        message: `Already at latest version ${currentVersion}`,
+        version: currentVersion,
+      }
+    }
+
+    console.log(`[v0] [Migrations] Found ${pendingMigrations.length} pending migrations to apply`)
+    console.log("[v0] [Migrations] ==========================================")
+
+    for (let i = 0; i < pendingMigrations.length; i++) {
+      const migration = pendingMigrations[i]
+      console.log(`[v0] [Migrations] [${i + 1}/${pendingMigrations.length}] Running: ${migration.name} (v${migration.version})`)
+      
+      try {
         await migration.up(client)
+        console.log(`[v0] [Migrations] ✓ Migration ${migration.version} completed successfully`)
+      } catch (error) {
+        console.error(`[v0] [Migrations] ✗ Migration ${migration.version} failed:`, error)
+        throw error
       }
     }
 
     // Update final schema version
-    const finalVersion = Math.max(...migrations.map((m) => m.version))
     await client.set("_schema_version", finalVersion.toString())
 
     // Increment migration run counter
     const runCount = await client.get("_migration_total_runs")
     const newRunCount = (parseInt(runCount || "0") + 1).toString()
     await client.set("_migration_total_runs", newRunCount)
+    await client.set("_migration_last_run", new Date().toISOString())
 
-    console.log(`[v0] Redis schema migrated to version ${finalVersion}`)
-    console.log(`[v0] Total migrations run: ${newRunCount}`)
+    console.log("[v0] [Migrations] ==========================================")
+    console.log(`[v0] [Migrations] ✓ Successfully migrated from version ${currentVersion} to ${finalVersion}`)
+    console.log(`[v0] [Migrations] ✓ Total migration runs: ${newRunCount}`)
+    console.log("[v0] [Migrations] ==========================================")
+    
+    return {
+      success: true,
+      message: `Successfully migrated from version ${currentVersion} to ${finalVersion}`,
+      version: finalVersion,
+    }
   } catch (error) {
-    console.error("[v0] Migration failed:", error)
+    console.error("[v0] [Migrations] ==========================================")
+    console.error("[v0] [Migrations] ✗ Migration failed:", error)
+    console.error("[v0] [Migrations] ==========================================")
     throw error
   }
 }
