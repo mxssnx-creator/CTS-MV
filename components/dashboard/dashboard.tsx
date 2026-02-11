@@ -107,7 +107,7 @@ export function Dashboard() {
 
       if (response.ok) {
         toast.success(`Connection ${enabled ? "enabled" : "disabled"}`)
-        await loadActiveConnections()
+        await loadExchangeConnectionsActive()
       } else {
         const error = await response.json()
         toast.error(error.details || "Failed to toggle connection")
@@ -143,7 +143,7 @@ export function Dashboard() {
 
       if (response.ok) {
         toast.success(`Live trading ${enabled ? "enabled" : "disabled"}`)
-        await loadActiveConnections()
+        await loadExchangeConnectionsActive()
       } else {
         const error = await response.json()
         toast.error(error.details || "Failed to toggle live trading")
@@ -182,7 +182,7 @@ export function Dashboard() {
           <h1 className="text-3xl font-bold">CTS v3.2 Dashboard</h1>
           <p className="text-muted-foreground">Welcome back, {user?.username || "Administrator"}</p>
         </div>
-        <Button onClick={loadActiveConnections} size="sm" variant="outline">
+        <Button onClick={loadExchangeConnectionsActive} size="sm" variant="outline">
           <RefreshCw className="h-4 w-4 mr-2" />
           Refresh
         </Button>
