@@ -617,27 +617,64 @@ export function AddConnectionDialog({ open, onOpenChange, onConnectionAdded, sho
                 />
               </div>
 
-              {/* Rate Limit Info */}
-              <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded p-3 text-xs">
-                <div className="font-semibold text-blue-900 dark:text-blue-200 mb-2">Rate Limits ({formData.connection_method === "rest" ? "REST API" : "WebSocket"})</div>
-                <div className="text-blue-800 dark:text-blue-300 space-y-1">
-                  {formData.connection_method === "rest" ? (
-                    <>
-                      <div>• Public requests: 1000 per 10 seconds</div>
-                      <div>• Private requests: 100 per 10 seconds</div>
-                      <div>• Recommended delay: 10-50ms between requests</div>
-                      <div>• Check exchange docs for tier-specific limits</div>
-                    </>
-                  ) : (
-                    <>
-                      <div>• Unlimited message rate on WebSocket</div>
-                      <div>• Max 10 concurrent connections</div>
-                      <div>• Best for real-time market data</div>
-                      <div>• Lower latency than REST polling</div>
-                    </>
-                  )}
+              {/* Rate Limit Info - Show only for REST and WebSocket */}
+              {(formData.connection_method === "rest" || formData.connection_method === "websocket") && (
+                <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded p-3 text-xs">
+                  <div className="font-semibold text-blue-900 dark:text-blue-200 mb-2">
+                    Rate Limits ({formData.connection_method === "rest" ? "REST API" : "WebSocket"})
+                  </div>
+                  <div className="text-blue-800 dark:text-blue-300 space-y-1">
+                    {formData.connection_method === "rest" ? (
+                      <>
+                        <div>• Public requests: 1000 per 10 seconds</div>
+                        <div>• Private requests: 100 per 10 seconds</div>
+                        <div>• Recommended delay: 10-50ms between requests</div>
+                        <div>• Check exchange docs for tier-specific limits</div>
+                      </>
+                    ) : (
+                      <>
+                        <div>• Unlimited message rate on WebSocket</div>
+                        <div>• Max 10 concurrent connections</div>
+                        <div>• Best for real-time market data</div>
+                        <div>• Lower latency than REST polling</div>
+                      </>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* Library/Hybrid Info */}
+              {(formData.connection_method === "library" || formData.connection_method === "hybrid") && (
+                <div className="bg-purple-50 dark:bg-purple-950 border border-purple-200 dark:border-purple-800 rounded p-3 text-xs">
+                  <div className="font-semibold text-purple-900 dark:text-purple-200 mb-2">
+                    Library Configuration ({formData.connection_library === "native" ? "Native" : formData.connection_library === "ccxt" ? "CCXT" : "Original SDK"})
+                  </div>
+                  <div className="text-purple-800 dark:text-purple-300 space-y-1">
+                    {formData.connection_library === "native" ? (
+                      <>
+                        <div>• Built-in implementation</div>
+                        <div>• Optimized for this exchange</div>
+                        <div>• No external dependencies</div>
+                        <div>• Fast and reliable</div>
+                      </>
+                    ) : formData.connection_library === "ccxt" ? (
+                      <>
+                        <div>• Universal cross-exchange library</div>
+                        <div>• Unified API across exchanges</div>
+                        <div>• Community maintained</div>
+                        <div>• Good for multi-exchange setups</div>
+                      </>
+                    ) : (
+                      <>
+                        <div>• Official exchange SDK</div>
+                        <div>• Complete feature support</div>
+                        <div>• Latest exchange features</div>
+                        <div>• Direct vendor support</div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
             </TabsContent>
 
             {/* API Credentials Tab */}
