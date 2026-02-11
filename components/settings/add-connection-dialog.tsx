@@ -27,7 +27,8 @@ import {
 interface AddConnectionDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onConnectionAdded: () => Promise<void>
+  onConnectionAdded?: (connectionId?: string) => Promise<void> | void
+  onSuccess?: (connectionId?: string) => void
 }
 
 const ALL_EXCHANGES = [
@@ -306,8 +307,21 @@ export function AddConnectionDialog({ open, onOpenChange, onConnectionAdded }: A
         throw new Error(error.message || "Failed to add connection")
       }
 
+      const result = await response.json()
+      const connectionId = result.id || result.connectionId
+      
+      console.log("[v0] [AddConnectionDialog] Connection created with ID:", connectionId)
+      
       toast.success("Connection added successfully")
-      await onConnectionAdded()
+      
+      // Call both callbacks if provided
+      if (onConnectionAdded) {
+        await onConnectionAdded(connectionId)
+      }
+      if (onSuccess) {
+        onSuccess(connectionId)
+      }
+      
       onOpenChange(false)
       resetForm()
     } catch (error) {

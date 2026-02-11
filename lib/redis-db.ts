@@ -22,7 +22,7 @@ const REDIS_PASSWORD = process.env.REDIS_PASSWORD || process.env.UPSTASH_REDIS_R
  */
 export async function initRedis(): Promise<void> {
   if (isConnected) {
-    console.log("[v0] [Redis] Already connected, reusing connection")
+    // Already connected, silently reuse connection
     return
   }
 
@@ -322,8 +322,6 @@ export async function createConnection(data: any): Promise<string> {
   const client = await getRedisClient()
   const id = data.id || `${data.exchange}-${Date.now()}`
 
-  console.log("[v0] [DB] Creating connection:", id, "exchange:", data.exchange, "enabled:", data.is_enabled !== false)
-
   const connectionData = {
     ...data,
     id,
@@ -346,7 +344,6 @@ export async function createConnection(data: any): Promise<string> {
     await client.sAdd("connections:active", id)
   }
 
-  console.log("[v0] [DB] ✓ Connection created successfully:", id)
   return id
 }
 
@@ -357,14 +354,10 @@ export async function getConnection(id: string): Promise<any> {
 }
 
 export async function getAllConnections(): Promise<any[]> {
-  console.log("[v0] [DB] Querying all connections...")
   const client = await getRedisClient()
   const connectionIds = await client.sMembers("connections:all")
 
-  console.log("[v0] [DB] Found", connectionIds?.length || 0, "connection IDs in index")
-
   if (!connectionIds || connectionIds.length === 0 || (connectionIds.length === 1 && !connectionIds[0])) {
-    console.log("[v0] [DB] No connections found in database")
     return []
   }
 
@@ -385,7 +378,6 @@ export async function getAllConnections(): Promise<any[]> {
     }
   }
 
-  console.log("[v0] [DB] Retrieved", connections.length, "complete connections")
   return connections
 }
 
@@ -396,12 +388,10 @@ export async function updateConnection(id: string, data: any): Promise<void> {
 }
 
 export async function deleteConnection(id: string): Promise<boolean> {
-  console.log("[v0] [DB] Deleting connection:", id)
   const client = getRedisClient()
   const connection = await getConnection(id)
 
   if (!connection) {
-    console.warn("[v0] [DB] Connection not found for deletion:", id)
     return false
   }
 
@@ -411,7 +401,6 @@ export async function deleteConnection(id: string): Promise<boolean> {
   await client.sRem("connections:active", id)
   await client.del(`connection:${id}`)
 
-  console.log("[v0] [DB] ✓ Connection deleted successfully:", id)
   return true
 }
 

@@ -1,8 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useAuth } from "@/lib/auth-context"
 import { useExchange } from "@/lib/exchange-context"
+import { useConnectionState } from "@/lib/connection-state"
 import { SystemOverview } from "./system-overview"
 import { GlobalTradeEngineControls } from "./global-trade-engine-controls"
 import { ConnectionCard } from "./connection-card"
@@ -15,9 +16,14 @@ import type { ExchangeConnection } from "@/lib/types"
 
 export function Dashboard() {
   const { user } = useAuth()
-  const { selectedExchange, activeConnections } = useExchange()
-  const [connections, setConnections] = useState<ExchangeConnection[]>([])
-  const [loading, setLoading] = useState(true)
+  const { selectedExchange } = useExchange()
+  const { 
+    activeConnections, 
+    loadActiveConnections, 
+    isActiveLoading,
+    recentlyInsertedActive,
+    markAsInserted 
+  } = useConnectionState()
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [stats, setStats] = useState({
     activeConnections: 0,
@@ -30,8 +36,15 @@ export function Dashboard() {
     databaseSize: 128,
   })
 
+  // Filter active connections by selected exchange
+  const filteredConnections = useMemo(() => {
+    if (!selectedExchange) {
+      return activeConnections
+    }
+    return activeConnections.filter(conn => conn.exchange === selectedExchange)
+  }, [activeConnections, selectedExchange])
+
   useEffect(() => {
-    loadConnections()
     loadStats()
     
     const interval = setInterval(() => {
@@ -41,32 +54,11 @@ export function Dashboard() {
     return () => clearInterval(interval)
   }, [])
 
-  // Reload connections and stats when selected exchange changes
+  // Reload stats when selected exchange changes
   useEffect(() => {
     console.log("[v0] [Dashboard] Exchange changed to:", selectedExchange)
-    loadConnections()
     loadStats()
   }, [selectedExchange])
-
-  const loadConnections = async () => {
-    try {
-      const url = selectedExchange 
-        ? `/api/settings/connections?enabled=true&exchange=${selectedExchange}`
-        : "/api/settings/connections?enabled=true"
-      
-      console.log("[v0] [Dashboard] Loading connections for exchange:", selectedExchange || "all")
-      const response = await fetch(url)
-      if (response.ok) {
-        const data = await response.json()
-        console.log("[v0] [Dashboard] Loaded connections:", data.connections?.length || 0)
-        setConnections(data.connections || [])
-      }
-    } catch (error) {
-      console.error("[v0] [Dashboard] Failed to load connections:", error)
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const loadStats = async () => {
     try {
@@ -74,7 +66,6 @@ export function Dashboard() {
         ? `/api/monitoring/stats?exchange=${selectedExchange}`
         : "/api/monitoring/stats"
       
-      console.log("[v0] [Dashboard] Loading stats for exchange:", selectedExchange || "all")
       const response = await fetch(url)
       if (response.ok) {
         const data = await response.json()
@@ -90,7 +81,7 @@ export function Dashboard() {
         })
       }
     } catch (error) {
-      console.error("[v0] [Dashboard] Failed to load stats:", error)
+      console.error("Failed to load stats:", error)
     }
   }
 
@@ -245,9 +236,12 @@ export function Dashboard() {
       <AddConnectionDialog
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
-        onSuccess={() => {
-          loadConnections()
-          setAddDialogOpen(false)
+        onConnectionAdded={async (connectionId) => {
+          console.log("[v0] [Dashboard] New connection added:", connectionId)
+          await loadActiveConnections()
+          if (connectionId) {
+            markAsInserted(connectionId, "active")
+          }
         }}
       />
     </div>

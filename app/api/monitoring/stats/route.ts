@@ -6,8 +6,6 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams
     const exchangeFilter = searchParams.get("exchange")
     
-    console.log("[v0] [API] GET /api/monitoring/stats - Exchange filter:", exchangeFilter || "all")
-    
     await initRedis()
     const redis = await getRedisHelpers()
 
@@ -15,7 +13,6 @@ export async function GET(request: NextRequest) {
     let connections = await getAllConnections()
     if (exchangeFilter) {
       connections = connections.filter((c: any) => c.exchange === exchangeFilter)
-      console.log("[v0] [API] Filtered to", connections.length, "connections for exchange:", exchangeFilter)
     }
     const activeConnections = connections.filter((c: any) => c.is_active === true || c.is_active === "true")
     
@@ -24,7 +21,6 @@ export async function GET(request: NextRequest) {
     if (exchangeFilter) {
       const exchangeConnectionIds = connections.map((c: any) => c.id)
       allPositions = allPositions.filter((p) => exchangeConnectionIds.includes(p.connection_id))
-      console.log("[v0] [API] Filtered to", allPositions.length, "positions for exchange:", exchangeFilter)
     }
     const openPositions = allPositions.filter((p) => p.status === "open")
     const closedPositions = allPositions.filter((p) => p.status === "closed")
@@ -51,7 +47,6 @@ export async function GET(request: NextRequest) {
       const exchangeConnectionIds = connections.map((c: any) => c.id)
       allIndications = allIndications.filter((ind) => exchangeConnectionIds.includes(ind.connection_id))
       allStrategies = allStrategies.filter((strat) => exchangeConnectionIds.includes(strat.connection_id))
-      console.log("[v0] [API] Filtered to", allIndications.length, "indications and", allStrategies.length, "strategies")
     }
     
     // Get system stats
