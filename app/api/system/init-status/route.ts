@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
           enabled: enabledConnectionsCount,
         },
         statistics: {
-          total_keys: stats.total_keys || 0,
+          total_keys: stats.keyCount || stats.total_keys || 0,
           memory_used: stats.memory_used || "0",
           uptime_seconds: stats.uptime_seconds || 0,
         },
