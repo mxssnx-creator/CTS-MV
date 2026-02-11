@@ -1127,8 +1127,8 @@ export default function SettingsPage() {
             data.settings.parabolicSARMaximumFrom ?? initialSettings.parabolicSARMaximumFrom
           updatedSettings.parabolicSARMaximumTo =
             data.settings.parabolicSARMaximumTo ?? initialSettings.parabolicSARMaximumTo
-      updatedSettings.parabolicSARMaximumStep =
-        data.settings.parabolicSARMaximumStep ?? initialSettings.parabolicSARMaximumStep
+          updatedSettings.parabolicSARMaximumStep =
+            data.settings.parabolicSARMaximumStep ?? initialSettings.parabolicSARMaximumStep
           if (data.settings.database_url !== undefined) {
             updatedSettings.database_url = data.settings.database_url
           }
@@ -1238,15 +1238,15 @@ export default function SettingsPage() {
       // Step 3: Check if engine intervals changed (requires engine restart)
       const engineIntervalsChanged =
         prevMainEngineIntervalMs !== settings.mainEngineIntervalMs ||
-      prevPresetEngineIntervalMs !== settings.presetEngineIntervalMs ||
-      prevActiveOrderHandlingIntervalMs !== settings.activeOrderHandlingIntervalMs
+        prevPresetEngineIntervalMs !== settings.presetEngineIntervalMs ||
+        prevActiveOrderHandlingIntervalMs !== settings.activeOrderHandlingIntervalMs
 
-    if (databaseSizesChanged || engineIntervalsChanged) {
-      setReorganizing(true)
-      console.log("[v0] Critical changes detected, pausing engine...")
-      toast.info("Pausing trade engine...", {
-        description: "Applying critical configuration changes requires pausing the engine.",
-      })
+      if (databaseSizesChanged || engineIntervalsChanged) {
+        setReorganizing(true)
+        console.log("[v0] Critical changes detected, pausing engine...")
+        toast.info("Pausing trade engine...", {
+          description: "Applying critical configuration changes requires pausing the engine.",
+        })
 
         // Step 3a: Pause trade engine
         const pauseResponse = await fetch("/api/trade-engine/pause", { method: "POST" })
@@ -1343,14 +1343,12 @@ export default function SettingsPage() {
 
         if (!reorganizeResponse.ok) {
           const errorMsg = reorganizeData?.error || reorganizeData?.message || "Database reorganization failed"
-          throw new Error(errorMsg)
-          console.error("[v0] Database reorganization failed:", errorData)
+          console.error("[v0] Database reorganization failed:", errorMsg)
           toast.error("Database reorganization failed", {
             description: "Settings saved but limits not applied. Please check logs.",
           })
         } else {
-          const reorganizeData = await reorganizeResponse.json()
-          console.log("[v0] Database reorganized successfully:", reorganizeData)
+          console.log("[v0] Database reorganized successfully")
           toast.success("Database reorganized successfully", {
             description: "New size limits have been applied.",
           })
