@@ -330,9 +330,6 @@ interface Settings {
   activeLastPartFrom: number
   activeLastPartTo: number
   activeLastPartStep: number
-
-  database_type: string
-  database_url: string
 }
 
 const initialSettings: Settings = {
@@ -652,16 +649,12 @@ const initialSettings: Settings = {
   activeLastPartFrom: 1,
   activeLastPartTo: 5,
   activeLastPartStep: 0.1,
-
-  database_type: "sqlite",
-  database_url: "",
 }
 
 export default function SettingsPage() {
   // useToast hook removed, toast from sonner imported and used.
   const [newMainSymbol, setNewMainSymbol] = useState("")
   const [newForcedSymbol, setNewForcedSymbol] = useState("")
-  const [databaseType, setDatabaseType] = useState<"sqlite" | "postgresql" | "remote">("sqlite")
 
   // FIX: positionCost default to 0.001 meaning 0.1% (displayed as 0.1%, not 10%)
   const [settings, setSettings] = useState<Settings>({
@@ -765,9 +758,6 @@ export default function SettingsPage() {
     atrMultiplierTo: initialSettings.atrMultiplierTo ?? 3.0,
     atrMultiplierStep: initialSettings.atrMultiplierStep ?? 0.1,
   })
-
-  const [originalDatabaseType, setOriginalDatabaseType] = useState<string>("sqlite")
-  const [databaseChanged, setDatabaseChanged] = useState(false)
 
   const [activeTab, setActiveTab] = useState("overall")
   const [indicationSubTab, setIndicationSubTab] = useState("main")
@@ -1137,13 +1127,8 @@ export default function SettingsPage() {
             data.settings.parabolicSARMaximumFrom ?? initialSettings.parabolicSARMaximumFrom
           updatedSettings.parabolicSARMaximumTo =
             data.settings.parabolicSARMaximumTo ?? initialSettings.parabolicSARMaximumTo
-          updatedSettings.parabolicSARMaximumStep =
-            data.settings.parabolicSARMaximumStep ?? initialSettings.parabolicSARMaximumStep
-
-          // Load current database type and URL
-          if (data.settings.database_type !== undefined) {
-            updatedSettings.database_type = data.settings.database_type
-          }
+      updatedSettings.parabolicSARMaximumStep =
+        data.settings.parabolicSARMaximumStep ?? initialSettings.parabolicSARMaximumStep
           if (data.settings.database_url !== undefined) {
             updatedSettings.database_url = data.settings.database_url
           }
@@ -1253,24 +1238,15 @@ export default function SettingsPage() {
       // Step 3: Check if engine intervals changed (requires engine restart)
       const engineIntervalsChanged =
         prevMainEngineIntervalMs !== settings.mainEngineIntervalMs ||
-        prevPresetEngineIntervalMs !== settings.presetEngineIntervalMs ||
-        prevActiveOrderHandlingIntervalMs !== settings.activeOrderHandlingIntervalMs
+      prevPresetEngineIntervalMs !== settings.presetEngineIntervalMs ||
+      prevActiveOrderHandlingIntervalMs !== settings.activeOrderHandlingIntervalMs
 
-      const databaseTypeChanged = settings.database_type !== originalDatabaseType
-
-      if (databaseSizesChanged || engineIntervalsChanged || databaseTypeChanged) {
-        setReorganizing(true)
-        console.log("[v0] Critical changes detected, pausing engine...")
-
-        if (databaseTypeChanged) {
-          toast.info("Database type changed", {
-            description: "Switching database requires system restart. Pausing engine...",
-          })
-        } else {
-          toast.info("Pausing trade engine...", {
-            description: "Applying critical configuration changes requires pausing the engine.",
-          })
-        }
+    if (databaseSizesChanged || engineIntervalsChanged) {
+      setReorganizing(true)
+      console.log("[v0] Critical changes detected, pausing engine...")
+      toast.info("Pausing trade engine...", {
+        description: "Applying critical configuration changes requires pausing the engine.",
+      })
 
         // Step 3a: Pause trade engine
         const pauseResponse = await fetch("/api/trade-engine/pause", { method: "POST" })
@@ -1332,46 +1308,6 @@ export default function SettingsPage() {
             description: "New size limits have been applied.",
           })
         }
-      }
-
-      if (databaseTypeChanged) {
-        console.log("[v0] Database type changed, applying configuration...")
-        toast.info("Switching database type...", {
-          description: `Changing from ${originalDatabaseType} to ${settings.database_type}`,
-        })
-
-        const dbChangeResponse = await fetch("/api/database/change-type", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            database_type: settings.database_type,
-            database_url: settings.database_url,
-          }),
-        })
-
-        if (!dbChangeResponse.ok) {
-          const errorData = await dbChangeResponse.json()
-          console.error("[v0] Database type change failed:", errorData)
-          toast.error("Database change failed", {
-            description: errorData.error || "Failed to change database type",
-          })
-          throw new Error("Database type change failed")
-        }
-
-        console.log("[v0] Database type changed successfully")
-        setOriginalDatabaseType(settings.database_type)
-        setDatabaseChanged(false)
-
-        toast.success("Database type changed!", {
-          description: "System will restart automatically to apply changes.",
-        })
-
-        // Wait a moment before restarting
-        await new Promise((resolve) => setTimeout(resolve, 2000))
-
-        // Trigger system restart
-        window.location.reload()
-        return
       }
 
       // Step 6: If critical settings changed, resume engine
@@ -1895,10 +1831,6 @@ export default function SettingsPage() {
     
     loadSettingsAndDB()
   }, [])
-
-  useEffect(() => {
-    setDatabaseChanged(settings.database_type !== originalDatabaseType)
-  }, [settings.database_type, originalDatabaseType])
 
   const loadDatabaseType = async () => {
     try {
