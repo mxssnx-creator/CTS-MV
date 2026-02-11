@@ -328,7 +328,7 @@ export async function createConnection(data: any): Promise<string> {
     ...data,
     id,
     is_enabled: String(data.is_enabled !== false),
-    is_active: String(data.is_active === true),
+    is_active: String(data.is_active !== false), // Active if passed as active
     is_testnet: String(data.is_testnet === true),
     created_at: data.created_at || new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -347,16 +347,6 @@ export async function createConnection(data: any): Promise<string> {
   }
 
   console.log("[v0] [DB] ✓ Connection created successfully:", id)
-  return id
-}
-
-  await client.hSet(`connection:${id}`, connectionData)
-  await client.sAdd("connections:all", id)
-  await client.sAdd(`connections:${data.exchange}`, id)
-
-  // TTL: 30 days for inactive connections
-  await client.expire(`connection:${id}`, 30 * 24 * 60 * 60)
-
   return id
 }
 
@@ -405,15 +395,24 @@ export async function updateConnection(id: string, data: any): Promise<void> {
   await client.hSet(`connection:${id}`, data)
 }
 
-export async function deleteConnection(id: string): Promise<void> {
+export async function deleteConnection(id: string): Promise<boolean> {
+  console.log("[v0] [DB] Deleting connection:", id)
   const client = getRedisClient()
   const connection = await getConnection(id)
 
-  if (connection) {
-    await client.sRem("connections:all", id)
-    await client.sRem(`connections:${connection.exchange}`, id)
-    await client.del(`connection:${id}`)
+  if (!connection) {
+    console.warn("[v0] [DB] Connection not found for deletion:", id)
+    return false
   }
+
+  await client.sRem("connections:all", id)
+  await client.sRem(`connections:${connection.exchange}`, id)
+  await client.sRem("connections:enabled", id)
+  await client.sRem("connections:active", id)
+  await client.del(`connection:${id}`)
+
+  console.log("[v0] [DB] ✓ Connection deleted successfully:", id)
+  return true
 }
 
 /**
