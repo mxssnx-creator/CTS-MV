@@ -446,6 +446,7 @@ export default function ExchangeConnectionManager() {
   const [error, setError] = useState<string | null>(null)
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [testingId, setTestingId] = useState<string | null>(null)
+  const [recentlyInsertedBase, setRecentlyInsertedBase] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     loadConnections()
@@ -721,7 +722,26 @@ export default function ExchangeConnectionManager() {
         )}
       </div>
 
-      <AddConnectionDialog open={showAddDialog} onOpenChange={setShowAddDialog} onConnectionAdded={loadConnections} />
+      <AddConnectionDialog 
+        open={showAddDialog} 
+        onOpenChange={setShowAddDialog} 
+        onConnectionAdded={async (connectionId) => {
+          console.log("[v0] Connection added:", connectionId)
+          // Mark as newly added for auto-test
+          if (connectionId) {
+            setRecentlyInsertedBase((prev) => new Set(prev).add(connectionId))
+            // Clear the flag after 10 seconds
+            setTimeout(() => {
+              setRecentlyInsertedBase((prev) => {
+                const next = new Set(prev)
+                next.delete(connectionId)
+                return next
+              })
+            }, 10000)
+          }
+          await loadConnections()
+        }} 
+      />
     </div>
   )
 }
