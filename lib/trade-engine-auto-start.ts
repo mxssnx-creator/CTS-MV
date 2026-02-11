@@ -105,7 +105,7 @@ function startConnectionMonitoring(): void {
       }
 
       const coordinator = getGlobalTradeEngineCoordinator()
-      const settings = loadSettings()
+      const settings = await loadSettingsAsync() || {}
       const indicationInterval = settings.mainEngineIntervalMs ? settings.mainEngineIntervalMs / 1000 : 5
       const strategyInterval = settings.strategyUpdateIntervalMs ? settings.strategyUpdateIntervalMs / 1000 : 10
       const realtimeInterval = settings.realtimeIntervalMs ? settings.realtimeIntervalMs / 1000 : 3
