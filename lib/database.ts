@@ -35,6 +35,20 @@ export {
   getMigrationStatus
 } from "./redis-migrations"
 
+export {
+  getActiveIndications,
+  getBestPerformingIndications,
+  getRecentIndications,
+  getActiveStrategies,
+  getBestPerformingStrategies,
+  getStrategyStatistics,
+  getAllPositions,
+  getAllIndicationPerformance,
+  getAllStrategyPerformance,
+  getDailyPerformanceSummary,
+  getRedisHelpers
+} from "./db-helpers"
+
 import { getRedisClient, initRedis as initRedisDb } from "./redis-db"
 import { nanoid } from "nanoid"
 

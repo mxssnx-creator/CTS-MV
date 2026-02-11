@@ -698,3 +698,11 @@ export async function getIndications(connectionId: string, symbol?: string): Pro
   
   return indications.filter(Boolean)
 }
+
+/**
+ * Export helper function wrapper for compatibility
+ */
+export async function getRedisHelpers() {
+  const helpers = await import("./db-helpers")
+  return helpers.getRedisHelpers()
+}
