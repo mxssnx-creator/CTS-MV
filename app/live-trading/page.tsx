@@ -102,26 +102,6 @@ export default function LiveTradingPage() {
       console.error("[v0] [Live Trading] Failed to load connections:", error)
     }
   }
-        return
-      }
-
-      console.log("[v0] No enabled connections found - using mock data")
-      setHasRealConnections(false)
-    } catch (error) {
-      console.error("[v0] Failed to load connections:", error)
-      setHasRealConnections(false)
-    }
-
-    // Default mock connections (fallback only)
-    const mockConnections = [
-      { id: "bybit-mock", name: "Bybit Demo (BYBIT)", is_enabled: false },
-      { id: "bingx-mock", name: "BingX Demo (BINGX)", is_enabled: false },
-    ]
-    setConnections(mockConnections)
-    if (!selectedConnection || selectedConnection === "") {
-      setSelectedConnection(mockConnections[0].id)
-    }
-  }
 
   useEffect(() => {
     loadConnections()
