@@ -35,17 +35,8 @@ interface AddConnectionDialogProps {
 const ALL_EXCHANGES = [
   { id: "bybit", name: "Bybit" },
   { id: "bingx", name: "BingX" },
-  { id: "binance", name: "Binance" },
-  { id: "okx", name: "OKX" },
-  { id: "gateio", name: "Gate.io" },
-  { id: "kucoin", name: "KuCoin" },
-  { id: "mexc", name: "MEXC" },
-  { id: "bitget", name: "Bitget" },
   { id: "pionex", name: "Pionex" },
   { id: "orangex", name: "OrangeX" },
-  { id: "huobi", name: "Huobi" },
-  { id: "kraken", name: "Kraken" },
-  { id: "coinbase", name: "Coinbase" },
 ]
 
 export function AddConnectionDialog({ open, onOpenChange, onConnectionAdded, showOnlyEnabled = false }: AddConnectionDialogProps) {
@@ -598,6 +589,28 @@ export function AddConnectionDialog({ open, onOpenChange, onConnectionAdded, sho
                   onCheckedChange={(checked) => setFormData({ ...formData, is_testnet: checked })}
                   disabled={loading}
                 />
+              </div>
+
+              {/* Rate Limit Info */}
+              <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded p-3 text-xs">
+                <div className="font-semibold text-blue-900 dark:text-blue-200 mb-2">Rate Limits ({formData.connection_method === "rest" ? "REST API" : "WebSocket"})</div>
+                <div className="text-blue-800 dark:text-blue-300 space-y-1">
+                  {formData.connection_method === "rest" ? (
+                    <>
+                      <div>• Public requests: 1000 per 10 seconds</div>
+                      <div>• Private requests: 100 per 10 seconds</div>
+                      <div>• Recommended delay: 10-50ms between requests</div>
+                      <div>• Check exchange docs for tier-specific limits</div>
+                    </>
+                  ) : (
+                    <>
+                      <div>• Unlimited message rate on WebSocket</div>
+                      <div>• Max 10 concurrent connections</div>
+                      <div>• Best for real-time market data</div>
+                      <div>• Lower latency than REST polling</div>
+                    </>
+                  )}
+                </div>
               </div>
             </TabsContent>
 

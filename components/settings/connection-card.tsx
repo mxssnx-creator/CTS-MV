@@ -27,6 +27,7 @@ interface ConnectionCardProps {
   onShowDetails?: () => void
   onShowLogs?: () => void
   onTestConnection?: (logs: string[]) => void
+  isNewlyAdded?: boolean
 }
 
 export function ConnectionCard({
@@ -38,6 +39,7 @@ export function ConnectionCard({
   onShowDetails,
   onShowLogs,
   onTestConnection,
+  isNewlyAdded = false,
 }: ConnectionCardProps) {
   const [testingConnection, setTestingConnection] = useState(false)
   const [logsExpanded, setLogsExpanded] = useState(false)
@@ -46,6 +48,13 @@ export function ConnectionCard({
     api_key: connection.api_key,
     api_secret: connection.api_secret,
     name: connection.name,
+    api_type: connection.api_type,
+    connection_method: connection.connection_method,
+    connection_library: connection.connection_library,
+    margin_type: connection.margin_type,
+    position_mode: connection.position_mode,
+    is_testnet: connection.is_testnet,
+    api_passphrase: connection.api_passphrase || "",
   })
   const [savingSettings, setSavingSettings] = useState(false)
   const [workingStatus, setWorkingStatus] = useState<"idle" | "testing" | "success" | "error">("idle")
@@ -54,7 +63,6 @@ export function ConnectionCard({
   const handleTestConnection = async () => {
     setTestingConnection(true)
     setWorkingStatus("testing")
-    setShowTestLogInstant(true)
 
     console.log("[v0] [Test Connection] Using configured settings from connection:", {
       exchange: connection.exchange,
@@ -88,6 +96,7 @@ export function ConnectionCard({
           description: data.error || "Failed to test connection",
         })
         onTestConnection?.(data.log || [])
+        setLogsExpanded(true)
         return
       }
 
@@ -97,6 +106,7 @@ export function ConnectionCard({
           description: data.error || data.message || "Failed to test connection",
         })
         onTestConnection?.(data.log || [])
+        setLogsExpanded(true)
         return
       }
 
@@ -105,29 +115,30 @@ export function ConnectionCard({
         description: `Balance: ${data.balance?.toFixed(2) || "N/A"} USDT`,
       })
       onTestConnection?.(data.log || [])
+      setLogsExpanded(true) // Auto-show logs on test completion
     } catch (error) {
       setWorkingStatus("error")
       toast.error("Test Connection Error", {
         description: error instanceof Error ? error.message : "Unknown error",
       })
+      setLogsExpanded(true)
     } finally {
       setTestingConnection(false)
     }
   }
 
-  // Auto-run test on mount if credentials configured and not recently tested
+  // Auto-run test ONLY on newly added connections if credentials configured
   useEffect(() => {
-    const shouldAutoTest = connection.is_enabled && 
+    const shouldAutoTest = isNewlyAdded && 
+      connection.is_enabled && 
       connection.api_key && 
-      connection.api_secret && 
-      (!connection.last_test_at || 
-        (Date.now() - new Date(connection.last_test_at).getTime() > 5 * 60 * 1000)) // 5 minutes
+      connection.api_secret
     
     if (shouldAutoTest) {
-      console.log("[v0] Auto-testing connection:", connection.name)
+      console.log("[v0] Auto-testing new connection:", connection.name)
       handleTestConnection()
     }
-  }, [connection.id, connection.is_enabled, connection.api_key, connection.api_secret, connection.last_test_at])
+  }, [isNewlyAdded, connection.id])
 
   const handleSaveSettings = async () => {
     if (!editFormData.api_key || !editFormData.api_secret) {
@@ -145,7 +156,14 @@ export function ConnectionCard({
         body: JSON.stringify({
           api_key: editFormData.api_key,
           api_secret: editFormData.api_secret,
+          api_passphrase: editFormData.api_passphrase,
           name: editFormData.name,
+          api_type: editFormData.api_type,
+          connection_method: editFormData.connection_method,
+          connection_library: editFormData.connection_library,
+          margin_type: editFormData.margin_type,
+          position_mode: editFormData.position_mode,
+          is_testnet: editFormData.is_testnet,
         }),
       })
 
@@ -375,14 +393,141 @@ export function ConnectionCard({
 
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Connection Name</Label>
+              <Label htmlFor="edit-name">Connection Name</Label>
               <Input
-                id="name"
+                id="edit-name"
                 value={editFormData.name}
                 onChange={(e) => setEditFormData((prev) => ({ ...prev, name: e.target.value }))}
                 placeholder="e.g., My Bybit Connection"
               />
             </div>
+
+            {/* API Type and Connection Method */}
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-api-type">API Type</Label>
+                <Select value={editFormData.api_type} onValueChange={(value) => setEditFormData(prev => ({ ...prev, api_type: value }))}>
+                  <SelectTrigger id="edit-api-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="spot">Spot</SelectItem>
+                    <SelectItem value="perpetual_futures">Perpetual Futures</SelectItem>
+                    <SelectItem value="linear_swap">Linear Swap</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-connection-method">Connection Method</Label>
+                <Select value={editFormData.connection_method} onValueChange={(value) => setEditFormData(prev => ({ ...prev, connection_method: value }))}>
+                  <SelectTrigger id="edit-connection-method">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="rest">REST API</SelectItem>
+                    <SelectItem value="websocket">WebSocket</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Rate Limit Info */}
+            <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded p-3 text-xs">
+              <div className="font-semibold text-amber-900 dark:text-amber-200 mb-1">Rate Limits ({editFormData.connection_method === "rest" ? "REST API" : "WebSocket"})</div>
+              <div className="text-amber-800 dark:text-amber-300 space-y-1">
+                {editFormData.connection_method === "rest" ? (
+                  <>
+                    <div>• Public: 1000 requests/10 seconds</div>
+                    <div>• Private: 100 requests/10 seconds</div>
+                    <div>• Recommended Delay: 10-50ms between requests</div>
+                  </>
+                ) : (
+                  <>
+                    <div>• Unlimited message rate</div>
+                    <div>• Max 10 concurrent connections</div>
+                    <div>• Best for real-time updates</div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Margin & Position Settings */}
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-margin">Margin Type</Label>
+                <Select value={editFormData.margin_type} onValueChange={(value) => setEditFormData(prev => ({ ...prev, margin_type: value }))}>
+                  <SelectTrigger id="edit-margin">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cross">Cross Margin</SelectItem>
+                    <SelectItem value="isolated">Isolated Margin</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-position">Position Mode</Label>
+                <Select value={editFormData.position_mode} onValueChange={(value) => setEditFormData(prev => ({ ...prev, position_mode: value }))}>
+                  <SelectTrigger id="edit-position">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="hedge">Hedge Mode (Bidirectional)</SelectItem>
+                    <SelectItem value="one_way">One Way Mode</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Testnet Toggle */}
+            <div className="flex items-center justify-between p-3 border rounded-lg">
+              <div>
+                <Label>Use Testnet</Label>
+                <p className="text-xs text-muted-foreground">Test connections on testnet before live trading</p>
+              </div>
+              <Switch
+                id="edit-testnet"
+                checked={editFormData.is_testnet}
+                onCheckedChange={(checked) => setEditFormData(prev => ({ ...prev, is_testnet: checked }))}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-api-key">API Key</Label>
+              <Input
+                id="edit-api-key"
+                type="password"
+                value={editFormData.api_key}
+                onChange={(e) => setEditFormData((prev) => ({ ...prev, api_key: e.target.value }))}
+                placeholder="Enter your API key"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-api-secret">API Secret</Label>
+              <Input
+                id="edit-api-secret"
+                type="password"
+                value={editFormData.api_secret}
+                onChange={(e) => setEditFormData((prev) => ({ ...prev, api_secret: e.target.value }))}
+                placeholder="Enter your API secret"
+              />
+            </div>
+
+            {connection.exchange === "okx" && (
+              <div className="space-y-2">
+                <Label htmlFor="edit-passphrase">API Passphrase (OKX only)</Label>
+                <Input
+                  id="edit-passphrase"
+                  type="password"
+                  value={editFormData.api_passphrase}
+                  onChange={(e) => setEditFormData((prev) => ({ ...prev, api_passphrase: e.target.value }))}
+                  placeholder="Enter your API passphrase"
+                />
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="api-key">API Key</Label>

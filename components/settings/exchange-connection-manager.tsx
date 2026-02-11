@@ -714,6 +714,7 @@ export default function ExchangeConnectionManager() {
                 onTestConnection={(logs) => {
                   // Connection tested
                 }}
+                isNewlyAdded={recentlyInsertedBase.has(conn.id)}
               />
             ))}
           </div>
