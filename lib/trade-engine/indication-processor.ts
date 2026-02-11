@@ -3,7 +3,16 @@
  * Processes indications asynchronously for symbols using Redis-backed market data
  */
 
-import { initRedis, getMarketData, saveIndication } from "@/lib/redis-db"
+// Dynamic imports to avoid build-time resolution issues
+async function getRedisHelpers() {
+  const mod = await import("@/lib/redis-db")
+  return {
+    initRedis: mod.initRedis,
+    getMarketData: mod.getMarketData ?? (async (_s: string, _l?: number) => []),
+    saveIndication: mod.saveIndication ?? (async (_d: any) => ""),
+    getSettings: mod.getSettings,
+  }
+}
 
 export class IndicationProcessor {
   private connectionId: string
@@ -23,8 +32,9 @@ export class IndicationProcessor {
       console.log(`[v0] Processing historical indications for ${symbol} from ${startDate.toISOString()} to ${endDate.toISOString()}`)
 
       // Fetch historical market data for the date range
-      await initRedis()
-      const historicalData = await getMarketData(symbol, 100) // Get last 100 data points
+      const redis = await getRedisHelpers()
+      await redis.initRedis()
+      const historicalData = await redis.getMarketData(symbol, 100) // Get last 100 data points
 
       if (!historicalData || historicalData.length === 0) {
         console.log(`[v0] No historical market data available for ${symbol}`)
@@ -38,7 +48,7 @@ export class IndicationProcessor {
         const indication = await this.calculateIndication(symbol, marketData, settings)
 
         if (indication && indication.profit_factor >= settings.minProfitFactor) {
-          await saveIndication({
+          await redis.saveIndication({
             connection_id: this.connectionId,
             symbol,
             indication_type: indication.type,
@@ -78,7 +88,8 @@ export class IndicationProcessor {
       const indication = await this.calculateIndication(symbol, marketData, settings)
 
       if (indication && indication.profit_factor >= settings.minProfitFactor) {
-        await saveIndication({
+        const redis = await getRedisHelpers()
+        await redis.saveIndication({
           connection_id: this.connectionId,
           symbol,
           indication_type: indication.type,
@@ -216,9 +227,9 @@ export class IndicationProcessor {
 
   private async getRecentPrices(symbol: string, count: number): Promise<number[]> {
     try {
-      await initRedis()
-      // Fetch from Redis - market data stored as lists by symbol
-      const marketDataList = await getMarketData(symbol, count)
+      const redis = await getRedisHelpers()
+      await redis.initRedis()
+      const marketDataList = await redis.getMarketData(symbol, count)
       return marketDataList.map((d: any) => d.close || d.price || 0).reverse()
     } catch {
       return []
@@ -234,8 +245,9 @@ export class IndicationProcessor {
     }
 
     try {
-      await initRedis()
-      const data = await getMarketData(symbol, 1)
+      const redis = await getRedisHelpers()
+      await redis.initRedis()
+      const data = await redis.getMarketData(symbol, 1)
       const latest = data[0]
       
       if (latest) {
@@ -257,8 +269,8 @@ export class IndicationProcessor {
     }
 
     try {
-      const { getSettings } = await import("@/lib/redis-db")
-      const settings = await getSettings("all_settings") || {}
+      const redis = await getRedisHelpers()
+      const settings = await redis.getSettings("all_settings") || {}
 
       const indicationSettings = {
         minProfitFactor: settings.minProfitFactor || 1.2,
