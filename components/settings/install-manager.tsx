@@ -158,9 +158,9 @@ export default function InstallManager() {
       if (data.success) {
         setInstallLog(prev => [
           ...prev,
-          `✓ Schema version: ${data.status.migration_status.latest_version}`,
-          `✓ Database keys: ${data.status.database_stats.total_keys}`,
-          `✓ ${data.message}`
+          `✓ Schema version: ${data.status?.schema_version || "N/A"}`,
+          `✓ Database keys: ${data.stats?.total_keys || 0}`,
+          `✓ ${data.message || "Migrations completed"}`
         ])
         toast.success("Redis migrations complete")
         setTimeout(() => loadStatus(), 1000)
