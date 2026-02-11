@@ -90,6 +90,31 @@ export function AddConnectionDialog({ open, onOpenChange, onConnectionAdded }: A
     }
   }, [formData.exchange])
 
+  useEffect(() => {
+    // Update connection method and library based on API type and exchange
+    const exchange = formData.exchange
+    const availableMethods = EXCHANGE_CONNECTION_METHODS[exchange] || ["rest"]
+    
+    // Set default connection method if current is not available
+    if (!availableMethods.includes(formData.connection_method)) {
+      setFormData(prev => ({ ...prev, connection_method: availableMethods[0] }))
+    }
+
+    // Set default library based on connection method
+    let defaultLibrary = "native"
+    if (formData.connection_method === "rest") {
+      defaultLibrary = "native"
+    } else if (formData.connection_method === "websocket") {
+      defaultLibrary = "native"
+    } else if (formData.connection_method === "library") {
+      defaultLibrary = "original"
+    }
+
+    if (formData.connection_library !== defaultLibrary) {
+      setFormData(prev => ({ ...prev, connection_library: defaultLibrary }))
+    }
+  }, [formData.exchange, formData.connection_method])
+
   const loadExistingConnections = async () => {
     try {
       const response = await fetch("/api/settings/connections")
