@@ -497,14 +497,20 @@ export default function ExchangeConnectionManager() {
   const testConnection = async (id: string) => {
     setTestingId(id)
     try {
+      console.log("[v0] Testing connection:", id)
+      
       const response = await fetch(`/api/settings/connections/${id}/test`, {
         method: "POST",
       })
 
       const data = await response.json()
 
+      console.log("[v0] Test response status:", response.status, "data:", data)
+
       if (!response.ok) {
-        throw new Error(data.error || "Test failed")
+        const errorMsg = data.error || data.details || "Test failed"
+        console.error("[v0] Test API error:", errorMsg)
+        throw new Error(errorMsg)
       }
 
       // Update connection with test results
@@ -515,7 +521,7 @@ export default function ExchangeConnectionManager() {
                 ...c,
                 last_test_status: data.success ? "success" : "failed",
                 last_test_balance: data.balance,
-                last_test_log: data.logs || [],
+                last_test_log: data.log || [],
               }
             : c
         )

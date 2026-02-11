@@ -13,18 +13,28 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   try {
     testLog.push(`[${new Date().toISOString()}] Starting connection test for ID: ${id}`)
+    console.log("[v0] [Test Route] Testing connection ID:", id)
 
     await initRedis()
+    console.log("[v0] [Test Route] Redis initialized")
+    
     const connection = await getConnection(id)
+    console.log("[v0] [Test Route] Connection retrieved:", connection?.name || "NOT FOUND")
 
     if (!connection) {
       testLog.push(`[${new Date().toISOString()}] ERROR: Connection not found (ID: ${id})`)
+      console.error("[v0] [Test Route] Connection not found in Redis:", id)
+      
       await SystemLogger.logAPI(
-        `Connection test failed: not found`,
+        `Connection test failed: not found - ${id}`,
         "error",
         "POST /api/settings/connections/[id]/test",
       )
-      return NextResponse.json({ error: "Connection not found", log: testLog }, { status: 404 })
+      return NextResponse.json({ 
+        error: "Connection not found", 
+        details: `No connection with ID ${id} found in database`,
+        log: testLog 
+      }, { status: 404 })
     }
 
     testLog.push(`[${new Date().toISOString()}] Connection found: ${connection.name} (${connection.exchange})`)
