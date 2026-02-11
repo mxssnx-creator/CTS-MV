@@ -2021,7 +2021,6 @@ export default function SettingsPage() {
             />
           </TabsContent>
         </Tabs>
-        </div>
       </div>
     </AuthGuard>
   )
