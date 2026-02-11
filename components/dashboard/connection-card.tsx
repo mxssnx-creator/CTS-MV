@@ -17,7 +17,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ExchangeConnectionSettingsDialog } from "@/components/settings/exchange-connection-settings-dialog"
+import { ConnectionStateTabs } from "@/components/dashboard/connection-state-tabs"
 import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
 import type { ExchangeConnection } from "@/lib/types"
@@ -1369,104 +1369,20 @@ export function ConnectionCard({
         </DialogContent>
       </Dialog>
 
-      {/* Connection Logs Dialog with Progression and Errors */}
+      {/* Connection State Tabs Dialog */}
       <Dialog open={showLogs} onOpenChange={setShowLogs}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Connection Progression & Logs</DialogTitle>
+            <DialogTitle>Connection Dashboard - {connection.name}</DialogTitle>
             <DialogDescription>
-              View connection initialization procedures, progression steps, and any errors that occurred
+              Monitor connection state, performance, and real-time activity
             </DialogDescription>
           </DialogHeader>
-
-          <div className="space-y-4">
-            {/* Progression Timeline */}
-            <div className="space-y-3">
-              <h3 className="text-sm font-semibold">Connection Progression</h3>
-              <div className="space-y-2 text-xs">
-                <div className="flex items-start gap-2 p-2 bg-blue-50 dark:bg-blue-950 rounded border border-blue-200 dark:border-blue-800">
-                  <div className="mt-1 shrink-0">✓</div>
-                  <div>
-                    <div className="font-medium">API Authentication</div>
-                    <div className="text-muted-foreground">Credentials validated with {connection.exchange}</div>
-                  </div>
-                </div>
-                <div className="flex items-start gap-2 p-2 bg-blue-50 dark:bg-blue-950 rounded border border-blue-200 dark:border-blue-800">
-                  <div className="mt-1 shrink-0">✓</div>
-                  <div>
-                    <div className="font-medium">Market Data Sync</div>
-                    <div className="text-muted-foreground">Loaded {connection.symbolsPerExchange || 50} trading pairs</div>
-                  </div>
-                </div>
-                <div className="flex items-start gap-2 p-2 bg-blue-50 dark:bg-blue-950 rounded border border-blue-200 dark:border-blue-800">
-                  <div className="mt-1 shrink-0">{connection.is_live_trade ? "✓" : "⊙"}</div>
-                  <div>
-                    <div className="font-medium">Live Trade Engine</div>
-                    <div className="text-muted-foreground">{connection.is_live_trade ? "Active and monitoring" : "Ready to activate"}</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Error/Status Log */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold">Activity Log</h3>
-                {connection.last_test_status === "failed" && (
-                  <Badge variant="destructive" className="text-xs">
-                    ✗ Errors Found
-                  </Badge>
-                )}
-              </div>
-
-              <div className="bg-muted p-3 rounded border text-xs font-mono space-y-1 max-h-64 overflow-y-auto">
-                {connection.last_test_log && connection.last_test_log.length > 0 ? (
-                  connection.last_test_log.map((log, idx) => (
-                    <div 
-                      key={idx}
-                      className={
-                        log.includes("Error") || log.includes("failed") 
-                          ? "text-red-600 dark:text-red-400"
-                          : log.includes("success") || log.includes("✓")
-                            ? "text-green-600 dark:text-green-400"
-                            : "text-muted-foreground"
-                      }
-                    >
-                      {log}
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-muted-foreground">
-                    No logs available. Test the connection to generate logs.
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Error Menu */}
-            {connection.last_test_status === "failed" && connection.last_test_log?.some(log => log.includes("Error")) && (
-              <div className="space-y-2 border-t pt-4">
-                <h3 className="text-sm font-semibold text-red-600 dark:text-red-400">Errors & Solutions</h3>
-                <div className="space-y-2">
-                  {connection.last_test_log.filter(log => log.includes("Error")).map((errorLog, idx) => (
-                    <div key={idx} className="p-2 bg-red-50 dark:bg-red-950 rounded border border-red-200 dark:border-red-800 text-xs">
-                      <div className="font-medium text-red-700 dark:text-red-300 mb-1">{errorLog}</div>
-                      <div className="text-muted-foreground text-xs">
-                        {errorLog.includes("authentication") || errorLog.includes("API Key") 
-                          ? "→ Verify API credentials are correct and have appropriate permissions"
-                          : errorLog.includes("network") || errorLog.includes("timeout")
-                            ? "→ Check internet connection and exchange API availability"
-                            : errorLog.includes("rate limit")
-                              ? "→ Reduce connection frequency or wait before retrying"
-                              : "→ Check connection settings and try again"}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <Button variant="outline" onClick={() => setShowLogs(false)} className="w-full">
+          
+          <ConnectionStateTabs connection={connection} status={status} progress={progress} />
+          
+          <div className="flex justify-end pt-4 border-t">
+            <Button variant="outline" onClick={() => setShowLogs(false)}>
               Close
             </Button>
           </div>
