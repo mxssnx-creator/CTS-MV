@@ -16,33 +16,6 @@ import { PageHeader } from "@/components/page-header"
 
 export default function LiveTradingPage() {
   const { selectedExchange } = useExchange()
-  // ... existing state ...
-  
-  const handleStartEngine = async () => {
-    if (!selectedConnection) {
-      toast.error("Please select a connection")
-      return
-    }
-
-    try {
-      console.log("[v0] Starting trade engine for connection:", selectedConnection)
-      const response = await fetch("/api/trade-engine/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ connectionId: selectedConnection }),
-      })
-
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.error || "Failed to start engine")
-
-      console.log("[v0] Trade engine started successfully")
-      setIsEngineRunning(true)
-      toast.success(`Trade engine started for ${result.connectionName}`)
-    } catch (error) {
-      console.error("[v0] Failed to start trade engine:", error)
-      toast.error(error instanceof Error ? error.message : "Failed to start trade engine")
-    }
-  }
   const [activeTab, setActiveTab] = useState("overview")
   const [selectedConnection, setSelectedConnection] = useState<string>("")
   const [tradingEngine] = useState(() => new TradingEngine())
@@ -79,6 +52,29 @@ export default function LiveTradingPage() {
   const [hasRealConnections, setHasRealConnections] = useState(false)
   const [connections, setConnections] = useState<Array<{ id: string; name: string; is_enabled: boolean }>>([])
   const [isEngineRunning, setIsEngineRunning] = useState(false)
+
+  const handleStartEngine = async () => {
+    if (!selectedConnection) {
+      toast.error("Please select a connection")
+      return
+    }
+
+    try {
+      const response = await fetch("/api/trade-engine/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ connectionId: selectedConnection }),
+      })
+
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || "Failed to start engine")
+
+      setIsEngineRunning(true)
+      toast.success(`Trade engine started for ${result.connectionName}`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to start trade engine")
+    }
+  }
 
   const loadConnections = async () => {
     try {
