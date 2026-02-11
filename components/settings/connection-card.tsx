@@ -116,10 +116,19 @@ export function ConnectionCard({
 
       const data = await response.json()
 
-      if (!response.ok) {
+      if (data.error) {
         setWorkingStatus("error")
         toast.error("Connection Test Failed", {
-          description: data.details || data.error || "Failed to test connection",
+          description: data.error || "Failed to test connection",
+        })
+        onTestConnection?.(data.log || [])
+        return
+      }
+
+      if (!response.ok || !data.success) {
+        setWorkingStatus("error")
+        toast.error("Connection Test Failed", {
+          description: data.error || data.message || "Failed to test connection",
         })
         onTestConnection?.(data.log || [])
         return

@@ -8,6 +8,7 @@ import { Plus, Loader2, Trash2, Info, Settings, Eye, EyeOff } from 'lucide-react
 import { toast } from "@/lib/simple-toast"
 import type { Connection } from "@/lib/file-storage"
 import { AddConnectionDialog } from "@/components/settings/add-connection-dialog"
+import { ConnectionCard } from "@/components/settings/connection-card"
 import {
   Dialog,
   DialogContent,
@@ -546,11 +547,8 @@ export default function ExchangeConnectionManager() {
     }
   }
 
-  const deleteConnection = async (id: string) => {
-    if (!confirm("Delete this connection?")) return
-
+  const handleDeleteConnection = async (id: string) => {
     try {
-      // Delete immediately - no optimistic removal
       const response = await fetch(`/api/settings/connections/${id}`, {
         method: "DELETE",
       })
@@ -560,8 +558,9 @@ export default function ExchangeConnectionManager() {
         throw new Error(data.error || "Failed to delete")
       }
 
-      // Only update state if deletion succeeded
+      // Refresh the connections list
       setConnections((prev) => prev.filter((c) => c.id !== id))
+      await loadConnections()
       toast.success("Connection deleted")
     } catch (error) {
       console.error("[v0] Delete error:", error)
@@ -693,151 +692,30 @@ export default function ExchangeConnectionManager() {
           </Card>
         ) : (
           <div className="space-y-4">
-            {connections.map((conn) => {
-              const exchangeConfig = EXCHANGES[conn.exchange as keyof typeof EXCHANGES]
-              const exchangeName = exchangeConfig?.name || conn.exchange || "Unknown"
-
-              return (
-                <Card key={conn.id} className={conn.is_enabled ? "border-blue-500 border-2" : ""}>
-                  <CardHeader>
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1 space-y-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <CardTitle className="text-lg">{conn.name}</CardTitle>
-                          <Badge variant="outline">{exchangeName}</Badge>
-                          {conn.is_testnet && <Badge variant="outline">Testnet</Badge>}
-                          {conn.last_test_status === "success" && <Badge className="bg-green-500 text-white">✓ Tested</Badge>}
-                          {conn.last_test_status === "failed" && <Badge variant="destructive">✗ Failed</Badge>}
-                        </div>
-                        <CardDescription className="flex flex-wrap gap-4 text-xs">
-                          <span>API Type: <span className="font-medium">{conn.api_type}</span></span>
-                          <span>Margin: <span className="font-medium capitalize">{conn.margin_type}</span></span>
-                          <span>Position: <span className="font-medium capitalize">{conn.position_mode}</span></span>
-                          <span>Library: <span className="font-mono text-xs font-semibold">{conn.connection_library}</span></span>
-                        </CardDescription>
-                      </div>
-                      
-                      {/* Right Side Action Buttons - Stacked Vertically */}
-                      <div className="flex flex-col gap-2 items-stretch flex-shrink-0 min-w-24">
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              title="Edit Settings"
-                              className="justify-center"
-                            >
-                              <Settings className="h-4 w-4 mr-2" />
-                              Edit
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-                            <DialogHeader>
-                              <DialogTitle>Edit Connection - {conn.name}</DialogTitle>
-                              <DialogDescription>{exchangeName} - {conn.api_type}</DialogDescription>
-                            </DialogHeader>
-                            <EditConnectionDialog connection={conn} onSave={loadConnections} exchangeName={exchangeName} />
-                          </DialogContent>
-                        </Dialog>
-
-                        <Button
-                          variant={conn.is_enabled ? "default" : "outline"}
-                          size="sm"
-                          title={conn.is_enabled ? "Disable" : "Enable"}
-                          onClick={() => toggleEnabled(conn.id, !conn.is_enabled)}
-                          className="justify-center"
-                        >
-                          {conn.is_enabled ? "Enabled" : "Disabled"}
-                        </Button>
-
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            if (window.confirm(`Are you sure you want to delete ${conn.name}? This action cannot be undone.`)) {
-                              handleDeleteConnection(conn.id)
-                            }
-                          }}
-                          className="text-red-600 hover:text-red-700"
-                          title="Delete Connection"
-                        >
-                          <Trash2 className="h-4 w-4 mr-1" />
-                          Delete
-                        </Button>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                      <div>
-                        <p className="text-muted-foreground">Exchange</p>
-                        <p className="font-medium">{exchangeName}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">Method</p>
-                        <p className="font-medium capitalize">{conn.connection_method || "rest"}</p>
-                      </div>
-                      {typeof conn.last_test_balance === "number" && (
-                        <div>
-                          <p className="text-muted-foreground">Balance</p>
-                          <p className="font-medium">${conn.last_test_balance.toFixed(2)}</p>
-                        </div>
-                      )}
-                      {conn.last_test_timestamp && (
-                        <div>
-                          <p className="text-muted-foreground">Last Test</p>
-                          <p className="font-medium text-xs">
-                            {new Date(conn.last_test_timestamp).toLocaleString()}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="border-t pt-4">
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => testConnection(conn.id)}
-                          disabled={testingId === conn.id}
-                        >
-                          {testingId === conn.id ? (
-                            <>
-                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                              Testing...
-                            </>
-                          ) : (
-                            "Test Connection"
-                          )}
-                        </Button>
-                        {conn.last_test_log && conn.last_test_log.length > 0 && (
-                          <Dialog>
-                            <DialogTrigger asChild>
-                              <Button variant="outline" size="sm">
-                                <Info className="h-4 w-4 mr-2" />
-                                Connection Log
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent className="max-w-3xl max-h-[70vh] overflow-y-auto">
-                              <DialogHeader>
-                                <DialogTitle>{conn.name} - Connection Test Log</DialogTitle>
-                              </DialogHeader>
-                              <div className="space-y-2 font-mono text-xs bg-slate-900 text-slate-100 p-4 rounded overflow-auto max-h-96 border border-slate-700">
-                                {conn.last_test_log.map((log, idx) => (
-                                  <div key={idx} className="text-slate-300">
-                                    {log}
-                                  </div>
-                                ))}
-                              </div>
-                            </DialogContent>
-                          </Dialog>
-                        )}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )
-            })}
+            {connections.map((conn) => (
+              <ConnectionCard
+                key={conn.id}
+                connection={conn}
+                onToggle={() => toggleEnabled(conn.id, !conn.is_enabled)}
+                onActivate={() => {
+                  // Set as active connection
+                }}
+                onDelete={() => handleDeleteConnection(conn.id)}
+                onEdit={(settings) => {
+                  // Handle edit
+                  loadConnections()
+                }}
+                onShowDetails={() => {
+                  // Show details
+                }}
+                onShowLogs={() => {
+                  // Show logs
+                }}
+                onTestConnection={(logs) => {
+                  // Connection tested
+                }}
+              />
+            ))}
           </div>
         )}
       </div>
