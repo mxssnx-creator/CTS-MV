@@ -273,7 +273,7 @@ export default function InstallManager() {
                   <Database className="h-5 w-5 text-blue-600" />
                   <div>
                     <p className="text-sm font-medium">Database Type</p>
-                    <p className="text-sm text-muted-foreground capitalize">{status.databaseType}</p>
+                    <p className="text-sm text-muted-foreground">Redis (In-Memory)</p>
                   </div>
                 </div>
               </div>
@@ -283,15 +283,15 @@ export default function InstallManager() {
                 <h3 className="text-sm font-semibold">System Status</h3>
                 <div className="space-y-2 text-sm">
                   <div className="flex items-center justify-between p-2 bg-muted/50 rounded">
-                    <span>Tables Created</span>
+                    <span>Redis Keys</span>
                     <Badge variant={status.tableCount > 0 ? "default" : "secondary"}>
-                      {status.tableCount} tables
+                      {status.tableCount} keys
                     </Badge>
                   </div>
                   <div className="flex items-center justify-between p-2 bg-muted/50 rounded">
-                    <span>Migrations Applied</span>
+                    <span>Schema Version</span>
                     <Badge variant={status.migrationsApplied > 0 ? "default" : "secondary"}>
-                      {status.migrationsApplied} migrations
+                      v{status.migrationsApplied}
                     </Badge>
                   </div>
                 </div>
@@ -310,8 +310,7 @@ export default function InstallManager() {
                 <Alert>
                   <Server className="h-4 w-4" />
                   <AlertDescription>
-                    The database is not installed. Click the button below to initialize the database with all required
-                    tables, indexes, and migrations.
+                    Redis is not initialized. Click the button below to run migrations and seed initial data.
                   </AlertDescription>
                 </Alert>
               )}
@@ -337,7 +336,7 @@ export default function InstallManager() {
                     ) : (
                       <>
                         <Play className="h-4 w-4 mr-2" />
-                        Initialize Database
+                        Initialize Redis
                       </>
                     )}
                   </Button>

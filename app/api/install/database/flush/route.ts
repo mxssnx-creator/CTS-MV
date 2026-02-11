@@ -54,12 +54,24 @@ export async function POST(request: NextRequest) {
       logs.push(`⚠ Migration re-application warning: ${error}`)
     }
 
-    // Step 4: Create indexes
+    // Step 4: Reseed data (connections, market data, settings)
+    try {
+      const { runPreStartup } = await import("@/lib/pre-startup")
+      await runPreStartup()
+      logs.push("✓ Predefined connections seeded")
+      logs.push("✓ Market data seeded for all symbols")
+      logs.push("✓ Default settings initialized")
+      console.log("[v0] Data reseeded successfully")
+    } catch (error) {
+      logs.push(`⚠ Data seeding warning: ${error}`)
+    }
+
+    // Step 5: Create indexes
     try {
       const client = getRedisClient()
-      await client.set("_index:connections:enabled", "true", { EX: 2592000 })
-      await client.set("_index:trades:by_connection", "true", { EX: 7776000 })
-      await client.set("_index:positions:active", "true", { EX: 5184000 })
+      await client.set("_index:connections:enabled", "true")
+      await client.set("_index:trades:by_connection", "true")
+      await client.set("_index:positions:active", "true")
       logs.push("✓ Database indexes recreated")
     } catch (error) {
       logs.push(`⚠ Index recreation warning: ${error}`)
