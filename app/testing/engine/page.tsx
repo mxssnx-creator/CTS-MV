@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Play, CheckCircle2, XCircle, Loader2, TrendingUp, DollarSign } from "lucide-react"
 import { toast } from "sonner"
+import { PageHeader } from "@/components/page-header"
 
 interface EngineTestStep {
   step: string
@@ -136,13 +137,13 @@ export default function EngineTestingPage() {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold mb-2">Engine Testing</h1>
-        <p className="text-muted-foreground">
-          Test trading engine with live position placement and management
-        </p>
-      </div>
+    <div className="flex flex-col h-screen">
+      <PageHeader 
+        title="Engine Testing" 
+        description="Test trading engine with live position placement and management"
+      />
+      <div className="flex-1 overflow-auto">
+        <div className="container mx-auto p-6 space-y-6">
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-1">
@@ -302,6 +303,7 @@ export default function EngineTestingPage() {
             )}
           </CardContent>
         </Card>
+        </div>
       </div>
     </div>
   )

@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import ExchangeConnectionManager from "@/components/settings/exchange-connection-manager"
 import InstallManager from "@/components/settings/install-manager"
 import { toast } from "sonner"
-import { Save, Download, Upload, RefreshCw, Activity, Layers, X, Plus, Info, Menu } from "lucide-react"
+import { Save, Download, Upload, RefreshCw, Activity, Layers, X, Plus, Info, Menu, Loader2 } from "lucide-react"
 import type { ExchangeConnection } from "@/lib/types"
 import { LogsViewer } from "@/components/settings/logs-viewer"
 import { Badge } from "@/components/ui/badge"
@@ -24,6 +24,7 @@ import { ExchangeTab } from "@/components/settings/tabs/exchange-tab"
 import { IndicationTab } from "@/components/settings/tabs/indication-tab"
 import { StrategyTab } from "@/components/settings/tabs/strategy-tab"
 import { SystemTab } from "@/components/settings/tabs/system-tab"
+import { PageHeader } from "@/components/page-header"
 
 const EXCHANGE_MAX_POSITIONS: Record<string, number> = {
   bybit: 500,
@@ -2020,6 +2021,7 @@ export default function SettingsPage() {
             />
           </TabsContent>
         </Tabs>
+        </div>
       </div>
     </AuthGuard>
   )

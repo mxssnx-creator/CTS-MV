@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Play, CheckCircle2, XCircle, Loader2, Activity } from "lucide-react"
 import { toast } from "sonner"
+import { PageHeader } from "@/components/page-header"
 
 interface TestResult {
   test: string
@@ -128,7 +129,13 @@ export default function ConnectionTestingPage() {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="flex flex-col h-screen">
+      <PageHeader 
+        title="Connection Testing" 
+        description="Test exchange API connectivity and functionality"
+      />
+      <div className="flex-1 overflow-auto">
+        <div className="container mx-auto p-6 space-y-6">
       <div>
         <h1 className="text-3xl font-bold mb-2">Connection Testing</h1>
         <p className="text-muted-foreground">
@@ -312,6 +319,8 @@ export default function ConnectionTestingPage() {
           </Card>
         </TabsContent>
       </Tabs>
+        </div>
+      </div>
     </div>
   )
 }
