@@ -109,12 +109,22 @@ function EditConnectionDialog({ connection, onSave, exchangeName }: { connection
         console.log("[v0] Could not fetch BTC price")
       }
 
+      console.log("[v0] [Test Connection] Using configured settings:", {
+        exchange: connection.exchange,
+        api_type: connection.api_type,
+        api_subtype: formData.api_subtype,
+        connection_method: formData.connection_method,
+        connection_library: formData.connection_library,
+        is_testnet: formData.is_testnet,
+      })
+
       const response = await fetch("/api/settings/connections/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           exchange: connection.exchange,
           api_type: connection.api_type,
+          api_subtype: formData.api_subtype,
           connection_method: formData.connection_method,
           connection_library: formData.connection_library,
           api_key: formData.api_key,

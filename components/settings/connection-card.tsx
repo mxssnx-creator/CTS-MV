@@ -89,10 +89,29 @@ export function ConnectionCard({
     setTestingConnection(true)
     setWorkingStatus("testing")
     setShowTestLogInstant(true)
-    
+
+    console.log("[v0] [Test Connection] Using configured settings from connection:", {
+      exchange: connection.exchange,
+      api_type: connection.api_type,
+      connection_method: connection.connection_method,
+      connection_library: connection.connection_library,
+      is_testnet: connection.is_testnet,
+    })
+
     try {
-      const response = await fetch(`/api/settings/connections/${connection.id}/test`, {
+      const response = await fetch("/api/settings/connections/test", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          exchange: connection.exchange,
+          api_type: connection.api_type || "futures",
+          connection_method: connection.connection_method || "rest",
+          connection_library: connection.connection_library || "native",
+          api_key: connection.api_key || "",
+          api_secret: connection.api_secret || "",
+          api_passphrase: connection.api_passphrase || "",
+          is_testnet: connection.is_testnet || false,
+        }),
       })
 
       const data = await response.json()

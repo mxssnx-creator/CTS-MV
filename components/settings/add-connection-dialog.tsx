@@ -187,12 +187,22 @@ export function AddConnectionDialog({ open, onOpenChange, onConnectionAdded }: A
     setShowTestLog(true)
 
     try {
+      console.log("[v0] [Test Connection] Using configured settings:", {
+        exchange: formData.exchange,
+        api_type: formData.api_type,
+        api_subtype: formData.api_subtype,
+        connection_method: formData.connection_method,
+        connection_library: formData.connection_library,
+        is_testnet: formData.is_testnet,
+      })
+
       const response = await fetch("/api/settings/connections/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           exchange: formData.exchange,
           api_type: formData.api_type,
+          api_subtype: formData.api_subtype,
           connection_method: formData.connection_method,
           connection_library: formData.connection_library,
           api_key: formData.api_key,

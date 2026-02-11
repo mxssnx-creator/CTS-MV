@@ -16,21 +16,25 @@ export async function POST(request: NextRequest) {
     const testLog: string[] = []
     testLog.push(`[${new Date().toISOString()}] Starting connection test...`)
     testLog.push(`[${new Date().toISOString()}] Exchange: ${exchange}`)
-    testLog.push(`[${new Date().toISOString()}] API Type: ${api_type}`)
-    testLog.push(`[${new Date().toISOString()}] Connection Method: ${connection_method}`)
-    testLog.push(`[${new Date().toISOString()}] Connection Library: ${connection_library}`)
+    testLog.push(`[${new Date().toISOString()}] API Type: ${api_type || "futures"}`)
+    testLog.push(`[${new Date().toISOString()}] Connection Method: ${connection_method || "rest"}`)
+    testLog.push(`[${new Date().toISOString()}] Connection Library: ${connection_library || "native"}`)
     testLog.push(`[${new Date().toISOString()}] Testnet: ${is_testnet ? "Yes" : "No"}`)
+    testLog.push(`[${new Date().toISOString()}] ---`)
 
     try {
-      testLog.push(`[${new Date().toISOString()}] Creating exchange connector...`)
+      testLog.push(`[${new Date().toISOString()}] Creating exchange connector with configured settings...`)
       const connector = await createExchangeConnector(exchange, {
         apiKey: api_key,
         apiSecret: api_secret,
         apiPassphrase: api_passphrase || "",
         isTestnet: is_testnet || false,
+        connectionMethod: connection_method || "rest",
+        connectionLibrary: connection_library || "native",
+        apiType: api_type || "futures",
       })
 
-      testLog.push(`[${new Date().toISOString()}] Testing connection...`)
+      testLog.push(`[${new Date().toISOString()}] Testing connection using ${connection_method || "rest"} method with ${connection_library || "native"} library...`)
       const result = await connector.testConnection()
 
       if (result.success) {
