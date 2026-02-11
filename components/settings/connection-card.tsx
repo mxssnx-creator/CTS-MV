@@ -16,27 +16,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-
-export interface ExchangeConnection {
-  id: string
-  name: string
-  exchange: string
-  api_type: string
-  connection_method: string
-  authentication_type: string
-  api_key: string
-  api_secret: string
-  margin_type: string
-  position_mode: string
-  is_testnet: boolean
-  is_enabled: boolean
-  is_active: boolean
-  is_predefined: boolean
-  last_test_status?: string
-  last_test_balance?: number
-  last_test_log?: string[]
-  last_test_at?: string
-}
+import type { ExchangeConnection } from "@/lib/types"
 
 interface ConnectionCardProps {
   connection: ExchangeConnection

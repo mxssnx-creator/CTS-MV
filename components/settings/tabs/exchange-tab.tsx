@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Plus, X } from "lucide-react"
 import { useExchange } from "@/lib/exchange-context"
 import { Badge } from "@/components/ui/badge"
-import type { ExchangeConnection } from "@/components/settings/connection-card"
+import type { ExchangeConnection } from "@/lib/types"
 
 interface ExchangeTabProps {
   settings: any
