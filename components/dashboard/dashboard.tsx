@@ -208,11 +208,11 @@ export function Dashboard() {
         <CardContent>
            {isActiveLoading ? (
             <p className="text-center text-muted-foreground py-8">Loading connections...</p>
-          ) : connections.length === 0 ? (
+          ) : filteredConnections.length === 0 ? (
             <p className="text-center text-muted-foreground py-8">No connections configured</p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {connections.map((connection) => (
+              {filteredConnections.map((connection) => (
                 <ConnectionCard
                   key={connection.id}
                   connection={connection}

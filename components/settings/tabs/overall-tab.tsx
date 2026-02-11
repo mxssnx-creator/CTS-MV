@@ -621,7 +621,6 @@ export function OverallTab({
         </TabsContent>
 
         <TabsContent value="backup" className="space-y-6 mt-6">
-          <Card>
           <LogsViewer />
         </TabsContent>
       </Tabs>
