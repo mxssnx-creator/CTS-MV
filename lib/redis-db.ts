@@ -22,12 +22,18 @@ const REDIS_PASSWORD = process.env.REDIS_PASSWORD || process.env.UPSTASH_REDIS_R
  */
 export async function initRedis(): Promise<void> {
   if (isConnected) {
+    console.log("[v0] [Redis] Already connected, reusing connection")
     return
   }
+
+  console.log("[v0] [Redis] Initializing connection...")
+  console.log("[v0] [Redis] REDIS_URL configured:", REDIS_URL ? "YES (length: " + REDIS_URL.length + ")" : "NO")
+  console.log("[v0] [Redis] REDIS_PASSWORD configured:", REDIS_PASSWORD ? "YES" : "NO")
 
   try {
     // Only try to connect to Redis if we have a valid URL (not localhost, not empty)
     if (REDIS_URL && !REDIS_URL.includes("localhost") && REDIS_URL.trim().length > 0) {
+      console.log("[v0] [Redis] Attempting to connect to Redis at:", REDIS_URL.substring(0, 30) + "...")
       try {
         // Lazy import of redis library only when needed
         const { createClient, RedisClientType, RedisModules } = await import("redis")
@@ -79,23 +85,27 @@ export async function initRedis(): Promise<void> {
         isConnected = true
         isUsingFallback = false
         await initializeIndexes()
-        console.log("[v0] Redis database initialized")
+        console.log("[v0] [Redis] ✓ Redis database initialized successfully with persistent storage")
         return
       } catch (error) {
         // Clean up failed connection attempt
         redisClient = null
-        console.log("[v0] Redis unavailable, using fallback in-memory store")
+        console.error("[v0] [Redis] ✗ Connection failed:", error instanceof Error ? error.message : error)
+        console.warn("[v0] [Redis] Falling back to in-memory store (data will be lost on restart)")
         isUsingFallback = true
         isConnected = true
       }
     } else {
       // No Redis URL - use fallback immediately
-      console.log("[v0] No Redis URL configured, using fallback in-memory store")
+      console.warn("[v0] [Redis] ✗ No Redis URL configured!")
+      console.warn("[v0] [Redis] Set REDIS_URL or UPSTASH_REDIS_REST_URL environment variable for persistent storage")
+      console.warn("[v0] [Redis] Using fallback in-memory store (data will be lost on restart)")
       isUsingFallback = true
       isConnected = true
     }
   } catch (error) {
-    console.log("[v0] Using fallback in-memory store:", error instanceof Error ? error.message : "unknown")
+    console.error("[v0] [Redis] Initialization error:", error instanceof Error ? error.message : error)
+    console.warn("[v0] [Redis] Using fallback in-memory store (data will be lost on restart)")
     isUsingFallback = true
     isConnected = true
   }
@@ -309,15 +319,36 @@ async function initializeIndexes(): Promise<void> {
  * Connection data operations
  */
 export async function createConnection(data: any): Promise<string> {
-  const client = getRedisClient()
-  const id = `conn:${data.exchange}:${Date.now()}:${Math.random().toString(36).substr(2, 9)}`
+  const client = await getRedisClient()
+  const id = data.id || `${data.exchange}-${Date.now()}`
+
+  console.log("[v0] [DB] Creating connection:", id, "exchange:", data.exchange, "enabled:", data.is_enabled !== false)
 
   const connectionData = {
-    id,
     ...data,
-    created_at: new Date().toISOString(),
+    id,
+    is_enabled: String(data.is_enabled !== false),
+    is_active: String(data.is_active === true),
+    is_testnet: String(data.is_testnet === true),
+    created_at: data.created_at || new Date().toISOString(),
     updated_at: new Date().toISOString(),
   }
+
+  await client.hSet(`connection:${id}`, connectionData)
+  await client.sAdd("connections:all", id)
+  await client.sAdd(`connections:${data.exchange}`, id)
+
+  if (data.is_enabled) {
+    await client.sAdd("connections:enabled", id)
+  }
+
+  if (data.is_active) {
+    await client.sAdd("connections:active", id)
+  }
+
+  console.log("[v0] [DB] ✓ Connection created successfully:", id)
+  return id
+}
 
   await client.hSet(`connection:${id}`, connectionData)
   await client.sAdd("connections:all", id)
@@ -336,19 +367,36 @@ export async function getConnection(id: string): Promise<any> {
 }
 
 export async function getAllConnections(): Promise<any[]> {
-  const client = getRedisClient()
-  const ids = await client.sMembers("connections:all")
+  console.log("[v0] [DB] Querying all connections...")
+  const client = await getRedisClient()
+  const connectionIds = await client.sMembers("connections:all")
 
-  if (ids.length === 0) return []
+  console.log("[v0] [DB] Found", connectionIds?.length || 0, "connection IDs in index")
 
-  const connections = await Promise.all(
-    ids.map(async (id) => {
-      const data = await client.hGetAll(`connection:${id}`)
-      return Object.keys(data).length > 0 ? data : null
-    })
-  )
+  if (!connectionIds || connectionIds.length === 0 || (connectionIds.length === 1 && !connectionIds[0])) {
+    console.log("[v0] [DB] No connections found in database")
+    return []
+  }
 
-  return connections.filter(Boolean)
+  const connections = []
+  for (const id of connectionIds) {
+    if (!id) continue
+    const data = await client.hGetAll(`connection:${id}`)
+    if (data && Object.keys(data).length > 0) {
+      connections.push({
+        id,
+        ...data,
+        is_enabled: data.is_enabled === "true",
+        is_active: data.is_active === "true",
+        is_testnet: data.is_testnet === "true",
+        created_at: data.created_at || new Date().toISOString(),
+        updated_at: data.updated_at || new Date().toISOString(),
+      })
+    }
+  }
+
+  console.log("[v0] [DB] Retrieved", connections.length, "complete connections")
+  return connections
 }
 
 export async function updateConnection(id: string, data: any): Promise<void> {
