@@ -68,9 +68,28 @@ export function ConnectionCard({
     name: connection.name,
   })
   const [savingSettings, setSavingSettings] = useState(false)
+  const [workingStatus, setWorkingStatus] = useState<"idle" | "testing" | "success" | "error">("idle")
+  const [showTestLogInstant, setShowTestLogInstant] = useState(false)
+
+  // Auto-run test on mount if credentials configured and not recently tested
+  useState(() => {
+    const shouldAutoTest = connection.is_enabled && 
+      connection.api_key && 
+      connection.api_secret && 
+      (!connection.last_test_at || 
+        (Date.now() - new Date(connection.last_test_at).getTime() > 5 * 60 * 1000)) // 5 minutes
+    
+    if (shouldAutoTest) {
+      console.log("[v0] Auto-testing connection:", connection.name)
+      handleTestConnection()
+    }
+  })
 
   const handleTestConnection = async () => {
     setTestingConnection(true)
+    setWorkingStatus("testing")
+    setShowTestLogInstant(true)
+    
     try {
       const response = await fetch(`/api/settings/connections/${connection.id}/test`, {
         method: "POST",
@@ -79,6 +98,7 @@ export function ConnectionCard({
       const data = await response.json()
 
       if (!response.ok) {
+        setWorkingStatus("error")
         toast.error("Connection Test Failed", {
           description: data.details || data.error || "Failed to test connection",
         })
@@ -86,11 +106,13 @@ export function ConnectionCard({
         return
       }
 
+      setWorkingStatus("success")
       toast.success("Connection Test Successful", {
         description: `Balance: ${data.balance?.toFixed(2) || "N/A"} USDT`,
       })
       onTestConnection?.(data.log || [])
     } catch (error) {
+      setWorkingStatus("error")
       toast.error("Test Connection Error", {
         description: error instanceof Error ? error.message : "Unknown error",
       })
@@ -283,15 +305,17 @@ export function ConnectionCard({
             </Button>
 
             <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={onShowLogs}
-                disabled={!connection.last_test_log || connection.last_test_log.length === 0}
-                className="text-muted-foreground"
-              >
-                <ChevronDown className="h-4 w-4" />
-              </Button>
+              {(showTestLogInstant || (connection.last_test_log && connection.last_test_log.length > 0)) && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setLogsExpanded(!logsExpanded)}
+                  className="text-muted-foreground"
+                  title="View Test Logs"
+                >
+                  <ChevronDown className={`h-4 w-4 transition-transform ${logsExpanded ? "rotate-180" : ""}`} />
+                </Button>
+              )}
               <Button
                 size="sm"
                 variant="ghost"

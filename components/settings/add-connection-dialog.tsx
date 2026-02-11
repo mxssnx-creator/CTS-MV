@@ -428,24 +428,29 @@ export function AddConnectionDialog({ open, onOpenChange, onConnectionAdded }: A
                   </Select>
                 </div>
 
-                <div className="space-y-1.5">
-                  <Label htmlFor="api-subtype" className="font-medium text-xs">Trading Type</Label>
-                  <Select value={formData.api_subtype} onValueChange={(value) => setFormData({ ...formData, api_subtype: value })}>
-                    <SelectTrigger id="api-subtype" disabled={loading} className="bg-white h-8 text-sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(EXCHANGE_SUBTYPES[formData.exchange] || []).map((subtype) => {
-                        const subtypeInfo = API_SUBTYPES[subtype as keyof typeof API_SUBTYPES]
-                        return (
-                          <SelectItem key={subtype} value={subtype}>
-                            <span className="text-sm">{subtypeInfo?.icon || ''} {subtypeInfo?.label || subtype}</span>
-                          </SelectItem>
-                        )
-                      })}
-                    </SelectContent>
-                  </Select>
-                </div>
+                {formData.api_type === "unified" && EXCHANGE_SUBTYPES[formData.exchange] && EXCHANGE_SUBTYPES[formData.exchange].length > 0 && (
+                  <div className="space-y-1.5 col-span-2">
+                    <Label htmlFor="api-subtype" className="font-medium text-xs">Trading Type (Unified Account)</Label>
+                    <Select value={formData.api_subtype} onValueChange={(value) => setFormData({ ...formData, api_subtype: value })}>
+                      <SelectTrigger id="api-subtype" disabled={loading} className="bg-white h-8 text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(EXCHANGE_SUBTYPES[formData.exchange] || []).map((subtype) => {
+                          const subtypeInfo = API_SUBTYPES[subtype as keyof typeof API_SUBTYPES]
+                          return (
+                            <SelectItem key={subtype} value={subtype}>
+                              <span className="text-sm">{subtypeInfo?.icon || ''} {subtypeInfo?.label || subtype}</span>
+                            </SelectItem>
+                          )
+                        })}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Select the trading type for your unified trading account
+                    </p>
+                  </div>
+                )}
 
                 <div className="space-y-1.5">
                   <Label htmlFor="connection-method" className="font-medium text-xs">Connection</Label>
@@ -473,12 +478,36 @@ export function AddConnectionDialog({ open, onOpenChange, onConnectionAdded }: A
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="native">Native</SelectItem>
-                      <SelectItem value="ccxt">CCXT</SelectItem>
-                      <SelectItem value="exchange-lib">Exchange SDK</SelectItem>
-                      <SelectItem value="custom">Custom</SelectItem>
+                      {formData.connection_method === "rest" && (
+                        <>
+                          <SelectItem value="native"><span className="text-sm">Native (Default)</span></SelectItem>
+                          <SelectItem value="ccxt"><span className="text-sm">CCXT</span></SelectItem>
+                        </>
+                      )}
+                      {formData.connection_method === "library" && (
+                        <>
+                          <SelectItem value="original"><span className="text-sm">Original - {EXCHANGE_LIBRARY_PACKAGES[formData.exchange] || "Exchange SDK"}</span></SelectItem>
+                          <SelectItem value="ccxt"><span className="text-sm">CCXT</span></SelectItem>
+                        </>
+                      )}
+                      {formData.connection_method === "websocket" && (
+                        <>
+                          <SelectItem value="native"><span className="text-sm">Native (Default)</span></SelectItem>
+                        </>
+                      )}
+                      {formData.connection_method === "hybrid" && (
+                        <>
+                          <SelectItem value="native"><span className="text-sm">Native (Default)</span></SelectItem>
+                          <SelectItem value="ccxt"><span className="text-sm">CCXT</span></SelectItem>
+                        </>
+                      )}
                     </SelectContent>
                   </Select>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {formData.connection_library === "native" && "Built-in native implementation"}
+                    {formData.connection_library === "original" && `Official ${formData.exchange.toUpperCase()} SDK`}
+                    {formData.connection_library === "ccxt" && "Universal CCXT library (cross-exchange)"}
+                  </p>
                 </div>
 
                 <div className="space-y-1.5">
