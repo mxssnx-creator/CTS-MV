@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { Power, Trash2, Settings, ChevronDown, Loader2, AlertCircle, CheckCircle2, Edit2 } from "lucide-react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { toast } from "@/lib/simple-toast"
 import {
   Dialog,
@@ -50,20 +50,6 @@ export function ConnectionCard({
   const [savingSettings, setSavingSettings] = useState(false)
   const [workingStatus, setWorkingStatus] = useState<"idle" | "testing" | "success" | "error">("idle")
   const [showTestLogInstant, setShowTestLogInstant] = useState(false)
-
-  // Auto-run test on mount if credentials configured and not recently tested
-  useState(() => {
-    const shouldAutoTest = connection.is_enabled && 
-      connection.api_key && 
-      connection.api_secret && 
-      (!connection.last_test_at || 
-        (Date.now() - new Date(connection.last_test_at).getTime() > 5 * 60 * 1000)) // 5 minutes
-    
-    if (shouldAutoTest) {
-      console.log("[v0] Auto-testing connection:", connection.name)
-      handleTestConnection()
-    }
-  })
 
   const handleTestConnection = async () => {
     setTestingConnection(true)
@@ -128,6 +114,20 @@ export function ConnectionCard({
       setTestingConnection(false)
     }
   }
+
+  // Auto-run test on mount if credentials configured and not recently tested
+  useEffect(() => {
+    const shouldAutoTest = connection.is_enabled && 
+      connection.api_key && 
+      connection.api_secret && 
+      (!connection.last_test_at || 
+        (Date.now() - new Date(connection.last_test_at).getTime() > 5 * 60 * 1000)) // 5 minutes
+    
+    if (shouldAutoTest) {
+      console.log("[v0] Auto-testing connection:", connection.name)
+      handleTestConnection()
+    }
+  }, [connection.id, connection.is_enabled, connection.api_key, connection.api_secret, connection.last_test_at])
 
   const handleSaveSettings = async () => {
     if (!editFormData.api_key || !editFormData.api_secret) {
