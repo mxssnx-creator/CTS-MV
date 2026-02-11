@@ -448,138 +448,139 @@ export function OverallTab({
         <TabsContent value="connection" className="space-y-6">
           <ExchangeConnectionManager />
 
-          {/* Connection Settings */}
+          {/* Unified Connection Configuration */}
           <Card className="settings-card border-2">
             <CardHeader className="settings-card-header">
-              <CardTitle>Connection Settings</CardTitle>
-              <CardDescription>Configure connection behavior</CardDescription>
+              <CardTitle>Connection Configuration</CardTitle>
+              <CardDescription>Configure connection behavior, defaults, and performance settings</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6 p-6">
-              <div className="grid md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label>Minimum Connect Interval (ms)</Label>
-                    <span className="text-sm font-medium">{settings.minimumConnectIntervalMs || 200} ms</span>
+            <CardContent className="space-y-8 p-6">
+              {/* Connection Behavior Settings */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Connection Behavior</h3>
+                <div className="grid md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Minimum Connect Interval (ms)</Label>
+                      <span className="text-sm font-medium">{settings.minimumConnectIntervalMs || 200} ms</span>
+                    </div>
+                    <Slider
+                      min={50}
+                      max={1000}
+                      step={50}
+                      value={[settings.minimumConnectIntervalMs || 200]}
+                      onValueChange={([value]) => handleSettingChange("minimumConnectIntervalMs", value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Minimum time between connection attempts (default: 200ms)
+                    </p>
                   </div>
-                  <Slider
-                    min={50}
-                    max={1000}
-                    step={50}
-                    value={[settings.minimumConnectIntervalMs || 200]}
-                    onValueChange={([value]) => handleSettingChange("minimumConnectIntervalMs", value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Minimum time between connection attempts (default: 200ms)
-                  </p>
-                </div>
 
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label>Symbols Per Exchange</Label>
-                    <span className="text-sm font-medium">{settings.symbolsPerExchange || 50}</span>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Max Concurrent Connections</Label>
+                      <span className="text-sm font-medium">{settings.maxConcurrentConnections || 3}</span>
+                    </div>
+                    <Slider
+                      min={1}
+                      max={10}
+                      step={1}
+                      value={[settings.maxConcurrentConnections || 3]}
+                      onValueChange={([value]) => handleSettingChange("maxConcurrentConnections", value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Maximum simultaneous exchange connections
+                    </p>
                   </div>
-                  <Slider
-                    min={10}
-                    max={200}
-                    step={10}
-                    value={[settings.symbolsPerExchange || 50]}
-                    onValueChange={([value]) => handleSettingChange("symbolsPerExchange", value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Number of symbols to track per exchange
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
 
-          {/* Connection Defaults */}
-          <Card className="settings-card border-2">
-            <CardHeader className="settings-card-header">
-              <CardTitle>Connection Defaults</CardTitle>
-              <CardDescription>Default settings for new exchange connections</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6 p-6">
-              <div className="grid md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <Label>Default Margin Type</Label>
-                  <Select
-                    value={settings.defaultMarginType || "cross"}
-                    onValueChange={(value) => handleSettingChange("defaultMarginType", value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="cross">Cross Margin</SelectItem>
-                      <SelectItem value="isolated">Isolated Margin</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Default Position Mode</Label>
-                  <Select
-                    value={settings.defaultPositionMode || "hedge"}
-                    onValueChange={(value) => handleSettingChange("defaultPositionMode", value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="hedge">Hedge Mode (Bidirectional)</SelectItem>
-                      <SelectItem value="one_way">One Way Mode</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label>Rate Limit Delay (ms)</Label>
-                    <span className="text-sm font-medium">{settings.rateLimitDelayMs || 50} ms</span>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Rate Limit Delay (ms)</Label>
+                      <span className="text-sm font-medium">{settings.rateLimitDelayMs || 50} ms</span>
+                    </div>
+                    <Slider
+                      min={10}
+                      max={500}
+                      step={10}
+                      value={[settings.rateLimitDelayMs || 50]}
+                      onValueChange={([value]) => handleSettingChange("rateLimitDelayMs", value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Delay between API requests to avoid rate limits
+                    </p>
                   </div>
-                  <Slider
-                    min={10}
-                    max={500}
-                    step={10}
-                    value={[settings.rateLimitDelayMs || 50]}
-                    onValueChange={([value]) => handleSettingChange("rateLimitDelayMs", value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Delay between API requests to avoid rate limits
-                  </p>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Symbols Per Exchange</Label>
+                      <span className="text-sm font-medium">{settings.symbolsPerExchange || 50}</span>
+                    </div>
+                    <Slider
+                      min={10}
+                      max={200}
+                      step={10}
+                      value={[settings.symbolsPerExchange || 50]}
+                      onValueChange={([value]) => handleSettingChange("symbolsPerExchange", value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Number of symbols to track per exchange
+                    </p>
+                  </div>
                 </div>
 
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label>Max Concurrent Connections</Label>
-                    <span className="text-sm font-medium">{settings.maxConcurrentConnections || 3}</span>
+                <div className="flex items-center justify-between p-3 border rounded-lg">
+                  <div>
+                    <Label>Enable Testnet by Default</Label>
+                    <p className="text-xs text-muted-foreground">
+                      New connections will use testnet by default
+                    </p>
                   </div>
-                  <Slider
-                    min={1}
-                    max={10}
-                    step={1}
-                    value={[settings.maxConcurrentConnections || 3]}
-                    onValueChange={([value]) => handleSettingChange("maxConcurrentConnections", value)}
+                  <Switch
+                    id="enableTestnetByDefault"
+                    checked={settings.enableTestnetByDefault || false}
+                    onCheckedChange={(checked) => handleSettingChange("enableTestnetByDefault", checked)}
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Maximum simultaneous exchange connections
-                  </p>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between p-3 border rounded-lg">
-                <div>
-                  <Label>Enable Testnet by Default</Label>
-                  <p className="text-xs text-muted-foreground">
-                    New connections will use testnet by default
-                  </p>
+              <Separator />
+
+              {/* Connection Defaults */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Default Connection Settings</h3>
+                <div className="grid md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label>Default Margin Type</Label>
+                    <Select
+                      value={settings.defaultMarginType || "cross"}
+                      onValueChange={(value) => handleSettingChange("defaultMarginType", value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="cross">Cross Margin</SelectItem>
+                        <SelectItem value="isolated">Isolated Margin</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Default Position Mode</Label>
+                    <Select
+                      value={settings.defaultPositionMode || "hedge"}
+                      onValueChange={(value) => handleSettingChange("defaultPositionMode", value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="hedge">Hedge Mode (Bidirectional)</SelectItem>
+                        <SelectItem value="one_way">One Way Mode</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
-                <Switch
-                  id="enableTestnetByDefault"
-                  checked={settings.enableTestnetByDefault || false}
-                  onCheckedChange={(checked) => handleSettingChange("enableTestnetByDefault", checked)}
-                />
               </div>
             </CardContent>
           </Card>

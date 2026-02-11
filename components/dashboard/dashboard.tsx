@@ -87,7 +87,7 @@ export function Dashboard() {
 
   const handleToggleEnable = async (id: string, enabled: boolean) => {
     try {
-      const connection = connections.find(c => c.id === id)
+      const connection = filteredConnections.find(c => c.id === id)
       if (!connection) {
         toast.error("Connection not found")
         return
@@ -105,7 +105,7 @@ export function Dashboard() {
 
       if (response.ok) {
         toast.success(`Connection ${enabled ? "enabled" : "disabled"}`)
-        await loadConnections()
+        await loadActiveConnections()
       } else {
         const error = await response.json()
         toast.error(error.details || "Failed to toggle connection")
@@ -118,7 +118,7 @@ export function Dashboard() {
 
   const handleToggleLiveTrade = async (id: string, enabled: boolean) => {
     try {
-      const connection = connections.find(c => c.id === id)
+      const connection = filteredConnections.find(c => c.id === id)
       if (!connection) {
         toast.error("Connection not found")
         return
@@ -141,7 +141,7 @@ export function Dashboard() {
 
       if (response.ok) {
         toast.success(`Live trading ${enabled ? "enabled" : "disabled"}`)
-        await loadConnections()
+        await loadActiveConnections()
       } else {
         const error = await response.json()
         toast.error(error.details || "Failed to toggle live trading")
@@ -236,6 +236,7 @@ export function Dashboard() {
       <AddConnectionDialog
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
+        showOnlyEnabled={true}
         onConnectionAdded={async (connectionId) => {
           console.log("[v0] [Dashboard] New connection added:", connectionId)
           await loadActiveConnections()

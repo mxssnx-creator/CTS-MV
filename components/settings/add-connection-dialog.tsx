@@ -29,6 +29,7 @@ interface AddConnectionDialogProps {
   onOpenChange: (open: boolean) => void
   onConnectionAdded?: (connectionId?: string) => Promise<void> | void
   onSuccess?: (connectionId?: string) => void
+  showOnlyEnabled?: boolean
 }
 
 const ALL_EXCHANGES = [
@@ -47,7 +48,7 @@ const ALL_EXCHANGES = [
   { id: "coinbase", name: "Coinbase" },
 ]
 
-export function AddConnectionDialog({ open, onOpenChange, onConnectionAdded }: AddConnectionDialogProps) {
+export function AddConnectionDialog({ open, onOpenChange, onConnectionAdded, showOnlyEnabled = false }: AddConnectionDialogProps) {
   const [loading, setLoading] = useState(false)
   const [testing, setTesting] = useState(false)
   const [testLog, setTestLog] = useState<string[]>([])
