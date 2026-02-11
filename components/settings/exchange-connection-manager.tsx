@@ -555,23 +555,53 @@ export default function ExchangeConnectionManager() {
 
   const toggleEnabled = async (id: string, enabled: boolean) => {
     try {
+      // Find the connection to get current state
+      const connection = connections.find(c => c.id === id)
+      if (!connection) {
+        toast.error("Connection not found")
+        return
+      }
+
+      console.log("[v0] Toggling connection:", id, "enabled:", enabled)
+
       const response = await fetch(`/api/settings/connections/${id}/toggle`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ is_enabled: enabled }),
+        body: JSON.stringify({ 
+          is_enabled: enabled,
+          is_live_trade: enabled ? connection.is_live_trade : false,
+          is_preset_trade: enabled ? connection.is_preset_trade : false,
+        }),
       })
 
-      if (!response.ok) throw new Error("Failed to toggle")
+      const data = await response.json().catch(() => ({}))
+
+      if (!response.ok) {
+        const errorMsg = data.error || data.details || "Failed to toggle connection"
+        console.error("[v0] Toggle failed:", errorMsg)
+        throw new Error(errorMsg)
+      }
 
       // Update local state immediately
       setConnections((prev) =>
-        prev.map((c) => (c.id === id ? { ...c, is_enabled: enabled } : c))
+        prev.map((c) => 
+          c.id === id 
+            ? { 
+                ...c, 
+                is_enabled: enabled,
+                is_live_trade: enabled ? c.is_live_trade : false,
+                is_preset_trade: enabled ? c.is_preset_trade : false,
+              } 
+            : c
+        )
       )
 
       toast.success(`Connection ${enabled ? "enabled" : "disabled"}`)
+      console.log("[v0] Toggle successful for:", id)
     } catch (error) {
-      console.error("[v0] Toggle error:", error)
-      toast.error("Failed to toggle connection")
+      const errorMsg = error instanceof Error ? error.message : "Failed to toggle connection"
+      console.error("[v0] Toggle error:", errorMsg)
+      toast.error(errorMsg)
     }
   }
 
