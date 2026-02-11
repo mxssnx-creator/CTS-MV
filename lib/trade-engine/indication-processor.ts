@@ -16,6 +16,50 @@ export class IndicationProcessor {
   }
 
   /**
+   * Process historical indications for a symbol over a date range
+   */
+  async processHistoricalIndications(symbol: string, startDate: Date, endDate: Date): Promise<void> {
+    try {
+      console.log(`[v0] Processing historical indications for ${symbol} from ${startDate.toISOString()} to ${endDate.toISOString()}`)
+
+      // Fetch historical market data for the date range
+      await initRedis()
+      const historicalData = await getMarketData(symbol, 100) // Get last 100 data points
+
+      if (!historicalData || historicalData.length === 0) {
+        console.log(`[v0] No historical market data available for ${symbol}`)
+        return
+      }
+
+      const settings = await this.getIndicationSettingsCached()
+
+      // Process each data point as a historical indication
+      for (const marketData of historicalData) {
+        const indication = await this.calculateIndication(symbol, marketData, settings)
+
+        if (indication && indication.profit_factor >= settings.minProfitFactor) {
+          await saveIndication({
+            connection_id: this.connectionId,
+            symbol,
+            indication_type: indication.type,
+            timeframe: indication.timeframe,
+            mode: 'preset',
+            value: indication.value,
+            profit_factor: indication.profit_factor,
+            confidence: indication.confidence,
+            metadata: indication.metadata,
+            calculated_at: marketData.timestamp || new Date().toISOString(),
+          })
+        }
+      }
+
+      console.log(`[v0] Processed ${historicalData.length} historical indications for ${symbol}`)
+    } catch (error) {
+      console.error(`[v0] Failed to process historical indications for ${symbol}:`, error)
+    }
+  }
+
+  /**
    * Process indication for a symbol in real-time
    */
   async processIndication(symbol: string): Promise<void> {
