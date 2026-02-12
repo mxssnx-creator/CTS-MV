@@ -57,6 +57,8 @@ export function ConnectionCard({
   const [testLogs, setTestLogs] = useState<string[]>([])
   const [workingStatus, setWorkingStatus] = useState<"idle" | "testing" | "success" | "error">("idle")
   const [savingSettings, setSavingSettings] = useState(false)
+  const [engineStatus, setEngineStatus] = useState<"idle" | "starting" | "running" | "stopped" | "failed">("idle")
+  const [engineError, setEngineError] = useState<string>("")
   const [editFormData, setEditFormData] = useState({
     api_key: connection.api_key,
     api_secret: connection.api_secret,
@@ -69,6 +71,30 @@ export function ConnectionCard({
     is_testnet: connection.is_testnet,
     api_passphrase: connection.api_passphrase || "",
   })
+
+  // Poll for engine status when enabled
+  useEffect(() => {
+    if (!connection.is_enabled) return
+
+    const pollEngineStatus = async () => {
+      try {
+        const response = await fetch(`/api/trade-engine/status?connectionId=${connection.id}`)
+        if (response.ok) {
+          const data = await response.json()
+          if (data.engineStatus?.status) {
+            setEngineStatus(data.engineStatus.status)
+            setEngineError("")
+          }
+        }
+      } catch (error) {
+        console.warn("[v0] Failed to poll engine status:", error)
+      }
+    }
+
+    pollEngineStatus()
+    const interval = setInterval(pollEngineStatus, 3000)
+    return () => clearInterval(interval)
+  }, [connection.is_enabled, connection.id])
 
   // Define handleTestConnection first so it can be used in useEffect
   const handleTestConnection = async () => {
@@ -334,6 +360,30 @@ export function ConnectionCard({
               <span className="font-medium">{connection.position_mode}</span>
             </div>
           </div>
+
+          {/* Engine Status Hint */}
+          {connection.is_enabled && engineStatus === "idle" && (
+            <div className="text-xs p-3 bg-blue-50 text-blue-800 rounded border border-blue-200 flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+              <span>Trade engine starting... This connection will process trades once the engine is fully initialized.</span>
+            </div>
+          )}
+
+          {/* Engine Running Status */}
+          {connection.is_enabled && engineStatus === "running" && (
+            <div className="text-xs p-3 bg-green-50 text-green-800 rounded border border-green-200 flex items-start gap-2">
+              <CheckCircle2 className="h-4 w-4 flex-shrink-0 mt-0.5" />
+              <span>Trade engine active. This connection is processing trades and positions.</span>
+            </div>
+          )}
+
+          {/* Engine Failed Status */}
+          {connection.is_enabled && engineStatus === "failed" && (
+            <div className="text-xs p-3 bg-red-50 text-red-800 rounded border border-red-200 flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+              <span>Trade engine failed to start. Check credentials and try again.</span>
+            </div>
+          )}
 
           {/* Credentials Warning */}
           {!credentialsConfigured && (

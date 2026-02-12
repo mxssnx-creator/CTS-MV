@@ -1,13 +1,63 @@
-import { NextResponse } from "next/server"
-import { getAllConnections, initRedis, getRedisClient } from "@/lib/redis-db"
+import { NextResponse, type NextRequest } from "next/server"
+import { getAllConnections, initRedis, getRedisClient, getConnection } from "@/lib/redis-db"
 import { SystemLogger } from "@/lib/system-logger"
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const searchParams = request.nextUrl.searchParams
+    const connectionId = searchParams.get("connectionId")
+
     console.log("[v0] [Trade Engine] Fetching trade engine status with progression info...")
 
     await initRedis()
     const client = getRedisClient()
+
+    // If specific connection requested, return just that one
+    if (connectionId) {
+      const connection = await getConnection(connectionId)
+      if (!connection) {
+        return NextResponse.json({ error: "Connection not found" }, { status: 404 })
+      }
+
+      const stateKey = `trade_engine_state:${connectionId}`
+      const state = await (client as any).hGetAll(stateKey)
+      const tradesKey = `trades:${connectionId}`
+      const positionsKey = `positions:${connectionId}`
+      const trades = (await (client as any).sMembers(tradesKey)) || []
+      const positions = (await (client as any).sMembers(positionsKey)) || []
+
+      const isRunning = state?.is_running === "1" || state?.is_running === true
+      const errorCount = parseInt(state?.error_count || "0")
+      const cycleCount = parseInt(state?.cycle_count || "0")
+      const successCount = parseInt(state?.success_count || "0")
+
+      const engineStatus = {
+        status: isRunning ? "running" : connection.is_enabled ? "starting" : "stopped",
+        is_running: isRunning,
+        connection_id: connectionId,
+        connection_name: connection.name,
+        exchange: connection.exchange,
+        enabled: connection.is_enabled,
+        active: connection.is_active,
+        progression: {
+          state: state?.state || "idle",
+          cycles_completed: cycleCount,
+          successful_cycles: successCount,
+          cycle_success_rate: cycleCount > 0 ? ((successCount / cycleCount) * 100).toFixed(2) : "0",
+          last_cycle_time: state?.last_cycle_time ? new Date(parseInt(state.last_cycle_time)).toISOString() : null,
+        },
+        trades: {
+          total: trades.length,
+          open_positions: positions.length,
+        },
+        performance: {
+          error_count: errorCount,
+          health_status: errorCount === 0 ? "healthy" : errorCount < 5 ? "degraded" : "unhealthy",
+        },
+      }
+
+      return NextResponse.json({ engineStatus })
+    }
 
     // Get all connections
     const connections = await getAllConnections()
@@ -24,12 +74,12 @@ export async function GET() {
       try {
         const stateKey = `trade_engine_state:${connection.id}`
         const state = await (client as any).hGetAll(stateKey)
-        
+
         // Get trade metrics
         const tradesKey = `trades:${connection.id}`
         const positionsKey = `positions:${connection.id}`
-        const trades = await (client as any).sMembers(tradesKey) || []
-        const positions = await (client as any).sMembers(positionsKey) || []
+        const trades = (await (client as any).sMembers(tradesKey)) || []
+        const positions = (await (client as any).sMembers(positionsKey)) || []
 
         const isRunning = state?.is_running === "1" || state?.is_running === true
         const errorCount = parseInt(state?.error_count || "0")
@@ -77,7 +127,9 @@ export async function GET() {
         totalPositions += positions.length
         totalErrors += errorCount
 
-        console.log(`[v0] [Trade Engine] Connection ${connection.name}: running=${isRunning}, trades=${trades.length}, positions=${positions.length}, errors=${errorCount}`)
+        console.log(
+          `[v0] [Trade Engine] Connection ${connection.name}: running=${isRunning}, trades=${trades.length}, positions=${positions.length}, errors=${errorCount}`
+        )
       } catch (error) {
         console.warn(`[v0] [Trade Engine] Failed to get state for connection ${connection.id}:`, error)
         engineStates.push({

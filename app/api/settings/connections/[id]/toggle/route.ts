@@ -110,6 +110,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       success: true,
       connection: updatedConnection,
       engineStarted,
+      engineStatus: is_enabled ? (engineStarted ? "running" : "starting") : "stopped",
       message: engineMessage,
     })
   } catch (error) {
