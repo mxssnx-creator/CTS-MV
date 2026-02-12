@@ -427,6 +427,74 @@ export async function verifyRedisHealth(): Promise<boolean> {
   }
 }
 
+// ========== Indications ==========
+
+/**
+ * Save an indication
+ */
+export async function saveIndication(connectionId: string, indication: any): Promise<void> {
+  const client = getRedisClient()
+  const key = `indication:${indication.id}`
+  const setKey = `indications:${connectionId}`
+  
+  const indicationData: Record<string, string> = {}
+  for (const [k, v] of Object.entries(indication)) {
+    indicationData[k] = typeof v === "object" ? JSON.stringify(v) : String(v ?? "")
+  }
+  
+  await client.hSet(key, indicationData)
+  await client.sAdd(setKey, indication.id)
+}
+
+/**
+ * Get all indications for a connection
+ */
+export async function getIndications(connectionId: string): Promise<any[]> {
+  const client = getRedisClient()
+  const setKey = `indications:${connectionId}`
+  const indicationIds = await client.sMembers(setKey)
+  if (!indicationIds || indicationIds.length === 0) return []
+  
+  const indications = []
+  for (const indicationId of indicationIds) {
+    const key = `indication:${indicationId}`
+    const indication = await client.hGetAll(key)
+    if (indication && Object.keys(indication).length > 0) {
+      indications.push(indication)
+    }
+  }
+  return indications
+}
+
+// ========== Market Data ==========
+
+/**
+ * Save market data for a symbol
+ */
+export async function saveMarketData(symbol: string, data: any): Promise<void> {
+  const client = getRedisClient()
+  const key = `market_data:${symbol}`
+  
+  const marketData: Record<string, string> = {}
+  for (const [k, v] of Object.entries(data)) {
+    marketData[k] = typeof v === "object" ? JSON.stringify(v) : String(v ?? "")
+  }
+  
+  await client.hSet(key, marketData)
+  await client.expire(key, 300) // 5 minutes TTL
+}
+
+/**
+ * Get market data for a symbol
+ */
+export async function getMarketData(symbol: string): Promise<any> {
+  const client = getRedisClient()
+  const key = `market_data:${symbol}`
+  const data = await client.hGetAll(key)
+  if (!data || Object.keys(data).length === 0) return null
+  return data
+}
+
 // ========== Aliases for backward compat ==========
 
 export const saveTrade = createTrade
