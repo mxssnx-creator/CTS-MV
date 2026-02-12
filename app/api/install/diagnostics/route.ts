@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { query } from "@/lib/db"
+import { getAllConnections, initRedis, getRedisStats } from "@/lib/redis-db"
 import os from "os"
 
 export const runtime = "nodejs"
@@ -8,13 +8,9 @@ export async function POST(request: NextRequest) {
   try {
     console.log("[v0] Running system diagnostics...")
 
-    const connections = await query(`SELECT COUNT(*) as count FROM exchange_connections`, [])
-
-    const databaseUrl = process.env.DATABASE_URL || process.env.REMOTE_POSTGRES_URL || ""
-    let dbType = "SQLite"
-    if (databaseUrl.startsWith("postgresql://")) {
-      dbType = "PostgreSQL"
-    }
+    await initRedis()
+    const connections = await getAllConnections()
+    const stats = await getRedisStats()
 
     const diagnostics = {
       system: {
@@ -27,11 +23,14 @@ export async function POST(request: NextRequest) {
       },
       database: {
         status: "connected",
-        type: dbType,
+        type: "Redis",
+        system: "Upstash Redis (In-Memory Compatible)",
       },
       connections: {
-        count: connections[0]?.count || 0,
+        count: connections.length,
+        data: connections.length > 0 ? connections.slice(0, 3) : [],
       },
+      redis: stats,
     }
 
     console.log("[v0] Diagnostics completed successfully")

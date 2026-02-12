@@ -1,30 +1,19 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { query, execute } from "@/lib/db"
+import { flushAll, initRedis } from "@/lib/redis-db"
 
 export const runtime = "nodejs"
 
 export async function POST(request: NextRequest) {
   try {
-    console.log("[v0] Resetting database...")
+    console.log("[v0] Resetting Redis database...")
 
-    const tables = await query(`SELECT tablename FROM pg_tables WHERE schemaname = 'public'`, [])
+    await initRedis()
+    await flushAll()
 
-    let droppedCount = 0
-    for (const table of tables) {
-      try {
-        await execute(`DROP TABLE IF EXISTS ${table.tablename} CASCADE`, [])
-        console.log(`[v0] Dropped table: ${table.tablename}`)
-        droppedCount++
-      } catch (error) {
-        console.error(`[v0] Failed to drop table ${table.tablename}:`, error)
-      }
-    }
-
-    console.log("[v0] Database reset successfully")
+    console.log("[v0] Redis database reset successfully")
 
     return NextResponse.json({
       success: true,
-      tables_dropped: droppedCount,
       message: "Database reset successfully",
     })
   } catch (error) {

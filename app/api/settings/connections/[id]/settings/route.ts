@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { sql } from "@/lib/db"
+import { getConnection, updateConnection, initRedis } from "@/lib/redis-db"
 
 // GET connection-specific settings
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -7,16 +7,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { id } = await params
     const connectionId = id
 
-    // Get connection settings from JSON column or separate table
-    const result = await sql`
-      SELECT 
-        id,
-        name,
-        connection_settings
-      FROM exchange_connections
-      WHERE id = ${connectionId}
-    `
-    const connection = result[0] as { connection_settings?: string } | undefined
+    await initRedis()
+    const connection = await getConnection(connectionId)
 
     if (!connection) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 })
@@ -24,7 +16,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     // Parse settings or return defaults
     const settings = connection.connection_settings
-      ? JSON.parse(connection.connection_settings)
+      ? typeof connection.connection_settings === "string"
+        ? JSON.parse(connection.connection_settings)
+        : connection.connection_settings
       : {
           baseVolumeFactorLive: 1.0,
           baseVolumeFactorPreset: 1.0,
@@ -55,14 +49,21 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     console.log("[v0] Saving connection settings for:", connectionId, settings)
 
-    // Update connection settings in JSON column
-    await sql`
-      UPDATE exchange_connections
-      SET 
-        connection_settings = ${JSON.stringify(settings)},
-        updated_at = CURRENT_TIMESTAMP
-      WHERE id = ${connectionId}
-    `
+    await initRedis()
+    const connection = await getConnection(connectionId)
+
+    if (!connection) {
+      return NextResponse.json({ error: "Connection not found" }, { status: 404 })
+    }
+
+    // Update connection settings
+    const updatedConnection = {
+      ...connection,
+      connection_settings: settings,
+      updated_at: new Date().toISOString(),
+    }
+
+    await updateConnection(connectionId, updatedConnection)
 
     return NextResponse.json({ success: true })
   } catch (error) {
