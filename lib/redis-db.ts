@@ -185,6 +185,82 @@ function createMemoryStoreProxy(): any {
       return "PONG"
     },
 
+    async setEx(key: string, seconds: number, value: string): Promise<string> {
+      if (!memoryStore.has(key)) {
+        memoryStore.set(key, new Map())
+      }
+      const hash = memoryStore.get(key)!
+      hash.set("__value__", value)
+      hash.set("__expiry__", Date.now() + seconds * 1000)
+      return "OK"
+    },
+
+    async incr(key: string): Promise<number> {
+      if (!memoryStore.has(key)) {
+        memoryStore.set(key, new Map())
+      }
+      const hash = memoryStore.get(key)!
+      const current = parseInt(hash.get("__value__") ?? "0", 10)
+      const newValue = current + 1
+      hash.set("__value__", String(newValue))
+      return newValue
+    },
+
+    async zAdd(key: string, memberScore: any): Promise<number> {
+      if (typeof memberScore !== "object") {
+        return 0
+      }
+      if (!memoryStore.has(key)) {
+        memoryStore.set(key, new Map())
+      }
+      const zset = memoryStore.get(key)!
+      const member = memberScore.member
+      const score = memberScore.score
+      const wasNew = !zset.has(String(score))
+      zset.set(`${score}:${member}`, member)
+      return wasNew ? 1 : 0
+    },
+
+    async zRangeByScore(key: string, min: number, max: number): Promise<string[]> {
+      const zset = memoryStore.get(key)
+      if (!zset) return []
+      const results = []
+      zset.forEach((member, scoreKey) => {
+        const score = parseFloat(scoreKey.split(":")[0])
+        if (score >= min && score <= max) {
+          results.push(member)
+        }
+      })
+      return results
+    },
+
+    async sCard(key: string): Promise<number> {
+      const set = memorySets.get(key)
+      return set ? set.size : 0
+    },
+
+    async type(key: string): Promise<string> {
+      if (memoryStore.has(key)) return "hash"
+      if (memorySets.has(key)) return "set"
+      if (memoryLists.has(key)) return "list"
+      return "none"
+    },
+
+    async zRangeWithScores(key: string, start: number, end: number): Promise<any[]> {
+      const zset = memoryStore.get(key)
+      if (!zset) return []
+      const results: any[] = []
+      let index = 0
+      zset.forEach((member, scoreKey) => {
+        if (index >= start && (end === -1 || index <= end)) {
+          const score = parseFloat(scoreKey.split(":")[0])
+          results.push({ member, score })
+        }
+        index++
+      })
+      return results
+    },
+
     async info(): Promise<string> {
       return "Memory Store - Fallback Mode"
     },

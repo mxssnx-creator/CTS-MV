@@ -335,6 +335,17 @@ export const RedisMonitoring = {
 // ============ CACHE OPERATIONS ============
 
 export const RedisCache = {
+  async set(key: string, value: any, ttlSeconds: number = 3600) {
+    const client = getRedisClient()
+    await client.setEx(key, ttlSeconds, JSON.stringify(value))
+  },
+
+  async get(key: string) {
+    const client = getRedisClient()
+    const data = await client.get(key)
+    return data ? JSON.parse(data) : null
+  },
+
   async setCacheData(key: string, value: any, ttlSeconds: number = 3600) {
     const client = getRedisClient()
     await client.setEx(key, ttlSeconds, JSON.stringify(value))
