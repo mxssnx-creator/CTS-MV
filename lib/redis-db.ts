@@ -338,7 +338,7 @@ export async function getConnection(id: string): Promise<any> {
 }
 
 export async function getAllConnections(): Promise<any[]> {
-  const client = await getRedisClient()
+  const client = getRedisClient()
   const connectionIds = await client.sMembers("connections:all")
 
   if (!connectionIds || connectionIds.length === 0 || (connectionIds.length === 1 && !connectionIds[0])) {

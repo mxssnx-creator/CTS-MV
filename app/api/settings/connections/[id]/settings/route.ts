@@ -9,22 +9,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { id } = await params
     const connectionId = id
 
-    console.log("[v0] Fetching connection settings:", connectionId)
     await initRedis()
     let connection = await getConnection(connectionId)
 
-    console.log("[v0] Connection data retrieved:", { connectionId, found: !!connection, keys: connection ? Object.keys(connection) : [] })
-
     // If not found, try to search through all connections
     if (!connection) {
-      console.log("[v0] Connection not found by direct lookup, searching through all connections...")
       const allConnections = await getAllConnections()
       connection = allConnections.find(c => c.id === connectionId)
-      console.log("[v0] Found via search:", !!connection)
     }
 
     if (!connection) {
-      console.log("[v0] Connection not found:", connectionId)
       return NextResponse.json({ error: "Connection not found" }, { status: 404 })
     }
 
@@ -75,7 +69,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       },
     }
 
-    console.log("[v0] Connection settings retrieved successfully")
     await SystemLogger.logAPI(`Retrieved settings for connection ${connectionId}`, "info", `GET /api/settings/connections/${connectionId}/settings`)
 
     return NextResponse.json(responseData)
