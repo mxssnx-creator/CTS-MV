@@ -6,27 +6,22 @@
 export { 
   getRedisClient, 
   initRedis,
-  createConnection,
+  saveConnection,
   getConnection,
   getAllConnections,
   updateConnection,
   deleteConnection,
-  createTrade,
-  getTrade,
-  getConnectionTrades,
-  updateTrade,
-  createPosition,
-  getPosition,
-  getConnectionPositions,
-  updatePosition,
-  deletePosition,
+  saveIndication,
+  getIndications,
+  saveMarketData,
+  getMarketData,
   setSettings,
   getSettings,
   deleteSettings,
   flushAll,
-  closeRedis,
   isRedisConnected,
-  getRedisStats
+  getRedisStats,
+  verifyRedisHealth
 } from "./redis-db"
 
 export { 
