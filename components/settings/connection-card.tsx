@@ -390,11 +390,11 @@ export function ConnectionCard({
                   size="sm"
                   variant={logsExpanded ? "default" : "outline"}
                   onClick={() => setLogsExpanded(!logsExpanded)}
-                  className="flex items-center gap-2"
-                  title="View Test Logs"
+                  className="flex items-center gap-2 text-xs h-8"
+                  title={logsExpanded ? "Hide test logs" : "Show test logs"}
                 >
-                  <ChevronDown className={`h-4 w-4 transition-transform ${logsExpanded ? "rotate-180" : ""}`} />
-                  <span>Logs</span>
+                  <ChevronDown className={`h-3 w-3 transition-transform ${logsExpanded ? "rotate-180" : ""}`} />
+                  <span className="font-medium">Logs ({testLogs.length > 0 ? testLogs.length : (Array.isArray(connection.last_test_log) ? connection.last_test_log.length : 0)} lines)</span>
                 </Button>
               )}
               <Button
@@ -405,7 +405,8 @@ export function ConnectionCard({
                     onDelete()
                   }
                 }}
-                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8"
+                title="Delete this connection"
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
@@ -414,12 +415,18 @@ export function ConnectionCard({
 
           {/* Logs Section */}
           {(testLogs.length > 0 || (connection.last_test_log && connection.last_test_log.length > 0)) && (
-            <div className="space-y-2 border-t pt-3">
+            <div className="space-y-2 border-t pt-3 mt-3">
               {logsExpanded && (
-                <div className="bg-muted p-3 rounded text-xs font-mono max-h-48 overflow-y-auto space-y-0.5 border">
-                  {(testLogs.length > 0 ? testLogs : (Array.isArray(connection.last_test_log) ? connection.last_test_log : [])).map((line, i) => (
-                    <div key={i} className="text-muted-foreground">
-                      {line}
+                <div className="bg-muted p-3 rounded-md text-xs font-mono max-h-64 overflow-y-auto space-y-0.5 border border-border">
+                  {(testLogs.length > 0 
+                    ? testLogs 
+                    : (Array.isArray(connection.last_test_log) 
+                        ? connection.last_test_log 
+                        : connection.last_test_log?.split('\n') || []
+                      )
+                  ).map((line, i) => (
+                    <div key={i} className="text-muted-foreground font-mono text-xs leading-relaxed">
+                      {line || '\u00A0'}
                     </div>
                   ))}
                 </div>
