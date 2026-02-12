@@ -216,7 +216,11 @@ async function testBatch() {
   }
 }
 
-
+/**
+ * POST /api/system/integration-test
+ * Run comprehensive integration tests on connections
+ */
+export async function POST(request: NextRequest) {
   const startTime = Date.now()
   const results: any[] = []
   const errors: any[] = []

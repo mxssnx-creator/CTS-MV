@@ -148,12 +148,6 @@ export async function POST(request: NextRequest) {
       }, { status: 500 })
     }
 
-      console.log("[v0] [Trade Engine] Loaded connection from Redis:", connection.name)
-    } catch (redisError) {
-      console.error("[v0] [Trade Engine] Failed to load connection from Redis:", redisError)
-      return NextResponse.json({ error: "Failed to load connection configuration" }, { status: 500 })
-    }
-
     // Load settings from Redis
     let indicationInterval = 5
     let strategyInterval = 10
