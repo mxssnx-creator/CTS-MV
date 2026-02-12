@@ -1,279 +1,75 @@
+import { Redis } from "@upstash/redis"
+
 /**
- * Redis Database Module - Core Database Layer
- * Pure in-memory Redis-compatible data store
- * No external dependencies required - works standalone
+ * Redis Database Module - Using Upstash Redis
+ * Production database layer with full persistence
  */
 
+let redisClient: Redis | null = null
 let isConnected = false
 
-// In-memory data store
-const memoryStore = new Map<string, Map<string, any>>()
-const memorySets = new Map<string, Set<string>>()
-const memoryLists = new Map<string, string[]>()
-
 /**
- * Initialize the in-memory Redis store
+ * Initialize Upstash Redis connection
  */
 export async function initRedis(): Promise<void> {
-  if (isConnected) {
+  if (isConnected && redisClient) {
     return
   }
 
-  console.log("[v0] [Redis] Initializing in-memory Redis database...")
-  isConnected = true
-  console.log("[v0] [Redis] In-memory Redis database ready")
-}
+  try {
+    const url = process.env.UPSTASH_REDIS_REST_URL
+    const token = process.env.UPSTASH_REDIS_REST_TOKEN
 
-/**
- * Get Redis client - returns the in-memory store proxy
- */
-export function getRedisClient(): any {
-  if (!isConnected) {
-    isConnected = true
+    if (!url || !token) {
+      throw new Error(
+        "Upstash Redis credentials not configured. Check UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN environment variables."
+      )
+    }
+
+    redisClient = new Redis({
+      url,
+      token,
+    })
+
+    // Test connection
+    const ping = await redisClient.ping()
+    if (ping === "PONG") {
+      isConnected = true
+      console.log("[v0] [Redis] Connected to Upstash Redis successfully")
+    } else {
+      throw new Error("Redis ping failed")
+    }
+  } catch (error) {
+    console.error("[v0] [Redis] Failed to initialize Upstash Redis:", error)
+    redisClient = null
+    isConnected = false
+    throw error
   }
-
-  return createMemoryStoreProxy()
 }
 
 /**
- * Create a proxy object that mimics Redis client interface using memory store
+ * Get Redis client instance
  */
-function createMemoryStoreProxy(): any {
-  return {
-    async hSet(key: string, ...args: any[]): Promise<number> {
-      if (!memoryStore.has(key)) {
-        memoryStore.set(key, new Map())
-      }
-      const hash = memoryStore.get(key)!
+export function getRedisClient(): Redis {
+  if (!redisClient) {
+    throw new Error("Redis client not initialized. Call initRedis() first.")
+  }
+  return redisClient
+}
 
-      if (args.length === 1 && typeof args[0] === "object") {
-        Object.entries(args[0]).forEach(([k, v]) => {
-          hash.set(k, String(v))
-        })
-        return Object.keys(args[0]).length
-      }
-
-      for (let i = 0; i < args.length; i += 2) {
-        hash.set(String(args[i]), String(args[i + 1]))
-      }
-      return args.length / 2
-    },
-
-    async hGetAll(key: string): Promise<Record<string, string>> {
-      const hash = memoryStore.get(key)
-      if (!hash) return {}
-      const obj: Record<string, string> = {}
-      hash.forEach((v, k) => {
-        obj[k] = v
-      })
-      return obj
-    },
-
-    async hGet(key: string, field: string): Promise<string | null> {
-      const hash = memoryStore.get(key)
-      return hash?.get(field) ?? null
-    },
-
-    async sAdd(key: string, ...members: string[]): Promise<number> {
-      if (!memorySets.has(key)) {
-        memorySets.set(key, new Set())
-      }
-      const set = memorySets.get(key)!
-      const before = set.size
-      members.forEach((m) => set.add(m))
-      return set.size - before
-    },
-
-    async sMembers(key: string): Promise<string[]> {
-      const set = memorySets.get(key)
-      return set ? Array.from(set) : []
-    },
-
-    async sRem(key: string, ...members: string[]): Promise<number> {
-      const set = memorySets.get(key)
-      if (!set) return 0
-      let removed = 0
-      members.forEach((m) => {
-        if (set.has(m)) {
-          set.delete(m)
-          removed++
-        }
-      })
-      return removed
-    },
-
-    async lPush(key: string, ...values: string[]): Promise<number> {
-      if (!memoryLists.has(key)) {
-        memoryLists.set(key, [])
-      }
-      const list = memoryLists.get(key)!
-      list.unshift(...values)
-      return list.length
-    },
-
-    async lRange(key: string, start: number, end: number): Promise<string[]> {
-      const list = memoryLists.get(key)
-      if (!list) return []
-      return list.slice(start, end + 1)
-    },
-
-    async lTrim(key: string, start: number, end: number): Promise<string> {
-      const list = memoryLists.get(key)
-      if (!list) return "OK"
-      const trimmed = list.slice(start, end + 1)
-      memoryLists.set(key, trimmed)
-      return "OK"
-    },
-
-    async del(...keys: string[]): Promise<number> {
-      let deleted = 0
-      keys.forEach((k) => {
-        if (memoryStore.has(k) || memorySets.has(k) || memoryLists.has(k)) {
-          memoryStore.delete(k)
-          memorySets.delete(k)
-          memoryLists.delete(k)
-          deleted++
-        }
-      })
-      return deleted
-    },
-
-    async keys(pattern: string): Promise<string[]> {
-      const allKeys = [
-        ...Array.from(memoryStore.keys()),
-        ...Array.from(memorySets.keys()),
-        ...Array.from(memoryLists.keys()),
-      ]
-      if (pattern === "*") return allKeys
-      if (pattern.endsWith("*")) {
-        const prefix = pattern.slice(0, -1)
-        return allKeys.filter((k) => k.startsWith(prefix))
-      }
-      return allKeys.filter((k) => k === pattern)
-    },
-
-    async expire(key: string, seconds: number): Promise<boolean> {
-      return true
-    },
-
-    async ttl(key: string): Promise<number> {
-      return memoryStore.has(key) || memorySets.has(key) || memoryLists.has(key) ? 86400 : -2
-    },
-
-    async set(key: string, value: string): Promise<string> {
-      if (!memoryStore.has(key)) {
-        memoryStore.set(key, new Map())
-      }
-      const hash = memoryStore.get(key)!
-      hash.set("__value__", value)
-      return "OK"
-    },
-
-    async get(key: string): Promise<string | null> {
-      const hash = memoryStore.get(key)
-      return hash?.get("__value__") ?? null
-    },
-
-    async flushDb(): Promise<string> {
-      memoryStore.clear()
-      memorySets.clear()
-      memoryLists.clear()
-      return "OK"
-    },
-
-    async ping(): Promise<string> {
-      return "PONG"
-    },
-
-    async setEx(key: string, seconds: number, value: string): Promise<string> {
-      if (!memoryStore.has(key)) {
-        memoryStore.set(key, new Map())
-      }
-      const hash = memoryStore.get(key)!
-      hash.set("__value__", value)
-      hash.set("__expiry__", Date.now() + seconds * 1000)
-      return "OK"
-    },
-
-    async incr(key: string): Promise<number> {
-      if (!memoryStore.has(key)) {
-        memoryStore.set(key, new Map())
-      }
-      const hash = memoryStore.get(key)!
-      const current = parseInt(hash.get("__value__") ?? "0", 10)
-      const newValue = current + 1
-      hash.set("__value__", String(newValue))
-      return newValue
-    },
-
-    async zAdd(key: string, memberScore: any): Promise<number> {
-      if (typeof memberScore !== "object") {
-        return 0
-      }
-      if (!memoryStore.has(key)) {
-        memoryStore.set(key, new Map())
-      }
-      const zset = memoryStore.get(key)!
-      const member = memberScore.member
-      const score = memberScore.score
-      const wasNew = !zset.has(String(score))
-      zset.set(`${score}:${member}`, member)
-      return wasNew ? 1 : 0
-    },
-
-    async zRangeByScore(key: string, min: number, max: number): Promise<string[]> {
-      const zset = memoryStore.get(key)
-      if (!zset) return []
-      const results = []
-      zset.forEach((member, scoreKey) => {
-        const score = parseFloat(scoreKey.split(":")[0])
-        if (score >= min && score <= max) {
-          results.push(member)
-        }
-      })
-      return results
-    },
-
-    async sCard(key: string): Promise<number> {
-      const set = memorySets.get(key)
-      return set ? set.size : 0
-    },
-
-    async type(key: string): Promise<string> {
-      if (memoryStore.has(key)) return "hash"
-      if (memorySets.has(key)) return "set"
-      if (memoryLists.has(key)) return "list"
-      return "none"
-    },
-
-    async zRangeWithScores(key: string, start: number, end: number): Promise<any[]> {
-      const zset = memoryStore.get(key)
-      if (!zset) return []
-      const results: any[] = []
-      let index = 0
-      zset.forEach((member, scoreKey) => {
-        if (index >= start && (end === -1 || index <= end)) {
-          const score = parseFloat(scoreKey.split(":")[0])
-          results.push({ member, score })
-        }
-        index++
-      })
-      return results
-    },
-
-    async info(): Promise<string> {
-      return "Memory Store - Fallback Mode"
-    },
-
-    async dbSize(): Promise<number> {
-      return memoryStore.size + memorySets.size + memoryLists.size
-    },
-
-    async quit(): Promise<void> {
-      memoryStore.clear()
-      memorySets.clear()
-      memoryLists.clear()
-    },
+/**
+ * Verify Redis connection and health
+ */
+export async function verifyRedisHealth(): Promise<boolean> {
+  try {
+    await initRedis()
+    const client = getRedisClient()
+    const ping = await client.ping()
+    console.log("[v0] [Redis] Health check passed")
+    return ping === "PONG"
+  } catch (error) {
+    console.error("[v0] [Redis] Health check failed:", error)
+    return false
   }
 }
 
@@ -281,129 +77,147 @@ function createMemoryStoreProxy(): any {
  * Initialize Redis indexes for optimized queries
  */
 async function initializeIndexes(): Promise<void> {
-  if (!isConnected) return
-
   try {
-    console.log("[v0] Database indexes configured")
+    console.log("[v0] Redis indexes configured (Upstash manages indexes)")
   } catch (error) {
-    console.warn("[v0] Index initialization skipped:", error)
+    console.warn("[v0] Index configuration skipped:", error)
   }
 }
 
 /**
- * Connection data operations
+ * Connection data operations - with comprehensive error handling
  */
 export async function createConnection(data: any): Promise<string> {
-  const client = await getRedisClient()
-  const id = data.id || `${data.exchange}-${Date.now()}`
+  try {
+    await initRedis()
+    const client = getRedisClient()
+    const id = data.id || `${data.exchange}-${Date.now()}`
 
-  const connectionData = {
-    ...data,
-    id,
-    is_enabled: String(data.is_enabled !== false),
-    is_active: String(data.is_active !== false), // Active if passed as active
-    is_testnet: String(data.is_testnet === true),
-    created_at: data.created_at || new Date().toISOString(),
-    updated_at: new Date().toISOString(),
+    const connectionData = {
+      ...data,
+      id,
+      is_enabled: String(data.is_enabled !== false),
+      is_active: String(data.is_active !== false),
+      is_testnet: String(data.is_testnet === true),
+      created_at: data.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+
+    await client.hSet(`connection:${id}`, connectionData)
+    await client.sAdd("connections:all", id)
+    await client.sAdd(`connections:${data.exchange}`, id)
+
+    if (data.is_enabled) {
+      await client.sAdd("connections:enabled", id)
+    }
+
+    if (data.is_active) {
+      await client.sAdd("connections:active", id)
+    }
+
+    console.log("[v0] [DB] Connection created:", id)
+    return id
+  } catch (error) {
+    console.error("[v0] [DB] Failed to create connection:", error)
+    throw error
   }
-
-  await client.hSet(`connection:${id}`, connectionData)
-  await client.sAdd("connections:all", id)
-  await client.sAdd(`connections:${data.exchange}`, id)
-
-  if (data.is_enabled) {
-    await client.sAdd("connections:enabled", id)
-  }
-
-  if (data.is_active) {
-    await client.sAdd("connections:active", id)
-  }
-
-  return id
 }
 
 export async function getConnection(id: string): Promise<any> {
-  const client = getRedisClient()
-  const data = await client.hGetAll(`connection:${id}`)
-  if (Object.keys(data).length > 0) {
-    return {
-      id,
-      ...data,
-      is_enabled: data.is_enabled === "true" || data.is_enabled === true,
-      is_active: data.is_active === "true" || data.is_active === true,
-      is_testnet: data.is_testnet === "true" || data.is_testnet === true,
+  try {
+    await initRedis()
+    const client = getRedisClient()
+    const data = await client.hGetAll(`connection:${id}`)
+    if (Object.keys(data).length > 0) {
+      return {
+        id,
+        ...data,
+        is_enabled: data.is_enabled === "true" || data.is_enabled === true,
+        is_active: data.is_active === "true" || data.is_active === true,
+        is_testnet: data.is_testnet === "true" || data.is_testnet === true,
+      }
     }
+    return null
+  } catch (error) {
+    console.error("[v0] [DB] Failed to get connection:", error)
+    return null
   }
-  return null
 }
 
 export async function getAllConnections(): Promise<any[]> {
-  const client = getRedisClient()
-  const connectionIds = await client.sMembers("connections:all")
+  try {
+    await initRedis()
+    const client = getRedisClient()
+    const connectionIds = await client.sMembers("connections:all")
 
-  if (!connectionIds || connectionIds.length === 0 || (connectionIds.length === 1 && !connectionIds[0])) {
+    if (!connectionIds || connectionIds.length === 0) {
+      return []
+    }
+
+    const connections = []
+    for (const id of connectionIds) {
+      if (!id) continue
+      const data = await client.hGetAll(`connection:${id}`)
+      if (data && Object.keys(data).length > 0) {
+        connections.push({
+          id,
+          ...data,
+          is_enabled: data.is_enabled === "true" || data.is_enabled === true || data.is_enabled === 1,
+          is_active: data.is_active === "true" || data.is_active === true || data.is_active === 1,
+          is_testnet: data.is_testnet === "true" || data.is_testnet === true || data.is_testnet === 1,
+          connection_settings: typeof data.connection_settings === "string" ? JSON.parse(data.connection_settings || "{}") : data.connection_settings || {},
+        })
+      }
+    }
+
+    console.log("[v0] [DB] Retrieved", connections.length, "connections")
+    return connections
+  } catch (error) {
+    console.error("[v0] [DB] Failed to get all connections:", error)
     return []
   }
-
-  const connections = []
-  for (const id of connectionIds) {
-    if (!id) continue
-    const data = await client.hGetAll(`connection:${id}`)
-    if (data && Object.keys(data).length > 0) {
-      // Parse boolean fields properly
-      const is_enabled = data.is_enabled === "true" || data.is_enabled === true || data.is_enabled === 1
-      const is_active = data.is_active === "true" || data.is_active === true || data.is_active === 1
-      const is_testnet = data.is_testnet === "true" || data.is_testnet === true || data.is_testnet === 1
-      const is_live_trade = data.is_live_trade === "true" || data.is_live_trade === true || data.is_live_trade === 1
-
-      // Parse connection_settings if it's a string
-      let connection_settings = data.connection_settings
-      if (typeof connection_settings === "string") {
-        try {
-          connection_settings = JSON.parse(connection_settings)
-        } catch (e) {
-          connection_settings = {}
-        }
-      }
-
-      connections.push({
-        id,
-        ...data,
-        is_enabled,
-        is_active,
-        is_testnet,
-        is_live_trade,
-        connection_settings: connection_settings || {},
-        created_at: data.created_at || new Date().toISOString(),
-        updated_at: data.updated_at || new Date().toISOString(),
-      })
-    }
-  }
-
-  return connections
 }
 
 export async function updateConnection(id: string, data: any): Promise<void> {
-  const client = getRedisClient()
-  data.updated_at = new Date().toISOString()
-  await client.hSet(`connection:${id}`, data)
+  try {
+    await initRedis()
+    const client = getRedisClient()
+    data.updated_at = new Date().toISOString()
+    await client.hSet(`connection:${id}`, data)
+    console.log("[v0] [DB] Connection updated:", id)
+  } catch (error) {
+    console.error("[v0] [DB] Failed to update connection:", error)
+    throw error
+  }
 }
 
 export async function deleteConnection(id: string): Promise<boolean> {
-  const client = getRedisClient()
-  const connection = await getConnection(id)
+  try {
+    await initRedis()
+    const client = getRedisClient()
+    const connection = await getConnection(id)
 
-  if (!connection) {
-    return false
+    if (!connection) {
+      return false
+    }
+
+    await client.sRem("connections:all", id)
+    await client.sRem(`connections:${connection.exchange}`, id)
+    await client.sRem("connections:enabled", id)
+    await client.sRem("connections:active", id)
+    await client.del(`connection:${id}`)
+    
+    // Clean up related data
+    await client.del(`trades:${id}`)
+    await client.del(`positions:${id}`)
+    await client.del(`trade_engine_state:${id}`)
+
+    console.log("[v0] [DB] Connection deleted:", id)
+    return true
+  } catch (error) {
+    console.error("[v0] [DB] Failed to delete connection:", error)
+    throw error
   }
-
-  await client.sRem("connections:all", id)
-  await client.sRem(`connections:${connection.exchange}`, id)
-  await client.sRem("connections:enabled", id)
-  await client.sRem("connections:active", id)
-  await client.del(`connection:${id}`)
-
-  return true
 }
 
 /**
@@ -550,36 +364,34 @@ export async function flushAll(): Promise<void> {
  * Connection pooling and utilities
  */
 export async function closeRedis(): Promise<void> {
-  memoryStore.clear()
-  memorySets.clear()
-  memoryLists.clear()
-  isConnected = false
-  console.log("[v0] In-memory database closed")
+  if (redisClient) {
+    isConnected = false
+    redisClient = null
+    console.log("[v0] Redis connection closed")
+  }
 }
 
 export async function isRedisConnected(): Promise<boolean> {
-  return isConnected
+  return isConnected && redisClient !== null
 }
 
 export async function getRedisStats(): Promise<any> {
-  const client = getRedisClient()
-
   try {
-    const keyCount = await client.dbSize()
+    await initRedis()
+    const client = getRedisClient()
+    const dbSize = await client.dbSize()
 
     return {
       connected: isConnected,
-      isUsingFallback: false,
-      keyCount,
-      hashCount: memoryStore.size,
-      setCount: memorySets.size,
-      listCount: memoryLists.size,
-      mode: "in-memory",
+      provider: "Upstash Redis",
+      keyCount: dbSize || 0,
+      mode: "persistent",
     }
   } catch (error) {
     console.error("[v0] Error getting Redis stats:", error)
     return {
       connected: false,
+      provider: "Upstash Redis",
       keyCount: 0,
       error: String(error),
     }
