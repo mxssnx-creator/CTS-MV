@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { SystemLogger } from "@/lib/system-logger"
-import { getConnection, updateConnection, initRedis } from "@/lib/redis-db"
+import { getConnection, updateConnection, initRedis, getAllConnections } from "@/lib/redis-db"
 import { RedisTrades, RedisPositions } from "@/lib/redis-operations"
 
 // GET connection-specific settings with comprehensive data
@@ -11,9 +11,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     console.log("[v0] Fetching connection settings:", connectionId)
     await initRedis()
-    const connection = await getConnection(connectionId)
+    let connection = await getConnection(connectionId)
 
     console.log("[v0] Connection data retrieved:", { connectionId, found: !!connection, keys: connection ? Object.keys(connection) : [] })
+
+    // If not found, try to search through all connections
+    if (!connection) {
+      console.log("[v0] Connection not found by direct lookup, searching through all connections...")
+      const allConnections = await getAllConnections()
+      connection = allConnections.find(c => c.id === connectionId)
+      console.log("[v0] Found via search:", !!connection)
+    }
 
     if (!connection) {
       console.log("[v0] Connection not found:", connectionId)
