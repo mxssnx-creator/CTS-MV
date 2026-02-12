@@ -545,9 +545,9 @@ export function AddConnectionDialog({ open, onOpenChange, onConnectionAdded, sho
 
                 <div className="space-y-1.5">
                   <Label htmlFor="connection-library" className="font-medium text-xs">Library</Label>
-                  <Select value={formData.connection_library} onValueChange={(value) => setFormData({ ...formData, connection_library: value })}>
+                  <Select value={formData.connection_library || "native"} onValueChange={(value) => setFormData({ ...formData, connection_library: value })}>
                     <SelectTrigger id="connection-library" disabled={loading} className="bg-white h-8 text-sm">
-                      <SelectValue />
+                      <SelectValue placeholder="Select library..." />
                     </SelectTrigger>
                     <SelectContent>
                       {formData.connection_method === "rest" && (
