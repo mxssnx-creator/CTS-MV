@@ -50,11 +50,17 @@ export function Dashboard() {
     // Initialize trade engine on dashboard load
     const initializeEngine = async () => {
       try {
-        const response = await fetch("/api/init")
+        console.log("[v0] [Dashboard] Calling /api/trade-engine/start to initialize all enabled engines")
+        const response = await fetch("/api/trade-engine/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        })
         if (response.ok) {
-          console.log("[v0] [Dashboard] Trade engine initialized")
+          const data = await response.json()
+          console.log("[v0] [Dashboard] Trade engine initialized:", data)
+          toast.success("Trade Engine", { description: `Started ${data.count || 0} trade engines` })
         } else {
-          console.warn("[v0] [Dashboard] Trade engine initialization returned non-OK status")
+          console.warn("[v0] [Dashboard] Trade engine initialization returned non-OK status:", response.status)
         }
       } catch (error) {
         console.error("[v0] [Dashboard] Failed to initialize trade engine:", error)

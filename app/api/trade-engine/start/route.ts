@@ -35,12 +35,18 @@ export async function POST(request: NextRequest) {
       try {
         await initRedis()
         const connections = await getAllConnections()
-        const enabledConnections = connections.filter((c) => c.is_enabled)
+        console.log("[v0] [Trade Engine] Total connections in Redis:", connections.length)
+        const enabledConnections = connections.filter((c) => c.is_enabled === true || c.is_enabled === "true")
+        
+        console.log("[v0] [Trade Engine] Found", enabledConnections.length, "enabled connections")
         
         if (enabledConnections.length === 0) {
+          console.warn("[v0] [Trade Engine] No enabled connections found, returning")
           return NextResponse.json({
             success: false,
             error: "No enabled connections found",
+            totalConnections: connections.length,
+            enabledConnections: [],
           }, { status: 400 })
         }
 
@@ -77,8 +83,15 @@ export async function POST(request: NextRequest) {
     try {
       await initRedis()
       connection = await getConnection(connectionId)
+      
+      // If direct lookup fails, try getAllConnections
+      if (!connection) {
+        console.log("[v0] [Trade Engine] Direct lookup failed, trying getAllConnections...")
+        const allConnections = await getAllConnections()
+        connection = allConnections.find(c => c.id === connectionId)
+      }
 
-      if (!connection || !connection.is_enabled) {
+      if (!connection || (connection.is_enabled !== true && connection.is_enabled !== "true")) {
         console.error("[v0] [Trade Engine] Connection not found or not enabled:", connectionId)
         await SystemLogger.logTradeEngine(`Connection not found or not enabled: ${connectionId}`, "error", {
           connectionId,
