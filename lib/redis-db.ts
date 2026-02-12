@@ -17,12 +17,13 @@ export async function initRedis(): Promise<void> {
   }
 
   try {
-    const url = process.env.UPSTASH_REDIS_REST_URL
-    const token = process.env.UPSTASH_REDIS_REST_TOKEN
+    // Try Vercel KV variables first, then fallback to Upstash-specific variables
+    const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL
+    const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN
 
     if (!url || !token) {
       throw new Error(
-        "Upstash Redis credentials not configured. Check UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN environment variables."
+        "Redis credentials not configured. Check KV_REST_API_URL/KV_REST_API_TOKEN or UPSTASH_REDIS_REST_URL/UPSTASH_REDIS_REST_TOKEN environment variables."
       )
     }
 
