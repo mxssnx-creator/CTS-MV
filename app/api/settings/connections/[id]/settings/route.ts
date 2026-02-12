@@ -10,7 +10,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const connectionId = id
 
     await initRedis()
-    
+
     // Get all connections and find the one we need
     const allConnections = await getAllConnections()
     let connection = allConnections.find(c => c.id === connectionId)
@@ -66,7 +66,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       },
     }
 
-    await SystemLogger.logAPI(`Retrieved settings for connection ${connectionId}`, "info", `GET /api/settings/connections/${connectionId}/settings`)
+    await SystemLogger.logAPI(
+      `Retrieved settings for connection ${connectionId}`,
+      "info",
+      `GET /api/settings/connections/${connectionId}/settings`
+    )
 
     return NextResponse.json(responseData)
   } catch (error) {

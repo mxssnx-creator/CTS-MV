@@ -620,8 +620,17 @@ export default function ExchangeConnectionManager() {
         )
       )
 
-      toast.success(`Connection ${enabled ? "enabled" : "disabled"}`)
-      console.log("[v0] Toggle successful for:", id)
+      // Show appropriate toast message
+      if (enabled) {
+        const message = data.tradeEngineStarted 
+          ? `Connection enabled and trade engine started automatically`
+          : `Connection enabled${connection.api_key ? " (add credentials to auto-start trade engine)" : ""}`
+        toast.success(message)
+      } else {
+        toast.success("Connection disabled")
+      }
+      
+      console.log("[v0] Toggle successful for:", id, "trade engine started:", data.tradeEngineStarted)
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : "Failed to toggle connection"
       console.error("[v0] Toggle error:", errorMsg)
