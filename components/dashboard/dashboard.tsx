@@ -47,27 +47,37 @@ export function Dashboard() {
   }, [exchangeConnectionsActive, selectedExchange])
 
   useEffect(() => {
-    // Initialize trade engine on dashboard load
-    const initializeEngine = async () => {
+    // Initialize all systems on dashboard load
+    const initializeSystems = async () => {
       try {
-        console.log("[v0] [Dashboard] Calling /api/trade-engine/start to initialize all enabled engines")
-        const response = await fetch("/api/trade-engine/start", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+        console.log("[v0] [Dashboard] Initializing systems...")
+        
+        // Call init endpoint to seed defaults and initialize trade engine
+        const initResponse = await fetch("/api/init", { 
+          method: "GET",
+          cache: "no-store"
         })
-        if (response.ok) {
-          const data = await response.json()
-          console.log("[v0] [Dashboard] Trade engine initialized:", data)
-          toast.success("Trade Engine", { description: `Started ${data.count || 0} trade engines` })
+        
+        if (initResponse.ok) {
+          const initData = await initResponse.json()
+          console.log("[v0] [Dashboard] Systems initialized:", initData)
+          if (initData.defaultConnectionsCreated > 0) {
+            toast.info("Trade System", { 
+              description: `Initialized ${initData.defaultConnectionsCreated} default exchange connection(s)`
+            })
+          }
         } else {
-          console.warn("[v0] [Dashboard] Trade engine initialization returned non-OK status:", response.status)
+          console.warn("[v0] [Dashboard] System initialization returned:", initResponse.status)
         }
+        
+        // Load all active connections
+        await loadExchangeConnectionsActive()
       } catch (error) {
-        console.error("[v0] [Dashboard] Failed to initialize trade engine:", error)
+        console.error("[v0] [Dashboard] Failed to initialize systems:", error)
       }
     }
     
-    initializeEngine()
+    initializeSystems()
     loadStats()
     
     const interval = setInterval(() => {

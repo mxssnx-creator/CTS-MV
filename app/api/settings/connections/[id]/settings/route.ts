@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { SystemLogger } from "@/lib/system-logger"
-import { updateConnection, initRedis, getAllConnections } from "@/lib/redis-db"
+import { updateConnection, initRedis, getAllConnections, getConnection } from "@/lib/redis-db"
 import { RedisTrades, RedisPositions } from "@/lib/redis-operations"
 
 // GET connection-specific settings with comprehensive data
@@ -121,6 +121,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     await SystemLogger.logError(error, "api", "PUT /api/settings/connections/[id]/settings")
     return NextResponse.json({ error: "Failed to update settings", details: errorMsg }, { status: 500 })
   }
+}
 
 // PATCH update connection-specific settings (partial)
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
