@@ -13,6 +13,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     await initRedis()
     const connection = await getConnection(connectionId)
 
+    console.log("[v0] Connection data retrieved:", { connectionId, found: !!connection, keys: connection ? Object.keys(connection) : [] })
+
     if (!connection) {
       console.log("[v0] Connection not found:", connectionId)
       return NextResponse.json({ error: "Connection not found" }, { status: 404 })

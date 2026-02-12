@@ -325,7 +325,16 @@ export async function createConnection(data: any): Promise<string> {
 export async function getConnection(id: string): Promise<any> {
   const client = getRedisClient()
   const data = await client.hGetAll(`connection:${id}`)
-  return Object.keys(data).length > 0 ? data : null
+  if (Object.keys(data).length > 0) {
+    return {
+      id,
+      ...data,
+      is_enabled: data.is_enabled === "true" || data.is_enabled === true,
+      is_active: data.is_active === "true" || data.is_active === true,
+      is_testnet: data.is_testnet === "true" || data.is_testnet === true,
+    }
+  }
+  return null
 }
 
 export async function getAllConnections(): Promise<any[]> {
