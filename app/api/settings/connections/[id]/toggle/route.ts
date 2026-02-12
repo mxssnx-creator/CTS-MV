@@ -1,19 +1,18 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { SystemLogger } from "@/lib/system-logger"
 import { initRedis, getConnection, updateConnection } from "@/lib/redis-db"
+import { getGlobalTradeEngineCoordinator } from "@/lib/trade-engine"
+import { loadSettingsAsync } from "@/lib/settings-storage"
 
-// POST toggle connection enabled status and optionally start trade engine
+// POST toggle connection enabled status and start/stop trade engine immediately
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     const connectionId = id
-    const { is_enabled, is_live_trade, is_preset_trade } = await request.json()
+    const body = await request.json()
+    const { is_enabled } = body
 
-    console.log("[v0] [Toggle] Toggling connection:", connectionId, {
-      is_enabled,
-      is_live_trade,
-      is_preset_trade,
-    })
+    console.log("[v0] [Toggle] Toggling connection:", connectionId, "enabled:", is_enabled)
 
     await initRedis()
     const connection = await getConnection(connectionId)
@@ -23,90 +22,105 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "Connection not found" }, { status: 404 })
     }
 
-    if (is_live_trade && !is_enabled) {
-      console.warn("[v0] [Toggle] Cannot enable live trade without enabling connection first")
-      return NextResponse.json(
-        { error: "Invalid state", details: "Cannot enable live trade without enabling connection first" },
-        { status: 400 },
-      )
-    }
-
     // Update connection in Redis
     const updatedConnection = {
       ...connection,
       is_enabled,
-      is_live_trade: is_enabled ? is_live_trade : false,
-      is_preset_trade: is_enabled ? is_preset_trade : false,
       updated_at: new Date().toISOString(),
     }
 
     await updateConnection(connectionId, updatedConnection)
     console.log("[v0] [Toggle] Connection state updated in Redis")
 
-    // If enabling and has credentials, automatically start trade engine
-    let tradeEngineStarted = false
-    if (is_enabled && connection.api_key && connection.api_secret) {
-      console.log("[v0] [Toggle] Connection enabled with credentials, starting trade engine...")
-      
-      try {
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || `http://localhost:3000`
-        const startResponse = await fetch(
-          `${baseUrl}/api/trade-engine/start`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ connectionId }),
-          }
+    let engineStarted = false
+    let engineMessage = ""
+
+    try {
+      const coordinator = getGlobalTradeEngineCoordinator()
+
+      if (is_enabled && connection.api_key && connection.api_secret) {
+        // Enable: Immediately start the trade engine
+        console.log("[v0] [Toggle] Connection enabled - starting trade engine for:", connection.name)
+
+        const settings = await loadSettingsAsync()
+        await coordinator.startEngine(connectionId, {
+          connectionId,
+          indicationInterval: settings?.mainEngineIntervalMs ? settings.mainEngineIntervalMs / 1000 : 5,
+          strategyInterval: settings?.strategyUpdateIntervalMs ? settings.strategyUpdateIntervalMs / 1000 : 10,
+          realtimeInterval: settings?.realtimeIntervalMs ? settings.realtimeIntervalMs / 1000 : 3,
+        })
+
+        engineStarted = true
+        engineMessage = `Trade engine started for ${connection.name}`
+        console.log("[v0] [Toggle] Trade engine started successfully")
+
+        await SystemLogger.logConnection(
+          `Connection enabled and trade engine started automatically`,
+          connectionId,
+          "info",
+          { engineStarted: true },
         )
+      } else if (is_enabled && (!connection.api_key || !connection.api_secret)) {
+        // Enable without credentials: just mark as enabled
+        engineMessage = `Connection enabled (add API credentials to auto-start trade engine)`
+        console.log("[v0] [Toggle] Connection enabled but no credentials - trade engine not started")
 
-        const startData = await startResponse.json()
+        await SystemLogger.logConnection(
+          `Connection enabled but credentials missing`,
+          connectionId,
+          "info",
+          { credentialsMissing: true },
+        )
+      } else if (!is_enabled) {
+        // Disable: Stop the trade engine
+        console.log("[v0] [Toggle] Connection disabled - stopping trade engine for:", connection.name)
 
-        if (startResponse.ok && startData.success) {
-          tradeEngineStarted = true
-          console.log("[v0] [Toggle] Trade engine started successfully for:", connectionId)
-          await SystemLogger.logConnection(
-            `Connection enabled and trade engine started automatically`,
-            connectionId,
-            "info",
-            { tradeEngineStarted: true }
-          )
-        } else {
-          console.warn("[v0] [Toggle] Trade engine start returned non-success status:", startResponse.status, startData)
-          await SystemLogger.logConnection(
-            `Connection enabled but trade engine start failed`,
-            connectionId,
-            "warning",
-            { error: startData.error || "Unknown error" }
-          )
+        try {
+          await coordinator.stopEngine(connectionId)
+          console.log("[v0] [Toggle] Trade engine stopped successfully")
+        } catch (stopError) {
+          console.warn("[v0] [Toggle] Failed to stop engine, may not be running:", stopError)
         }
-      } catch (engineError) {
-        console.warn("[v0] [Toggle] Error calling trade engine start API:", engineError)
-        // Don't fail the toggle operation if trade engine start fails
+
+        engineMessage = `Connection disabled and trade engine stopped`
+
+        await SystemLogger.logConnection(
+          `Connection disabled and trade engine stopped`,
+          connectionId,
+          "info",
+          { engineStarted: false },
+        )
+      }
+    } catch (engineError) {
+      console.error("[v0] [Toggle] Trade engine operation failed:", engineError)
+      engineMessage = `Connection ${is_enabled ? "enabled" : "disabled"} but engine control failed`
+
+      try {
         await SystemLogger.logError(
           engineError,
           "trade-engine",
-          `Automatic trade engine start failed for connection ${connectionId}`
+          `Toggle trade engine for connection ${connectionId}`,
         )
+      } catch (logError) {
+        console.warn("[v0] [Toggle] Failed to log engine error:", logError)
       }
     }
 
-    await SystemLogger.logConnection(
-      `Connection toggled to ${is_enabled ? "enabled" : "disabled"}${tradeEngineStarted ? " - trade engine started" : ""}`,
-      connectionId,
-      "info",
-      { is_enabled, is_live_trade, is_preset_trade, tradeEngineStarted },
-    )
-
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true,
       connection: updatedConnection,
-      tradeEngineStarted,
-      message: `Connection ${is_enabled ? "enabled" : "disabled"}${tradeEngineStarted ? " and trade engine started automatically" : ""}`,
+      engineStarted,
+      message: engineMessage,
     })
   } catch (error) {
     console.error("[v0] [Toggle] Exception:", error)
     const errorMsg = error instanceof Error ? error.message : String(error)
-    await SystemLogger.logError(error, "api", "POST /api/settings/connections/[id]/toggle")
+
+    try {
+      await SystemLogger.logError(error, "api", "POST /api/settings/connections/[id]/toggle")
+    } catch (logError) {
+      console.warn("[v0] [Toggle] Failed to log error:", logError)
+    }
 
     return NextResponse.json(
       {

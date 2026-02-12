@@ -100,6 +100,55 @@ function startConnectionMonitoring(): void {
         return
       }
 
+      const enabledConnections = connections.filter((c) => c.is_enabled === true || c.is_enabled === "true")
+
+      // If connection count changed, log it
+      if (enabledConnections.length !== lastConnectionCount) {
+        console.log("[v0] [Monitor] Enabled connections changed:", lastConnectionCount, "->", enabledConnections.length)
+        lastConnectionCount = enabledConnections.length
+      }
+
+      const coordinator = getGlobalTradeEngineCoordinator()
+
+      for (const connection of enabledConnections) {
+        try {
+          // Check if engine is already running for this connection
+          const engineStatus = coordinator.getEngineStatus(connection.id)
+
+          if (!engineStatus || engineStatus.status === "stopped") {
+            console.log("[v0] [Monitor] Auto-starting engine for enabled connection:", connection.name)
+
+            if (connection.api_key && connection.api_secret) {
+              const settings = await loadSettingsAsync()
+              await coordinator.startEngine(connection.id, {
+                connectionId: connection.id,
+                indicationInterval: settings.mainEngineIntervalMs ? settings.mainEngineIntervalMs / 1000 : 5,
+                strategyInterval: settings.strategyUpdateIntervalMs ? settings.strategyUpdateIntervalMs / 1000 : 10,
+                realtimeInterval: settings.realtimeIntervalMs ? settings.realtimeIntervalMs / 1000 : 3,
+              })
+
+              console.log("[v0] [Monitor] Engine auto-started for:", connection.name)
+            }
+          }
+        } catch (error) {
+          console.warn("[v0] [Monitor] Failed to auto-start engine for", connection.name, ":", error)
+        }
+      }
+    } catch (error) {
+      // Log but don't crash - gracefully handle Redis errors
+      if (error instanceof Error && error.message.includes("Redis credentials")) {
+        // Only log once per interval to avoid spam
+        if (Math.random() < 0.1) {
+          console.warn("[v0] [Monitor] Redis not configured - skipping auto-start check")
+        }
+      } else {
+        console.warn("[v0] [Monitor] Error during connection monitoring:", error instanceof Error ? error.message : String(error))
+      }
+    }
+  }, 10000) // Check every 10 seconds for new enabled connections
+}
+      }
+
       const activeConnections = connections.filter((c) => c.is_enabled && c.is_active)
 
       if (activeConnections.length !== lastConnectionCount) {
