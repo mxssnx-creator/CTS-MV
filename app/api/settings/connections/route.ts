@@ -3,6 +3,8 @@ import { nanoid } from "nanoid"
 import { SystemLogger } from "@/lib/system-logger"
 import { getAllConnections, createConnection, initRedis } from "@/lib/redis-db"
 import { getPredefinedConnectionsAsStatic } from "@/lib/connection-predefinitions"
+import { generateConnectionIdFromApiKey, isApiKeyInUse, findConnectionByApiKey } from "@/lib/connection-id-manager"
+import { ConnectionDataArchive } from "@/lib/connection-data-archive"
 
 const EXCHANGE_NAME_TO_ID: Record<string, number> = {
   binance: 1,
@@ -189,41 +191,90 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const connectionId = nanoid()
+    // Check if API key already in use
     const exchangeName = body.exchange.toLowerCase()
-    const exchangeId = EXCHANGE_NAME_TO_ID[exchangeName] || null
-
-    const newConnection: any = {
-      id: connectionId,
-      user_id: 1,
-      name: body.name,
-      exchange: exchangeName,
-      exchange_id: exchangeId,
-      api_type: body.api_type || "perpetual_futures",
-      api_subtype: body.api_subtype || "perpetual",
-      connection_method: body.connection_method || "rest",
-      connection_library: body.connection_library || "native",
-      api_key: body.api_key,
-      api_secret: body.api_secret,
-      api_passphrase: body.api_passphrase || "",
-      margin_type: body.margin_type || "cross",
-      position_mode: body.position_mode || "hedge",
-      is_testnet: body.is_testnet || false,
-      is_enabled: true,
-      is_live_trade: false,
-      is_preset_trade: false,
-      is_active: true,
-      is_predefined: false,
-      volume_factor: body.volume_factor || 1.0,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+    const apiKeyInUse = await isApiKeyInUse(exchangeName, body.api_key)
+    
+    if (apiKeyInUse) {
+      console.log(`[v0] API key already in use for exchange ${exchangeName}`)
+      return NextResponse.json(
+        { 
+          error: "API key already in use",
+          details: `This API key is already connected for ${exchangeName}. Remove the existing connection first to re-add it.`
+        },
+        { status: 409 },
+      )
     }
 
-    // Save to Redis
-    await initRedis()
-    await createConnection(newConnection)
+    // Generate ID from API key to ensure uniqueness and persistence
+    const connectionId = generateConnectionIdFromApiKey(exchangeName, body.api_key)
+    const exchangeId = EXCHANGE_NAME_TO_ID[exchangeName] || null
 
-    console.log("[v0] Connection created successfully:", connectionId)
+    // Check if a connection with this ID already exists (from previous add/remove cycle)
+    const existingConnection = await findConnectionByApiKey(exchangeName, body.api_key)
+    
+    if (existingConnection && existingConnection.id === connectionId) {
+      console.log(`[v0] Restoring connection from previous state: ${connectionId}`)
+      // Connection was previously added and is being re-added - preserve its data
+      const restoredConnection = {
+        ...existingConnection,
+        name: body.name,
+        api_type: body.api_type || existingConnection.api_type || "perpetual_futures",
+        connection_method: body.connection_method || existingConnection.connection_method || "rest",
+        connection_library: body.connection_library || existingConnection.connection_library || "native",
+        margin_type: body.margin_type || existingConnection.margin_type || "cross",
+        position_mode: body.position_mode || existingConnection.position_mode || "hedge",
+        is_testnet: body.is_testnet !== undefined ? body.is_testnet : existingConnection.is_testnet,
+        is_enabled: true,
+        is_active: true,
+        updated_at: new Date().toISOString(),
+      }
+      await initRedis()
+      await createConnection(restoredConnection)
+      
+      // Restore archived data for this connection
+      console.log(`[v0] Attempting to restore archived data for ${connectionId}...`)
+      try {
+        await ConnectionDataArchive.restoreConnectionData(connectionId, body.api_key)
+        console.log(`[v0] Successfully restored archived data for ${connectionId}`)
+      } catch (archiveError) {
+        console.warn(`[v0] Warning: Could not restore archived data:`, archiveError)
+      }
+      
+      console.log(`[v0] Connection restored with ID: ${connectionId}`)
+    } else {
+      const newConnection: any = {
+        id: connectionId,
+        user_id: 1,
+        name: body.name,
+        exchange: exchangeName,
+        exchange_id: exchangeId,
+        api_type: body.api_type || "perpetual_futures",
+        api_subtype: body.api_subtype || "perpetual",
+        connection_method: body.connection_method || "rest",
+        connection_library: body.connection_library || "native",
+        api_key: body.api_key,
+        api_secret: body.api_secret,
+        api_passphrase: body.api_passphrase || "",
+        margin_type: body.margin_type || "cross",
+        position_mode: body.position_mode || "hedge",
+        is_testnet: body.is_testnet || false,
+        is_enabled: true,
+        is_live_trade: false,
+        is_preset_trade: false,
+        is_active: true,
+        is_predefined: false,
+        volume_factor: body.volume_factor || 1.0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+
+      // Save to Redis
+      await initRedis()
+      await createConnection(newConnection)
+      console.log(`[v0] Connection created successfully: ${connectionId}`)
+    }
+
     await SystemLogger.logConnection(`Connection created: ${body.name}`, connectionId, "info", {
       exchange: body.exchange,
       testnet: body.is_testnet,

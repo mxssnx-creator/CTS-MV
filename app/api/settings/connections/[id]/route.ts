@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { SystemLogger } from "@/lib/system-logger"
 import { getConnection, updateConnection, deleteConnection, initRedis } from "@/lib/redis-db"
+import { ConnectionDataArchive } from "@/lib/connection-data-archive"
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -34,11 +35,16 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     await SystemLogger.logConnection(`Deleting connection`, id, "info")
 
     await initRedis()
+    
+    // Archive connection data before deletion so it can be restored if re-added
+    console.log(`[v0] Archiving data for connection ${id}...`)
+    await ConnectionDataArchive.archiveConnectionData(id)
+    
     await deleteConnection(id)
     
     await SystemLogger.logConnection(`Connection deleted`, id, "info")
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, message: "Connection deleted and data archived" })
   } catch (error) {
     console.error("[v0] Failed to delete connection:", error)
     await SystemLogger.logError(error, "api", `DELETE /api/settings/connections/${(await params).id}`)
