@@ -19,7 +19,7 @@ export async function GET(
     const trades = await RedisTrades.getTradesByConnection(id)
     const positions = await RedisPositions.getPositionsByConnection(id)
 
-    const settings = typeof connection.connection_settings === "string" 
+    const settings = typeof connection.connection_settings === "string"
       ? JSON.parse(connection.connection_settings)
       : connection.connection_settings || {}
 
