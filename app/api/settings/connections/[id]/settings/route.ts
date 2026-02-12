@@ -9,19 +9,28 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { id } = await params
     const connectionId = id
 
+    console.log("[v0] [Settings] Fetching settings for connection:", connectionId)
     await initRedis()
     let connection = await getConnection(connectionId)
+    console.log("[v0] [Settings] Direct getConnection result:", !!connection)
 
     // If not found, try to search through all connections
     if (!connection) {
+      console.log("[v0] [Settings] Connection not found via direct lookup, fetching all connections...")
       const allConnections = await getAllConnections()
+      console.log("[v0] [Settings] Got", allConnections.length, "total connections")
+      console.log("[v0] [Settings] Looking for ID:", connectionId)
+      console.log("[v0] [Settings] Available IDs:", allConnections.map(c => c.id).slice(0, 5))
       connection = allConnections.find(c => c.id === connectionId)
+      console.log("[v0] [Settings] Search result:", !!connection)
     }
 
     if (!connection) {
+      console.log("[v0] [Settings] Connection NOT FOUND:", connectionId)
       return NextResponse.json({ error: "Connection not found" }, { status: 404 })
     }
 
+    console.log("[v0] [Settings] Connection found, retrieving stats...")
     // Get connection statistics
     const activeTrades = await RedisTrades.getTradesByConnection(connectionId)
     const activePositions = await RedisPositions.getPositionsByConnection(connectionId)
