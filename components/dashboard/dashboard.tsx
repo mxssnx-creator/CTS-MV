@@ -185,7 +185,7 @@ export function Dashboard() {
 
       if (response.ok) {
         toast.success("Connection deleted")
-        await loadConnections()
+        await loadExchangeConnectionsActive()
       } else {
         toast.error("Failed to delete connection")
       }

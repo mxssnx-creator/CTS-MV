@@ -100,6 +100,55 @@ export async function POST(request: NextRequest) {
       }
 
       console.log("[v0] [Trade Engine] Loaded connection from Redis:", connection.name)
+      console.log("[v0] [Trade Engine] Starting engine with configuration:")
+      console.log(`  - Connection: ${connection.name}`)
+      console.log(`  - Exchange: ${connection.exchange}`)
+      console.log(`  - Type: ${connection.connection_method}`)
+      console.log(`  - Testnet: ${connection.is_testnet}`)
+    } catch (redisError) {
+      console.error("[v0] [Trade Engine] Failed to load connection from Redis:", redisError)
+      await SystemLogger.logTradeEngine(`Failed to load connection: ${connectionId}`, "error", { error: String(redisError) })
+      return NextResponse.json({ error: "Failed to load connection configuration" }, { status: 500 })
+    }
+
+    // Start engine
+    try {
+      const config = {
+        connectionId: connection.id,
+        connection_name: connection.name,
+        exchange: connection.exchange,
+      }
+
+      console.log("[v0] [Trade Engine] Initiating engine start for:", connectionId)
+      
+      await coordinator.startEngine(connectionId, config)
+
+      console.log("[v0] [Trade Engine] Engine started successfully for:", connectionId)
+      await SystemLogger.logTradeEngine(`Trade engine started for connection ${connection.name}`, "info", {
+        connectionId,
+        exchange: connection.exchange,
+        connection_name: connection.name,
+      })
+
+      return NextResponse.json({
+        success: true,
+        message: `Trade engine started for ${connection.name}`,
+        connectionId,
+        connection_name: connection.name,
+      })
+    } catch (startError) {
+      console.error("[v0] [Trade Engine] Failed to start engine for", connectionId, ":", startError)
+      await SystemLogger.logTradeEngine(`Failed to start trade engine for ${connectionId}`, "error", {
+        connectionId,
+        error: startError instanceof Error ? startError.message : "Unknown error",
+      })
+      return NextResponse.json({
+        error: "Failed to start trade engine",
+        details: startError instanceof Error ? startError.message : "Unknown error",
+      }, { status: 500 })
+    }
+
+      console.log("[v0] [Trade Engine] Loaded connection from Redis:", connection.name)
     } catch (redisError) {
       console.error("[v0] [Trade Engine] Failed to load connection from Redis:", redisError)
       return NextResponse.json({ error: "Failed to load connection configuration" }, { status: 500 })
