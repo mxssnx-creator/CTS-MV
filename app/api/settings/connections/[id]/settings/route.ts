@@ -8,17 +8,24 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const { id } = await params
     const connectionId = id
+    console.log("[v0] [Settings] GET /settings for:", connectionId)
 
     await initRedis()
     
     // Get all connections and find the one we need
     const allConnections = await getAllConnections()
+    console.log("[v0] [Settings] getAllConnections returned:", allConnections.length, "connections")
+    console.log("[v0] [Settings] Available IDs:", allConnections.map(c => c.id).join(", "))
+    
     let connection = allConnections.find(c => c.id === connectionId)
+    console.log("[v0] [Settings] Found connection?", !!connection)
 
     if (!connection) {
+      console.log("[v0] [Settings] Connection NOT found for:", connectionId)
       return NextResponse.json({ error: "Connection not found" }, { status: 404 })
     }
 
+    console.log("[v0] [Settings] Connection found:", connection.name)
     // Get connection statistics
     const activeTrades = await RedisTrades.getTradesByConnection(connectionId)
     const activePositions = await RedisPositions.getPositionsByConnection(connectionId)
@@ -70,9 +77,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     return NextResponse.json(responseData)
   } catch (error) {
-    console.error("[v0] Failed to fetch connection settings:", error)
+    console.error("[v0] [Settings] Exception in GET:", error)
+    const errorMsg = error instanceof Error ? error.message : String(error)
+    console.error("[v0] [Settings] Error message:", errorMsg)
     await SystemLogger.logError(error, "api", "GET /api/settings/connections/[id]/settings")
-    return NextResponse.json({ error: "Failed to fetch settings", details: String(error) }, { status: 500 })
+    return NextResponse.json({ error: "Failed to fetch settings", details: errorMsg }, { status: 500 })
   }
 }
 
@@ -82,10 +91,14 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const { id } = await params
     const connectionId = id
     const body = await request.json()
+    console.log("[v0] [Settings] PUT /settings for:", connectionId)
 
     await initRedis()
     const allConnections = await getAllConnections()
+    console.log("[v0] [Settings] Found", allConnections.length, "total connections")
+    
     const connection = allConnections.find(c => c.id === connectionId)
+    console.log("[v0] [Settings] Found connection to update?", !!connection)
 
     if (!connection) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 })
@@ -112,13 +125,13 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     await SystemLogger.logConnection(`Updated connection settings`, connectionId, "info")
 
     return NextResponse.json({ success: true, connection: updatedConnection })
-    return NextResponse.json({ success: true, connection: updatedConnection })
   } catch (error) {
-    console.error("[v0] Failed to update connection settings:", error)
+    console.error("[v0] [Settings] Exception in PUT:", error)
+    const errorMsg = error instanceof Error ? error.message : String(error)
+    console.error("[v0] [Settings] Error message:", errorMsg)
     await SystemLogger.logError(error, "api", "PUT /api/settings/connections/[id]/settings")
-    return NextResponse.json({ error: "Failed to update settings", details: String(error) }, { status: 500 })
+    return NextResponse.json({ error: "Failed to update settings", details: errorMsg }, { status: 500 })
   }
-}
 
 // PATCH update connection-specific settings (partial)
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
