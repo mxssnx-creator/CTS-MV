@@ -147,40 +147,6 @@ function startConnectionMonitoring(): void {
     }
   }, 10000) // Check every 10 seconds for new enabled connections
 }
-      }
-
-      const activeConnections = connections.filter((c) => c.is_enabled && c.is_active)
-
-      if (activeConnections.length !== lastConnectionCount) {
-        lastConnectionCount = activeConnections.length
-      }
-
-      const coordinator = getGlobalTradeEngineCoordinator()
-      const settings = await loadSettingsAsync() || {}
-      const indicationInterval = settings.mainEngineIntervalMs ? settings.mainEngineIntervalMs / 1000 : 5
-      const strategyInterval = settings.strategyUpdateIntervalMs ? settings.strategyUpdateIntervalMs / 1000 : 10
-      const realtimeInterval = settings.realtimeIntervalMs ? settings.realtimeIntervalMs / 1000 : 3
-
-      for (const connection of activeConnections) {
-        const manager = coordinator.getEngineManager(connection.id)
-        if (!manager) {
-          try {
-            await coordinator.startEngine(connection.id, {
-              connectionId: connection.id,
-              indicationInterval,
-              strategyInterval,
-              realtimeInterval,
-            })
-          } catch (e) {
-            console.warn("[v0] Monitor: failed to start new connection", connection.id, e)
-          }
-        }
-      }
-    } catch (error) {
-      console.warn("[v0] Monitor error:", error)
-    }
-  }, 30000)
-}
 
 /**
  * Stop the connection monitoring timer

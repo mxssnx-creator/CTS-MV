@@ -233,28 +233,3 @@ export function useConnectionState() {
   }
   return context
 }
-        isBaseLoading,
-        exchangeConnectionsActive,
-        setExchangeConnectionsActive,
-        loadExchangeConnectionsActive,
-        isExchangeConnectionsActiveLoading,
-        exchangeConnectionsActiveStatus,
-        toggleExchangeConnectionsActiveStatus,
-        recentlyInsertedBase,
-        recentlyInsertedActive,
-        markAsInserted,
-        clearInserted,
-      }}
-    >
-      {children}
-    </ConnectionStateContext.Provider>
-  )
-}
-
-export function useConnectionState() {
-  const context = useContext(ConnectionStateContext)
-  if (!context) {
-    throw new Error("useConnectionState must be used within ConnectionStateProvider")
-  }
-  return context
-}
