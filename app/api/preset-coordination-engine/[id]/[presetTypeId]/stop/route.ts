@@ -4,10 +4,10 @@ import { SystemLogger } from "@/lib/system-logger"
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ connectionId: string; presetTypeId: string }> },
+  { params }: { params: Promise<{ id: string; presetTypeId: string }> },
 ) {
   try {
-    const { connectionId, presetTypeId } = await params
+    const { id: connectionId, presetTypeId } = await params
 
     console.log("[v0] Stopping preset coordination engine:", { connectionId, presetTypeId })
     await SystemLogger.logTradeEngine(`Stopping preset coordination engine for connection ${connectionId}`, "info", {

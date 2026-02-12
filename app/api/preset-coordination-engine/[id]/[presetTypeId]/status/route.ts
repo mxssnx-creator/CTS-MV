@@ -3,10 +3,10 @@ import { query, getDatabaseType } from "@/lib/db"
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ connectionId: string; presetTypeId: string }> },
+  { params }: { params: Promise<{ id: string; presetTypeId: string }> },
 ) {
   try {
-    const { connectionId, presetTypeId } = await params
+    const { id: connectionId, presetTypeId } = await params
 
     const isSqlite = getDatabaseType() === "sqlite"
 
