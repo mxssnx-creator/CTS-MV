@@ -10,14 +10,18 @@ export async function GET(request: NextRequest) {
     await initRedis()
     const client = getRedisClient()
 
-    // Get all preset type keys
-    const keys = await (client as any).keys("preset_type:*")
+    // Get all preset type IDs from the index set
+    const typeIds = await (client as any).sMembers("preset_types:all")
     const types = []
 
-    for (const key of keys) {
-      const data = await (client as any).hGetAll(key)
+    for (const id of typeIds) {
+      if (!id) continue
+      const data = await (client as any).hGetAll(`preset_type:${id}`)
       if (data && Object.keys(data).length > 0) {
-        types.push(data)
+        types.push({
+          id,
+          ...data,
+        })
       }
     }
 

@@ -8,24 +8,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const { id } = await params
     const connectionId = id
-    console.log("[v0] [Settings] GET /settings for:", connectionId)
 
     await initRedis()
     
     // Get all connections and find the one we need
     const allConnections = await getAllConnections()
-    console.log("[v0] [Settings] getAllConnections returned:", allConnections.length, "connections")
-    console.log("[v0] [Settings] Available IDs:", allConnections.map(c => c.id).join(", "))
-    
     let connection = allConnections.find(c => c.id === connectionId)
-    console.log("[v0] [Settings] Found connection?", !!connection)
 
     if (!connection) {
-      console.log("[v0] [Settings] Connection NOT found for:", connectionId)
       return NextResponse.json({ error: "Connection not found" }, { status: 404 })
     }
 
-    console.log("[v0] [Settings] Connection found:", connection.name)
     // Get connection statistics
     const activeTrades = await RedisTrades.getTradesByConnection(connectionId)
     const activePositions = await RedisPositions.getPositionsByConnection(connectionId)
@@ -91,14 +84,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const { id } = await params
     const connectionId = id
     const body = await request.json()
-    console.log("[v0] [Settings] PUT /settings for:", connectionId)
 
     await initRedis()
     const allConnections = await getAllConnections()
-    console.log("[v0] [Settings] Found", allConnections.length, "total connections")
-    
     const connection = allConnections.find(c => c.id === connectionId)
-    console.log("[v0] [Settings] Found connection to update?", !!connection)
 
     if (!connection) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 })

@@ -350,12 +350,30 @@ export async function getAllConnections(): Promise<any[]> {
     if (!id) continue
     const data = await client.hGetAll(`connection:${id}`)
     if (data && Object.keys(data).length > 0) {
+      // Parse boolean fields properly
+      const is_enabled = data.is_enabled === "true" || data.is_enabled === true || data.is_enabled === 1
+      const is_active = data.is_active === "true" || data.is_active === true || data.is_active === 1
+      const is_testnet = data.is_testnet === "true" || data.is_testnet === true || data.is_testnet === 1
+      const is_live_trade = data.is_live_trade === "true" || data.is_live_trade === true || data.is_live_trade === 1
+
+      // Parse connection_settings if it's a string
+      let connection_settings = data.connection_settings
+      if (typeof connection_settings === "string") {
+        try {
+          connection_settings = JSON.parse(connection_settings)
+        } catch (e) {
+          connection_settings = {}
+        }
+      }
+
       connections.push({
         id,
         ...data,
-        is_enabled: data.is_enabled === "true",
-        is_active: data.is_active === "true",
-        is_testnet: data.is_testnet === "true",
+        is_enabled,
+        is_active,
+        is_testnet,
+        is_live_trade,
+        connection_settings: connection_settings || {},
         created_at: data.created_at || new Date().toISOString(),
         updated_at: data.updated_at || new Date().toISOString(),
       })
