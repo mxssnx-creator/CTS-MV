@@ -388,12 +388,13 @@ export function ConnectionCard({
               {(showTestLogInstant || testLogs.length > 0 || (connection.last_test_log && connection.last_test_log.length > 0)) && (
                 <Button
                   size="sm"
-                  variant="ghost"
+                  variant={logsExpanded ? "default" : "outline"}
                   onClick={() => setLogsExpanded(!logsExpanded)}
-                  className="text-muted-foreground"
+                  className="flex items-center gap-2"
                   title="View Test Logs"
                 >
                   <ChevronDown className={`h-4 w-4 transition-transform ${logsExpanded ? "rotate-180" : ""}`} />
+                  <span>Logs</span>
                 </Button>
               )}
               <Button
@@ -414,15 +415,6 @@ export function ConnectionCard({
           {/* Logs Section */}
           {(testLogs.length > 0 || (connection.last_test_log && connection.last_test_log.length > 0)) && (
             <div className="space-y-2 border-t pt-3">
-              <Button
-                size="sm"
-                variant="ghost"
-                className="w-full text-xs justify-between text-left"
-                onClick={() => setLogsExpanded(!logsExpanded)}
-              >
-                <span>Test Logs</span>
-                <ChevronDown className={`h-3 w-3 transition-transform ${logsExpanded ? "rotate-180" : ""}`} />
-              </Button>
               {logsExpanded && (
                 <div className="bg-muted p-3 rounded text-xs font-mono max-h-48 overflow-y-auto space-y-0.5 border">
                   {(testLogs.length > 0 ? testLogs : (Array.isArray(connection.last_test_log) ? connection.last_test_log : [])).map((line, i) => (
@@ -582,28 +574,6 @@ export function ConnectionCard({
                 />
               </div>
             )}
-
-            <div className="space-y-2">
-              <Label htmlFor="api-key">API Key</Label>
-              <Input
-                id="api-key"
-                type="password"
-                value={editFormData.api_key}
-                onChange={(e) => setEditFormData((prev) => ({ ...prev, api_key: e.target.value }))}
-                placeholder="Enter your API key"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="api-secret">API Secret</Label>
-              <Input
-                id="api-secret"
-                type="password"
-                value={editFormData.api_secret}
-                onChange={(e) => setEditFormData((prev) => ({ ...prev, api_secret: e.target.value }))}
-                placeholder="Enter your API secret"
-              />
-            </div>
 
             <div className="bg-blue-50 border border-blue-200 rounded p-2 text-xs text-blue-900">
               ℹ️ Your API credentials are encrypted and only used for secure connections to {connection.exchange}.
