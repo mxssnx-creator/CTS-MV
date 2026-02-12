@@ -70,6 +70,7 @@ export function ConnectionCard({
     api_passphrase: connection.api_passphrase || "",
   })
 
+  // Define handleTestConnection first so it can be used in useEffect
   const handleTestConnection = async () => {
     setTestingConnection(true)
     setWorkingStatus("testing")
@@ -191,7 +192,7 @@ export function ConnectionCard({
       console.log("[v0] Auto-testing new connection:", connection.name)
       handleTestConnection()
     }
-  }, [isNewlyAdded, connection.id])
+  }, [isNewlyAdded, connection.id, handleTestConnection])
 
   const handleSaveSettings = async () => {
     if (!editFormData.api_key || !editFormData.api_secret) {
