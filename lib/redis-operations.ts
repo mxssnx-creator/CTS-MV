@@ -71,3 +71,20 @@ export const RedisTrades = {
     return trades
   },
 }
+
+export const RedisBulkOps = {
+  async getStatistics() {
+    const client = getRedisClient()
+    const [connectionsCount, positionsCount, tradesCount] = await Promise.all([
+      client.scard("connections").catch(() => 0),
+      client.scard("positions:all").catch(() => 0),
+      client.scard("trades:all").catch(() => 0),
+    ])
+    return {
+      connections: connectionsCount,
+      positions: positionsCount,
+      trades: tradesCount,
+      timestamp: Date.now(),
+    }
+  },
+}
