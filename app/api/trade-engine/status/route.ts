@@ -20,11 +20,11 @@ export async function GET(request: NextRequest) {
       }
 
       const stateKey = `trade_engine_state:${connectionId}`
-      const state = await (client as any).hGetAll(stateKey)
+      const state = await (client as any).hgetall(stateKey)
       const tradesKey = `trades:${connectionId}`
       const positionsKey = `positions:${connectionId}`
-      const trades = (await (client as any).sMembers(tradesKey)) || []
-      const positions = (await (client as any).sMembers(positionsKey)) || []
+      const trades = (await (client as any).smembers(tradesKey)) || []
+      const positions = (await (client as any).smembers(positionsKey)) || []
 
       const isRunning = state?.is_running === "1" || state?.is_running === true
       const errorCount = parseInt(state?.error_count || "0")
@@ -73,13 +73,13 @@ export async function GET(request: NextRequest) {
     for (const connection of connections) {
       try {
         const stateKey = `trade_engine_state:${connection.id}`
-        const state = await (client as any).hGetAll(stateKey)
+        const state = await (client as any).hgetall(stateKey)
 
         // Get trade metrics
         const tradesKey = `trades:${connection.id}`
         const positionsKey = `positions:${connection.id}`
-        const trades = (await (client as any).sMembers(tradesKey)) || []
-        const positions = (await (client as any).sMembers(positionsKey)) || []
+        const trades = (await (client as any).smembers(tradesKey)) || []
+        const positions = (await (client as any).smembers(positionsKey)) || []
 
         const isRunning = state?.is_running === "1" || state?.is_running === true
         const errorCount = parseInt(state?.error_count || "0")

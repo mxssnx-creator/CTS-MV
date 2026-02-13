@@ -49,13 +49,13 @@ export class SystemLogger {
 
       // Use Redis HSET to store the log
       const fields = Object.entries(logEntry).flat()
-      await (client as any).hSet(logKey, ...fields)
+      await (client as any).hset(logKey, ...fields)
 
       // Add to logs index set
-      await (client as any).sAdd("logs:all", logId)
+      await (client as any).sadd("logs:all", logId)
       
       // Add to category index
-      await (client as any).sAdd(`logs:${entry.category}`, logId)
+      await (client as any).sadd(`logs:${entry.category}`, logId)
       
       // Set TTL (7 days)
       await (client as any).expire(logKey, 7 * 24 * 60 * 60)
