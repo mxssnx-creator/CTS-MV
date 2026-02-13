@@ -146,16 +146,7 @@ export async function POST(request: NextRequest) {
     logs.push("✓ Redis migration completed successfully!")
     logs.push("========================================")
 
-    await SystemLogger.logAPI(
-      "Redis migration completed",
-      "info",
-      "POST /api/install/database/migrate",
-      {
-        schema_version: status.latestVersion,
-        keys_count: keyCount,
-        indexes_created: true,
-      }
-    )
+    console.log("[v0] Redis migration completed successfully")
 
     return NextResponse.json(
       {
@@ -182,8 +173,6 @@ export async function POST(request: NextRequest) {
     logs.push(``)
     logs.push(`✗ ${errorMsg}`)
     console.error("[v0] Migration error:", error)
-
-    await SystemLogger.logError(error, "api", "POST /api/install/database/migrate")
 
     return NextResponse.json(
       {
