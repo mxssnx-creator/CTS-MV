@@ -40,6 +40,26 @@ export class SystemLogger {
     }
   }
 
+  static async logAPI(message: string, level: "info" | "warn" | "error" = "info", endpoint?: string, data?: any): Promise<void> {
+    await this.logToDatabase({
+      timestamp: new Date().toISOString(),
+      level,
+      category: "api",
+      message,
+      metadata: { endpoint, ...data },
+    })
+  }
+
+  static async logConnection(message: string, connectionId?: string, level: "info" | "warn" | "error" = "info", data?: any): Promise<void> {
+    await this.logToDatabase({
+      timestamp: new Date().toISOString(),
+      level,
+      category: "connections",
+      message,
+      metadata: { connectionId, ...data },
+    })
+  }
+
   static async logTradeEngine(message: string, data?: any): Promise<void> {
     await this.logToDatabase({
       timestamp: new Date().toISOString(),
