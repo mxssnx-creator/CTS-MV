@@ -22,7 +22,7 @@ const EXCHANGE_NAME_TO_ID: Record<string, number> = {
 
 export async function GET(request: NextRequest) {
   try {
-    console.log("[v0] Fetching connections from Redis...")
+    console.log("[v0] GET /api/settings/connections - Loading all connections...")
     const { searchParams } = new URL(request.url)
 
     const exchange = searchParams.get("exchange")
@@ -41,40 +41,24 @@ export async function GET(request: NextRequest) {
     try {
       await initRedis()
       connections = await getAllConnections()
-      if (!Array.isArray(connections) || connections.length === 0) {
-        console.log("[v0] No connections in Redis, seeding predefined connections...")
-        const { getPredefinedAsExchangeConnections } = await import("@/lib/connection-predefinitions")
-        const predefined = getPredefinedAsExchangeConnections()
-        
-        console.log(`[v0] [Seeding] Starting to seed ${predefined.length} connections...`)
-        
-        // Save all predefined connections to Redis with proper defaults
-        for (const conn of predefined) {
-          try {
-            // Ensure enabled connections are also active for trade engine auto-start
-            const connectionData = {
-              ...conn,
-              is_active: conn.is_enabled !== false, // Active if enabled
-            }
-            await createConnection(connectionData)
-            console.log(`[v0] Seeded ${conn.name} (enabled: ${conn.is_enabled}, active: ${connectionData.is_active})`)
-          } catch (createError) {
-            console.warn(`[v0] Failed to seed connection ${conn.name}:`, createError)
-          }
-        }
-        
-        // Fetch the saved connections
-        connections = await getAllConnections()
-        console.log(`[v0] Seeded and loaded ${connections.length} predefined connections`)
-        
-        // Log active connections for debugging
-        const activeCount = connections.filter(c => c.is_active).length
-        console.log(`[v0] Active connections: ${activeCount}/${connections.length}`)
+      console.log(`[v0] [API] Retrieved ${connections.length} connections from Redis`)
+      
+      if (!connections || connections.length === 0) {
+        console.log("[v0] [API] No connections in Redis - this is normal on first load")
+      } else {
+        // Log first connection details to verify structure
+        const firstConn = connections[0]
+        console.log("[v0] [API] First connection sample:", {
+          id: firstConn.id,
+          name: firstConn.name,
+          exchange: firstConn.exchange,
+          is_enabled: firstConn.is_enabled,
+          is_active: firstConn.is_active,
+        })
       }
     } catch (error) {
-      console.log("[v0] Failed to load connections from Redis:", error)
-      const { getPredefinedAsExchangeConnections } = await import("@/lib/connection-predefinitions")
-      connections = getPredefinedAsExchangeConnections()
+      console.log("[v0] [API] Failed to load connections from Redis:", error)
+      connections = []
     }
 
     // Apply filters
@@ -98,7 +82,7 @@ export async function GET(request: NextRequest) {
       filtered = filtered.filter((c) => Boolean(c.is_active) === activeBool)
     }
 
-    console.log(`[v0] Found ${filtered.length} connections (from ${connections.length} total)`)
+    console.log(`[v0] [API] Returning ${filtered.length} connections after filtering (from ${connections.length} total)`)
 
     const formattedConnections = filtered.map((conn) => ({
       ...conn,
@@ -125,13 +109,12 @@ export async function GET(request: NextRequest) {
     console.error("[v0] Error fetching connections:", error)
     await SystemLogger.logError(error, "api", "GET /api/settings/connections")
 
-    const predefinedConnections = getPredefinedConnectionsAsStatic()
     return NextResponse.json(
       {
         success: false,
         error: "Failed to fetch connections",
         count: 0,
-        connections: predefinedConnections,
+        connections: [],
       },
       { status: 200 }
     )
