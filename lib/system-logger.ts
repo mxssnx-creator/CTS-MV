@@ -1,96 +1,138 @@
 import { getRedisClient } from "./redis-db"
 
+interface LogEntry {
+  timestamp: string
+  level: "info" | "warn" | "error"
+  category: string
+  message: string
+  metadata?: Record<string, any>
+}
+
 export class SystemLogger {
-  private static instance: SystemLogger
-  private logsCache: Map<string, any[]> = new Map()
-
-  private constructor() {}
-
-  static getInstance(): SystemLogger {
-    if (!SystemLogger.instance) {
-      SystemLogger.instance = new SystemLogger()
-    }
-    return SystemLogger.instance
-  }
-
-  async logToDatabase(category: string, entry: any): Promise<void> {
+  static async logToDatabase(entry: LogEntry): Promise<void> {
     try {
       const client = getRedisClient()
-      const logId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-      const logKey = `log:${logId}`
+      const logId = `log:${Date.now()}:${Math.random().toString(36).substr(2, 9)}`
+      const logKey = logId
 
       const logEntry = {
         id: logId,
-        category,
-        timestamp: new Date().toISOString(),
-        ...entry,
+        timestamp: entry.timestamp,
+        level: entry.level,
+        category: entry.category,
+        message: entry.message,
+        metadata: entry.metadata ? JSON.stringify(entry.metadata) : "",
       }
 
-      // Store log entry using lowercase hset method
+      // Store log entry using lowercase hset (pass object directly)
       await client.hset(logKey, logEntry)
 
-      // Add to logs index set using lowercase sadd
+      // Add to logs index set
       await client.sadd("logs:all", logId)
 
       // Add to category index
-      await client.sadd(`logs:${category}`, logId)
+      await client.sadd(`logs:${entry.category}`, logId)
 
-      // Set TTL for automatic cleanup (7 days)
-      await client.expire(logKey, 7 * 24 * 60 * 60)
+      // Set TTL for logs (7 days = 604800 seconds)
+      await client.expire(logKey, 604800)
     } catch (error) {
       console.error("[SystemLogger] Failed to log to database:", error)
     }
   }
 
-  async logTradeEngine(action: string, data: any): Promise<void> {
-    await this.logToDatabase("trade_engine", {
-      action,
-      data,
+  static async logTradeEngine(message: string, data?: any): Promise<void> {
+    await this.logToDatabase({
+      timestamp: new Date().toISOString(),
+      level: "info",
+      category: "trade_engine",
+      message,
+      metadata: data,
     })
   }
 
-  async logConnection(action: string, connectionId: string, data: any): Promise<void> {
-    await this.logToDatabase("connection", {
-      action,
-      connectionId,
-      data,
+  static async logTrade(message: string, tradeData?: any): Promise<void> {
+    await this.logToDatabase({
+      timestamp: new Date().toISOString(),
+      level: "info",
+      category: "trades",
+      message,
+      metadata: tradeData,
     })
   }
 
-  async logError(error: Error | string, context?: any): Promise<void> {
-    await this.logToDatabase("error", {
-      message: typeof error === "string" ? error : error.message,
-      stack: typeof error === "string" ? "" : error.stack,
-      context,
+  static async logPosition(message: string, positionData?: any): Promise<void> {
+    await this.logToDatabase({
+      timestamp: new Date().toISOString(),
+      level: "info",
+      category: "positions",
+      message,
+      metadata: positionData,
     })
   }
 
-  async logTrade(tradeId: string, action: string, data: any): Promise<void> {
-    await this.logToDatabase("trade", {
-      tradeId,
-      action,
-      data,
+  static async logError(category: string, error: any, context?: any): Promise<void> {
+    await this.logToDatabase({
+      timestamp: new Date().toISOString(),
+      level: "error",
+      category,
+      message: error instanceof Error ? error.message : String(error),
+      metadata: { ...context, stack: error instanceof Error ? error.stack : undefined },
     })
   }
 
-  async getLogsForConnection(connectionId: string, limit: number = 100): Promise<any[]> {
+  static async logWarning(category: string, message: string, data?: any): Promise<void> {
+    await this.logToDatabase({
+      timestamp: new Date().toISOString(),
+      level: "warn",
+      category,
+      message,
+      metadata: data,
+    })
+  }
+
+  static async getLogs(
+    category?: string,
+    limit: number = 100,
+  ): Promise<LogEntry[]> {
     try {
       const client = getRedisClient()
-      const setKey = `logs:connection:${connectionId}`
-      const logIds = (await client.smembers(setKey)) || []
+      const key = category ? `logs:${category}` : "logs:all"
+      const logIds = (await client.smembers(key)) || []
 
-      const logs = []
-      for (const logId of logIds.slice(0, limit)) {
-        const log = await client.hgetall(`log:${logId}`)
-        if (log && Object.keys(log).length > 0) {
-          logs.push(log)
+      const logs: LogEntry[] = []
+      for (const logId of logIds.slice(-limit)) {
+        const logData = await client.hgetall(logId)
+        if (logData && Object.keys(logData).length > 0) {
+          logs.push({
+            timestamp: logData.timestamp || "",
+            level: (logData.level as any) || "info",
+            category: logData.category || "",
+            message: logData.message || "",
+            metadata: logData.metadata ? JSON.parse(logData.metadata) : undefined,
+          })
         }
       }
-
       return logs
     } catch (error) {
-      console.error("[SystemLogger] Failed to get logs:", error)
+      console.error("[SystemLogger] Failed to retrieve logs:", error)
       return []
+    }
+  }
+
+  static async clearLogs(category?: string): Promise<void> {
+    try {
+      const client = getRedisClient()
+      const key = category ? `logs:${category}` : "logs:all"
+      const logIds = (await client.smembers(key)) || []
+
+      for (const logId of logIds) {
+        await client.del(logId)
+      }
+
+      await client.del(key)
+      console.log(`[SystemLogger] Cleared logs for category: ${category || "all"}`)
+    } catch (error) {
+      console.error("[SystemLogger] Failed to clear logs:", error)
     }
   }
 }
