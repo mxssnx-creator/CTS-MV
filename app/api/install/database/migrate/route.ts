@@ -93,11 +93,20 @@ export async function POST(request: NextRequest) {
     // Step 5: Get migration status and stats
     const status = await getMigrationStatus()
     const client = getRedisClient()
-    const keyCount = await client.dbSize()
+    
+    // Get connection count from the connections set instead of using dbSize (which doesn't exist)
+    let keyCount = 0
+    try {
+      const connectionsCount = await (client as any).scard("connections")
+      keyCount = connectionsCount || 0
+    } catch (e) {
+      console.warn("[v0] Failed to count keys, using 0")
+      keyCount = 0
+    }
 
     logs.push(`Database Statistics:`)
     logs.push(`  - Schema Version: ${status.latestVersion}`)
-    logs.push(`  - Total Keys: ${keyCount}`)
+    logs.push(`  - Stored Connections: ${keyCount}`)
     logs.push(`  - Database Type: Redis`)
     logs.push(`  - Indexes: Created`)
     logs.push(`  - TTL Policies: Configured`)

@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server"
-import { getSettings, setSettings } from "@/lib/redis-db"
+import { getSettings, setSettings, initRedis } from "@/lib/redis-db"
 
 export const runtime = "nodejs"
 
 export async function GET() {
   try {
     console.log("[v0] GET /api/settings - Loading settings from Redis...")
+
+    // Initialize Redis connection first
+    await initRedis()
 
     const settings = await getSettings("app_settings")
     
@@ -30,6 +33,9 @@ export async function POST(request: Request) {
 
     console.log("[v0] Saving settings to Redis (POST):", Object.keys(body).length, "keys")
 
+    // Initialize Redis connection first
+    await initRedis()
+
     await setSettings("app_settings", body)
 
     console.log("[v0] Settings saved successfully to Redis")
@@ -52,6 +58,9 @@ export async function PUT(request: Request) {
     const settings = body.settings || body
 
     console.log("[v0] Saving settings to Redis (PUT):", Object.keys(settings).length, "keys")
+
+    // Initialize Redis connection first
+    await initRedis()
 
     // Get existing settings and merge with new ones
     const existingSettings = (await getSettings("app_settings")) || {}
