@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server"
-import { getRedisClient } from "@/lib/redis-db"
+import { getRedisClient, initRedis } from "@/lib/redis-db"
 import { getGlobalTradeEngineCoordinator } from "@/lib/trade-engine"
 import { getAllConnections } from "@/lib/redis-db"
 
 export async function GET() {
   try {
+    // Initialize Redis connection first
+    await initRedis()
+    
     const client = getRedisClient()
     const coordinator = getGlobalTradeEngineCoordinator()
     const connections = await getAllConnections()
