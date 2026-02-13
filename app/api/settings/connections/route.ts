@@ -1,10 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { nanoid } from "nanoid"
-import { SystemLogger } from "@/lib/system-logger"
 import { getAllConnections, createConnection, initRedis } from "@/lib/redis-db"
-import { getPredefinedConnectionsAsStatic } from "@/lib/connection-predefinitions"
-import { generateConnectionIdFromApiKey, isApiKeyInUse, findConnectionByApiKey } from "@/lib/connection-id-manager"
-import { ConnectionDataArchive } from "@/lib/connection-data-archive"
 
 const EXCHANGE_NAME_TO_ID: Record<string, number> = {
   binance: 1,
@@ -29,13 +24,6 @@ export async function GET(request: NextRequest) {
     const apiType = searchParams.get("apiType")
     const enabled = searchParams.get("enabled")
     const active = searchParams.get("active")
-
-    await SystemLogger.logAPI("Fetching connections", "info", "GET /api/settings/connections", {
-      exchange,
-      apiType,
-      enabled,
-      active,
-    })
 
     let connections: any[] = []
     try {
@@ -106,9 +94,6 @@ export async function GET(request: NextRequest) {
       { status: 200 }
     )
   } catch (error) {
-    console.error("[v0] Error fetching connections:", error)
-    await SystemLogger.logError(error, "api", "GET /api/settings/connections")
-
     return NextResponse.json(
       {
         success: false,
@@ -131,15 +116,8 @@ export async function POST(request: NextRequest) {
       api_type: body.api_type,
     })
 
-    await SystemLogger.logAPI(
-      `Creating connection: ${body.name} (${body.exchange})`,
-      "info",
-      "POST /api/settings/connections",
-      { exchange: body.exchange, api_type: body.api_type },
-    )
-
     if (!body.name || !body.exchange) {
-      await SystemLogger.logAPI("Missing required fields", "warn", "POST /api/settings/connections")
+      console.warn("[v0] Missing required fields in connection creation")
       return NextResponse.json(
         { error: "Missing required fields", details: "Connection name and exchange are required" },
         { status: 400 },
@@ -147,7 +125,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!body.api_key || !body.api_secret) {
-      await SystemLogger.logAPI("Missing API credentials", "warn", "POST /api/settings/connections")
+      console.warn("[v0] Missing API credentials in connection creation")
       return NextResponse.json(
         { error: "Missing API credentials", details: "Both API key and API secret are required" },
         { status: 400 },
@@ -258,11 +236,6 @@ export async function POST(request: NextRequest) {
       console.log(`[v0] Connection created successfully: ${connectionId}`)
     }
 
-    await SystemLogger.logConnection(`Connection created: ${body.name}`, connectionId, "info", {
-      exchange: body.exchange,
-      testnet: body.is_testnet,
-    })
-
     return NextResponse.json(
       {
         success: true,
@@ -273,7 +246,6 @@ export async function POST(request: NextRequest) {
     )
   } catch (error) {
     console.error("[v0] Error creating connection:", error)
-    await SystemLogger.logError(error, "api", "POST /api/settings/connections")
 
     return NextResponse.json(
       {
