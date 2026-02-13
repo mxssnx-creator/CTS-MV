@@ -105,8 +105,22 @@ async function seedPredefinedConnections() {
     
     // Log summary of active connections for trade engine startup
     const allConnections = await getAllConnections()
-    const activeConnections = allConnections.filter((c: any) => c.is_active)
+    console.log(`[v0] [Seed] Retrieved ${allConnections.length} total connections from database`)
+    
+    // Log each connection's active state for debugging
+    allConnections.forEach((c: any, idx: number) => {
+      const activeStr = c.is_active === true ? "✓ ACTIVE" : "✗ INACTIVE"
+      console.log(`  [${idx + 1}] ${c.name}: ${activeStr} (enabled=${c.is_enabled}, active=${c.is_active}, type=${typeof c.is_active})`)
+    })
+    
+    // Filter for truly active connections (boolean true)
+    const activeConnections = allConnections.filter((c: any) => c.is_active === true)
     console.log(`[v0] [Seed] Connection Summary: ${activeConnections.length}/${allConnections.length} active and ready for trade engines`)
+    
+    // Log the active ones
+    activeConnections.forEach((c: any) => {
+      console.log(`  → Ready: ${c.name} (${c.exchange})`)
+    })
   } catch (error) {
     console.error("[v0] [Seed] Failed to seed predefined connections:", error instanceof Error ? error.message : String(error))
   }

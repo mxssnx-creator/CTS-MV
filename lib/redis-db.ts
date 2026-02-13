@@ -9,6 +9,16 @@ let redisClient: Redis | null = null
 let isConnected = false
 
 /**
+ * Convert any boolean-like value to "1" or "0" string for Redis storage
+ */
+function convertToString(value: any): string {
+  if (value === true || value === "true" || value === 1 || value === "1") {
+    return "1"
+  }
+  return "0"
+}
+
+/**
  * Initialize Upstash Redis connection using Vercel KV variables
  */
 export async function initRedis(): Promise<void> {
@@ -77,9 +87,12 @@ export async function saveConnection(connection: any): Promise<void> {
     connection_library: connection.connection_library || "ccxt",
     margin_type: connection.margin_type || "isolated",
     position_mode: connection.position_mode || "one-way",
-    is_testnet: connection.is_testnet ? "1" : "0",
-    is_enabled: connection.is_enabled ? "1" : "0",
-    is_active: connection.is_active ? "1" : "0",
+    is_testnet: convertToString(connection.is_testnet),
+    is_enabled: convertToString(connection.is_enabled),
+    is_active: convertToString(connection.is_active),
+    is_predefined: convertToString(connection.is_predefined),
+    is_live_trade: convertToString(connection.is_live_trade),
+    is_preset_trade: convertToString(connection.is_preset_trade),
     api_passphrase: connection.api_passphrase || "",
     created_at: connection.created_at || new Date().toISOString(),
     updated_at: new Date().toISOString(),
