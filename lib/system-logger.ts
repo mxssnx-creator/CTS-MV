@@ -47,7 +47,7 @@ export class SystemLogger {
         timestamp: new Date().toISOString(),
       }
 
-      // Use Redis HSET to store the log
+      // Use Redis hset to store the log
       const fields = Object.entries(logEntry).flat()
       await (client as any).hset(logKey, ...fields)
 
