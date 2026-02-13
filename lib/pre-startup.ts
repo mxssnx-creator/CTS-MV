@@ -7,6 +7,8 @@ import { initRedis, createConnection, getAllConnections, saveMarketData } from "
 import { runMigrations } from "@/lib/redis-migrations"
 import { getPredefinedAsExchangeConnections } from "@/lib/connection-predefinitions"
 import { loadSettingsAsync, saveSettings as saveSettingsToFile, getDefaultSettings } from "@/lib/settings-storage"
+import { initializeTradeEngineAutoStart } from "@/lib/trade-engine-auto-start"
+import { getGlobalTradeEngineCoordinator } from "@/lib/trade-engine"
 
 async function seedMarketData() {
   console.log("[v0] [Seed] Starting market data seeding...")
@@ -147,6 +149,10 @@ export async function runPreStartup() {
     console.log("[v0] [5/5] Seeding market data...")
     await seedMarketData()
     console.log("[v0] [5/5] ✓ Market data seeded")
+    
+    console.log("[v0] [6/6] Initializing Trade Engine...")
+    await initializeTradeEngineAutoStart()
+    console.log("[v0] [6/6] ✓ Trade Engine initialized and auto-start activated")
     
     console.log("[v0] ==========================================")
     console.log("[v0] PRE-STARTUP COMPLETE - SYSTEM READY")
