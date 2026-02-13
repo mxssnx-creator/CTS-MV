@@ -47,9 +47,8 @@ export class SystemLogger {
         timestamp: new Date().toISOString(),
       }
 
-      // Use Redis hset to store the log
-      const fields = Object.entries(logEntry).flat()
-      await (client as any).hset(logKey, ...fields)
+      // Store log entry using Upstash hset (pass object directly)
+      await (client as any).hset(logKey, logEntry)
 
       // Add to logs index set
       await (client as any).sadd("logs:all", logId)

@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
     for (const connection of connections) {
       try {
         const stateKey = `trade_engine_state:${connection.id}`
-        const state = await (client as any).hgetall(stateKey)
+        const state = await (client as any).hgetall(stateKey) // Upstash lowercase
 
         // Get trade metrics
         const tradesKey = `trades:${connection.id}`

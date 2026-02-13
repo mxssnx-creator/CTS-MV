@@ -4,7 +4,6 @@
  * Tests Redis/Upstash integration, connection management, trade engine coordination, and system health
  */
 
-import { RedisService } from "./redis-service"
 import { RedisConnections, RedisTrades, RedisPositions, RedisCache, RedisMonitoring } from "./redis-operations"
 import { GlobalTradeEngineCoordinator } from "./trade-engine"
 import { getRedisClient } from "./redis-db"
@@ -144,13 +143,13 @@ async function verifyRedisConnection(): Promise<HealthCheck> {
   const startTime = Date.now()
   try {
     const client = getRedisClient()
-    await client.hSet("verify:test", "key", "value")
-    const value = await client.hGet("verify:test", "key")
+    await client.set("verify:test", "ok")
+    const value = await client.get("verify:test")
     await client.del("verify:test")
 
     const responseTime = Date.now() - startTime
     return {
-      operational: value === "value",
+      operational: value === "ok",
       responseTime,
       message: "Redis connection successful",
       details: { client: "Upstash Redis", latency: `${responseTime}ms` },

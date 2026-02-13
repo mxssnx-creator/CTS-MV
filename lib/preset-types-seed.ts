@@ -84,8 +84,7 @@ export async function seedDefaultPresetTypes(): Promise<void> {
       }
 
       const key = `preset_type:${id}`
-      const fields = Object.entries(presetType).flat()
-      await (client as any).hset(key, ...fields)
+      await (client as any).hset(key, presetType)
       console.log("[v0] Seeded preset type:", presetType.name)
     }
 
