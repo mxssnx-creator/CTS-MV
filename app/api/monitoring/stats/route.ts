@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { initRedis, getAllConnections, getRedisClient } from "@/lib/redis-db"
-import { RedisBulkOps, RedisPositions, RedisTrades } from "@/lib/redis-operations"
+import { RedisMonitoring, RedisPositions, RedisTrades } from "@/lib/redis-operations"
 
 export const dynamic = "force-dynamic"
 
@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get database statistics
-    const stats = await RedisBulkOps.getStatistics()
+    const stats = await RedisMonitoring.getStatistics()
 
     // Get system metrics
     const systemLoad = Math.round(Math.random() * 100) // Placeholder
