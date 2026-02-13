@@ -42,7 +42,12 @@ export async function initializeTradeEngineAutoStart(): Promise<void> {
       console.log(`[v0] [Auto-Start] Connection: ${conn.name} - enabled:${conn.is_enabled}, active:${conn.is_active}`)
     })
 
-    const activeConnections = connections.filter((c) => c.is_enabled === true && c.is_active === true)
+    // Filter for enabled AND active connections (handle string boolean conversion from Redis)
+    const activeConnections = connections.filter((c) => {
+      const isEnabled = c.is_enabled === true || c.is_enabled === "true" || c.is_enabled === "1"
+      const isActive = c.is_active === true || c.is_active === "true" || c.is_active === "1"
+      return isEnabled && isActive
+    })
 
     console.log(`[v0] [Auto-Start] Found ${activeConnections.length} active connections out of ${connections.length} total`)
 
@@ -100,7 +105,11 @@ function startConnectionMonitoring(): void {
         return
       }
 
-      const enabledConnections = connections.filter((c) => c.is_enabled === true || c.is_enabled === "true")
+      const enabledConnections = connections.filter((c) => {
+        const isEnabled = c.is_enabled === true || c.is_enabled === "true" || c.is_enabled === "1"
+        const isActive = c.is_active === true || c.is_active === "true" || c.is_active === "1"
+        return isEnabled && isActive
+      })
 
       // If connection count changed, log it
       if (enabledConnections.length !== lastConnectionCount) {
