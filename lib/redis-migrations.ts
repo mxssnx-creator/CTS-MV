@@ -21,38 +21,38 @@ const migrations: Migration[] = [
       await client.set("_schema_version", "1")
       
       // Connection management indexes
-      await client.sAdd("connections:all", "")
-      await client.sAdd("connections:bybit", "")
-      await client.sAdd("connections:bingx", "")
-      await client.sAdd("connections:pionex", "")
-      await client.sAdd("connections:orangex", "")
-      await client.sAdd("connections:active", "")
-      await client.sAdd("connections:inactive", "")
+      await client.sadd("connections:all", "")
+      await client.sadd("connections:bybit", "")
+      await client.sadd("connections:bingx", "")
+      await client.sadd("connections:pionex", "")
+      await client.sadd("connections:orangex", "")
+      await client.sadd("connections:active", "")
+      await client.sadd("connections:inactive", "")
       
       // Trade and position tracking
-      await client.sAdd("trades:all", "")
-      await client.sAdd("trades:open", "")
-      await client.sAdd("trades:closed", "")
-      await client.sAdd("trades:pending", "")
-      await client.sAdd("positions:all", "")
-      await client.sAdd("positions:open", "")
-      await client.sAdd("positions:closed", "")
+      await client.sadd("trades:all", "")
+      await client.sadd("trades:open", "")
+      await client.sadd("trades:closed", "")
+      await client.sadd("trades:pending", "")
+      await client.sadd("positions:all", "")
+      await client.sadd("positions:open", "")
+      await client.sadd("positions:closed", "")
       
       // User and authentication
-      await client.sAdd("users:all", "")
-      await client.sAdd("sessions:all", "")
+      await client.sadd("users:all", "")
+      await client.sadd("sessions:all", "")
       
       // Presets and strategies
-      await client.sAdd("presets:all", "")
-      await client.sAdd("preset_types:all", "")
-      await client.sAdd("strategies:all", "")
-      await client.sAdd("strategies:active", "")
+      await client.sadd("presets:all", "")
+      await client.sadd("preset_types:all", "")
+      await client.sadd("strategies:all", "")
+      await client.sadd("strategies:active", "")
       
       // Monitoring and logging
-      await client.sAdd("monitoring:events", "")
-      await client.sAdd("logs:system", "")
-      await client.sAdd("logs:trades", "")
-      await client.sAdd("logs:errors", "")
+      await client.sadd("monitoring:events", "")
+      await client.sadd("logs:system", "")
+      await client.sadd("logs:trades", "")
+      await client.sadd("logs:errors", "")
       
       console.log("[v0] Migration 001: Initial schema created")
     },
@@ -68,7 +68,7 @@ const migrations: Migration[] = [
       await client.set("_connections_indexed", "true")
       
       // Connection metadata structure
-      await client.hSet("connections:metadata", {
+      await client.hset("connections:metadata", {
         total_configured: "0",
         total_active: "0",
         total_errors: "0",
@@ -77,7 +77,7 @@ const migrations: Migration[] = [
       
       // Exchange-specific metadata
       for (const exchange of ["bybit", "bingx", "pionex", "orangex"]) {
-        await client.hSet(`exchange:${exchange}:metadata`, {
+        await client.hset(`exchange:${exchange}:metadata`, {
           name: exchange,
           api_calls_used: "0",
           api_rate_limit: "0",
@@ -100,7 +100,7 @@ const migrations: Migration[] = [
       await client.set("_trades_initialized", "true")
       
       // Trade tracking metadata
-      await client.hSet("trades:metadata", {
+      await client.hset("trades:metadata", {
         total_trades: "0",
         total_open: "0",
         total_closed: "0",
@@ -113,7 +113,7 @@ const migrations: Migration[] = [
       })
       
       // Position tracking metadata
-      await client.hSet("positions:metadata", {
+      await client.hset("positions:metadata", {
         total_positions: "0",
         total_open_positions: "0",
         total_closed_positions: "0",
@@ -147,7 +147,7 @@ const migrations: Migration[] = [
       await client.set("_presets_initialized", "true")
       
       // Preset tracking metadata
-      await client.hSet("presets:metadata", {
+      await client.hset("presets:metadata", {
         total_presets: "0",
         total_active: "0",
         total_inactive: "0",
@@ -156,7 +156,7 @@ const migrations: Migration[] = [
       })
       
       // Strategy tracking metadata
-      await client.hSet("strategies:metadata", {
+      await client.hset("strategies:metadata", {
         total_strategies: "0",
         total_active_strategies: "0",
         total_backtests: "0",
@@ -165,9 +165,9 @@ const migrations: Migration[] = [
       })
       
       // Preset type indexes
-      await client.sAdd("preset_types:standard", "")
-      await client.sAdd("preset_types:advanced", "")
-      await client.sAdd("preset_types:custom", "")
+      await client.sadd("preset_types:standard", "")
+      await client.sadd("preset_types:advanced", "")
+      await client.sadd("preset_types:custom", "")
       
       // Strategy status tracking
       await client.set("strategies:counter:active", "0")
@@ -189,14 +189,14 @@ const migrations: Migration[] = [
       await client.set("_auth_initialized", "true")
       
       // User metadata
-      await client.hSet("users:metadata", {
+      await client.hset("users:metadata", {
         total_users: "1",
         total_active_sessions: "0",
         last_login: new Date().toISOString(),
       })
       
       // Session management
-      await client.hSet("sessions:metadata", {
+      await client.hset("sessions:metadata", {
         total_sessions: "0",
         active_sessions: "0",
         expired_sessions: "0",
@@ -204,7 +204,7 @@ const migrations: Migration[] = [
       
       // Default admin user setup
       const adminId = "admin-001"
-      await client.hSet(`user:${adminId}`, {
+      await client.hset(`user:${adminId}`, {
         id: adminId,
         username: "admin",
         email: "admin@trading-engine.local",
@@ -215,8 +215,8 @@ const migrations: Migration[] = [
         api_keys_count: "0",
       })
       
-      await client.sAdd("users:all", adminId)
-      await client.sAdd("users:admin", adminId)
+      await client.sadd("users:all", adminId)
+      await client.sadd("users:admin", adminId)
       
       console.log("[v0] Migration 005: User authentication system created")
     },
@@ -233,7 +233,7 @@ const migrations: Migration[] = [
       await client.set("_monitoring_initialized", "true")
       
       // Monitoring metadata
-      await client.hSet("monitoring:metadata", {
+      await client.hset("monitoring:metadata", {
         total_events: "0",
         critical_events: "0",
         warning_events: "0",
@@ -242,7 +242,7 @@ const migrations: Migration[] = [
       })
       
       // System health tracking
-      await client.hSet("system:health", {
+      await client.hset("system:health", {
         status: "healthy",
         uptime_seconds: "0",
         memory_usage: "0",
@@ -251,7 +251,7 @@ const migrations: Migration[] = [
       })
       
       // Performance metrics
-      await client.hSet("system:performance", {
+      await client.hset("system:performance", {
         avg_response_time: "0",
         trades_per_minute: "0",
         api_calls_per_minute: "0",
@@ -278,7 +278,7 @@ const migrations: Migration[] = [
       await client.set("_cache_optimized", "true")
       
       // Cache configuration
-      await client.hSet("cache:config", {
+      await client.hset("cache:config", {
         connection_cache_ttl: "3600",
         trade_cache_ttl: "1800",
         position_cache_ttl: "900",
@@ -287,7 +287,7 @@ const migrations: Migration[] = [
       })
       
       // Cache hit/miss tracking
-      await client.hSet("cache:stats", {
+      await client.hset("cache:stats", {
         total_hits: "0",
         total_misses: "0",
         hit_rate: "0",
@@ -295,10 +295,10 @@ const migrations: Migration[] = [
       })
       
       // Real-time data cache indexes
-      await client.sAdd("cache:realtime:prices", "")
-      await client.sAdd("cache:realtime:positions", "")
-      await client.sAdd("cache:realtime:orders", "")
-      await client.sAdd("cache:realtime:balances", "")
+      await client.sadd("cache:realtime:prices", "")
+      await client.sadd("cache:realtime:positions", "")
+      await client.sadd("cache:realtime:orders", "")
+      await client.sadd("cache:realtime:balances", "")
       
       console.log("[v0] Migration 007: Cache optimization created")
     },
@@ -315,7 +315,7 @@ const migrations: Migration[] = [
       await client.set("_ttl_policies_set", "true")
       
       // System configuration
-      await client.hSet("system:config", {
+      await client.hset("system:config", {
         database_type: "redis",
         initialized_at: new Date().toISOString(),
         version: "3.2",
@@ -324,7 +324,7 @@ const migrations: Migration[] = [
       })
       
       // Performance thresholds
-      await client.hSet("system:thresholds", {
+      await client.hset("system:thresholds", {
         max_concurrent_trades: "1000",
         max_api_calls_per_minute: "6000",
         max_positions_per_connection: "500",
@@ -333,7 +333,7 @@ const migrations: Migration[] = [
       })
       
       // Rate limiting configuration
-      await client.hSet("ratelimit:config", {
+      await client.hset("ratelimit:config", {
         trades_per_second: "100",
         api_calls_per_second: "200",
         batch_operations_per_second: "50",
@@ -354,7 +354,7 @@ const migrations: Migration[] = [
       await client.set("_backup_initialized", "true")
       
       // Backup metadata
-      await client.hSet("backup:metadata", {
+      await client.hset("backup:metadata", {
         last_backup_time: "",
         last_backup_size: "0",
         total_backups: "0",
@@ -363,17 +363,17 @@ const migrations: Migration[] = [
       })
       
       // Recovery point tracking
-      await client.hSet("recovery:points", {
+      await client.hset("recovery:points", {
         total_recovery_points: "0",
         last_recovery_time: "",
         last_recovery_success: "false",
       })
       
       // Snapshots for critical data
-      await client.sAdd("snapshots:trades", "")
-      await client.sAdd("snapshots:positions", "")
-      await client.sAdd("snapshots:connections", "")
-      await client.sAdd("snapshots:strategies", "")
+      await client.sadd("snapshots:trades", "")
+      await client.sadd("snapshots:positions", "")
+      await client.sadd("snapshots:connections", "")
+      await client.sadd("snapshots:strategies", "")
       
       console.log("[v0] Migration 009: Backup and recovery system created")
     },
@@ -389,7 +389,7 @@ const migrations: Migration[] = [
       await client.set("_schema_version", "10")
       
       // System settings namespace
-      await client.hSet("settings:system", {
+      await client.hset("settings:system", {
         trade_engine_enabled: "true",
         auto_migration: "true",
         fallback_mode: "memory",
@@ -399,7 +399,7 @@ const migrations: Migration[] = [
       })
       
       // Trading settings
-      await client.hSet("settings:trading", {
+      await client.hset("settings:trading", {
         default_leverage: "1",
         max_leverage: "20",
         default_take_profit_percent: "2",
@@ -408,7 +408,7 @@ const migrations: Migration[] = [
       })
       
       // API settings
-      await client.hSet("settings:api", {
+      await client.hset("settings:api", {
         api_version: "v1",
         rate_limit_enabled: "true",
         cors_enabled: "true",
@@ -420,7 +420,7 @@ const migrations: Migration[] = [
       await client.set("_migration_total_runs", "0")
       
       // Feature flags
-      await client.hSet("features:enabled", {
+      await client.hset("features:enabled", {
         live_trading: "false",
         paper_trading: "true",
         backtesting: "true",

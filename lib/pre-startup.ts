@@ -3,7 +3,7 @@
  * Runs once on first deploy or server start
  */
 
-import { initRedis, createConnection, getAllConnections, saveMarketData } from "@/lib/redis-db"
+import { initRedis, createConnection, getAllConnections, saveMarketData, setSettings } from "@/lib/redis-db"
 import { runMigrations } from "@/lib/redis-migrations"
 import { getPredefinedAsExchangeConnections } from "@/lib/connection-predefinitions"
 import { loadSettingsAsync, saveSettings as saveSettingsToFile, getDefaultSettings } from "@/lib/settings-storage"
@@ -75,7 +75,11 @@ async function seedPredefinedConnections() {
   console.log("[v0] [Seed] Starting connections seeding...")
   try {
     const predefined = getPredefinedAsExchangeConnections()
+    console.log(`[v0] [Seed] Got ${predefined.length} predefined connections from schema`)
+    
     const existing = await getAllConnections() || []
+    console.log(`[v0] [Seed] Found ${existing.length} existing connections in database`)
+    
     let seededCount = 0
     
     for (const conn of predefined) {
@@ -90,9 +94,11 @@ async function seedPredefinedConnections() {
           console.log(`[v0] [Seed] Creating: ${conn.name} (enabled: ${conn.is_enabled}, active: ${connectionData.is_active})`)
           await createConnection(connectionData)
           seededCount++
+        } else {
+          console.log(`[v0] [Seed] Skipping ${conn.name} - already exists`)
         }
       } catch (error) {
-        console.warn(`[v0] [Seed] ✗ Failed to seed ${conn.name}:`, error)
+        console.warn(`[v0] [Seed] ✗ Failed to seed ${conn.name}:`, error instanceof Error ? error.message : String(error))
       }
     }
     console.log(`[v0] [Seed] Complete: ${seededCount} new connections created`)
@@ -102,22 +108,18 @@ async function seedPredefinedConnections() {
     const activeConnections = allConnections.filter((c: any) => c.is_active)
     console.log(`[v0] [Seed] Connection Summary: ${activeConnections.length}/${allConnections.length} active and ready for trade engines`)
   } catch (error) {
-    console.error("[v0] [Seed] Failed to seed predefined connections:", error)
+    console.error("[v0] [Seed] Failed to seed predefined connections:", error instanceof Error ? error.message : String(error))
   }
 }
 
 async function initializeDefaultSettings() {
   console.log("[v0] [Seed] Initializing default settings...")
   try {
-    const existing = await loadSettingsAsync()
+    const defaults = getDefaultSettings()
     
-    if (!existing || Object.keys(existing).length <= Object.keys(getDefaultSettings()).length) {
-      const defaults = getDefaultSettings()
-      saveSettingsToFile(defaults)
-      console.log("[v0] [Seed] Default settings initialized")
-    } else {
-      console.log("[v0] [Seed] Settings already exist:", Object.keys(existing).length, "keys")
-    }
+    // Save to Redis database
+    await setSettings("app_settings", defaults)
+    console.log("[v0] [Seed] Default settings initialized and saved to Redis:", Object.keys(defaults).length, "keys")
   } catch (error) {
     console.warn("[v0] [Seed] Failed to initialize default settings:", error)
   }
