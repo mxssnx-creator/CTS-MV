@@ -441,7 +441,10 @@ const migrations: Migration[] = [
     up: async (client: any) => {
       await client.set("_schema_version", "11")
       
-      // Directly import and use predefined connections
+      // Define enabled exchanges that should be active for trade engine startup
+      const enabledExchanges = ["bybit", "bingx", "pionex", "orangex"]
+      
+      // Directly embed all predefined connections with correct enabled/active states
       const connections = [
         {
           id: "bybit-x03",
@@ -455,12 +458,240 @@ const migrations: Migration[] = [
           margin_type: "cross",
           position_mode: "hedge",
           is_testnet: false,
-          is_enabled: false,
-          is_active: false,
+          is_enabled: enabledExchanges.includes("bybit"),
+          is_active: enabledExchanges.includes("bybit"),
           is_predefined: true,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         },
+        {
+          id: "bingx-x01",
+          name: "BingX X01",
+          exchange: "bingx",
+          api_type: "perpetual_futures",
+          connection_method: "library",
+          connection_library: "native",
+          api_key: "00998877009988770099887700998877",
+          api_secret: "00998877009988770099887700998877",
+          margin_type: "cross",
+          position_mode: "hedge",
+          is_testnet: false,
+          is_enabled: enabledExchanges.includes("bingx"),
+          is_active: enabledExchanges.includes("bingx"),
+          is_predefined: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: "binance-x01",
+          name: "Binance X01",
+          exchange: "binance",
+          api_type: "perpetual_futures",
+          connection_method: "library",
+          connection_library: "native",
+          api_key: "00998877009988770099887700998877",
+          api_secret: "00998877009988770099887700998877",
+          margin_type: "cross",
+          position_mode: "hedge",
+          is_testnet: false,
+          is_enabled: enabledExchanges.includes("binance"),
+          is_active: enabledExchanges.includes("binance"),
+          is_predefined: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: "okx-x01",
+          name: "OKX X01",
+          exchange: "okx",
+          api_type: "unified",
+          connection_method: "library",
+          connection_library: "native",
+          api_key: "00998877009988770099887700998877",
+          api_secret: "00998877009988770099887700998877",
+          margin_type: "cross",
+          position_mode: "hedge",
+          is_testnet: false,
+          is_enabled: enabledExchanges.includes("okx"),
+          is_active: enabledExchanges.includes("okx"),
+          is_predefined: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: "gateio-x01",
+          name: "Gate.io X01",
+          exchange: "gateio",
+          api_type: "perpetual_futures",
+          connection_method: "library",
+          connection_library: "native",
+          api_key: "00998877009988770099887700998877",
+          api_secret: "00998877009988770099887700998877",
+          margin_type: "cross",
+          position_mode: "hedge",
+          is_testnet: false,
+          is_enabled: enabledExchanges.includes("gateio"),
+          is_active: enabledExchanges.includes("gateio"),
+          is_predefined: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: "kucoin-x01",
+          name: "KuCoin X01",
+          exchange: "kucoin",
+          api_type: "perpetual_futures",
+          connection_method: "library",
+          connection_library: "native",
+          api_key: "00998877009988770099887700998877",
+          api_secret: "00998877009988770099887700998877",
+          margin_type: "cross",
+          position_mode: "hedge",
+          is_testnet: false,
+          is_enabled: enabledExchanges.includes("kucoin"),
+          is_active: enabledExchanges.includes("kucoin"),
+          is_predefined: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: "mexc-x01",
+          name: "MEXC X01",
+          exchange: "mexc",
+          api_type: "perpetual_futures",
+          connection_method: "library",
+          connection_library: "native",
+          api_key: "00998877009988770099887700998877",
+          api_secret: "00998877009988770099887700998877",
+          margin_type: "cross",
+          position_mode: "hedge",
+          is_testnet: false,
+          is_enabled: enabledExchanges.includes("mexc"),
+          is_active: enabledExchanges.includes("mexc"),
+          is_predefined: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: "bitget-x01",
+          name: "Bitget X01",
+          exchange: "bitget",
+          api_type: "perpetual_futures",
+          connection_method: "library",
+          connection_library: "native",
+          api_key: "00998877009988770099887700998877",
+          api_secret: "00998877009988770099887700998877",
+          margin_type: "cross",
+          position_mode: "hedge",
+          is_testnet: false,
+          is_enabled: enabledExchanges.includes("bitget"),
+          is_active: enabledExchanges.includes("bitget"),
+          is_predefined: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: "pionex-x01",
+          name: "Pionex X01",
+          exchange: "pionex",
+          api_type: "perpetual_futures",
+          connection_method: "library",
+          connection_library: "native",
+          api_key: "00998877009988770099887700998877",
+          api_secret: "00998877009988770099887700998877",
+          margin_type: "cross",
+          position_mode: "hedge",
+          is_testnet: false,
+          is_enabled: enabledExchanges.includes("pionex"),
+          is_active: enabledExchanges.includes("pionex"),
+          is_predefined: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: "orangex-x01",
+          name: "OrangeX X01",
+          exchange: "orangex",
+          api_type: "perpetual_futures",
+          connection_method: "library",
+          connection_library: "native",
+          api_key: "00998877009988770099887700998877",
+          api_secret: "00998877009988770099887700998877",
+          margin_type: "cross",
+          position_mode: "hedge",
+          is_testnet: false,
+          is_enabled: enabledExchanges.includes("orangex"),
+          is_active: enabledExchanges.includes("orangex"),
+          is_predefined: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: "huobi-x01",
+          name: "Huobi X01",
+          exchange: "huobi",
+          api_type: "perpetual_futures",
+          connection_method: "library",
+          connection_library: "native",
+          api_key: "00998877009988770099887700998877",
+          api_secret: "00998877009988770099887700998877",
+          margin_type: "cross",
+          position_mode: "hedge",
+          is_testnet: false,
+          is_enabled: enabledExchanges.includes("huobi"),
+          is_active: enabledExchanges.includes("huobi"),
+          is_predefined: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      ]
+
+      let seededCount = 0
+      
+      for (const conn of connections) {
+        try {
+          const key = `connection:${conn.id}`
+          const existing = await client.hgetall(key)
+          
+          if (!existing || Object.keys(existing).length === 0) {
+            // Convert boolean values to "1"/"0" for Redis storage
+            const storageData = {
+              id: conn.id,
+              name: conn.name,
+              exchange: conn.exchange,
+              api_key: conn.api_key,
+              api_secret: conn.api_secret,
+              api_type: conn.api_type,
+              connection_method: conn.connection_method,
+              connection_library: conn.connection_library,
+              margin_type: conn.margin_type,
+              position_mode: conn.position_mode,
+              is_testnet: conn.is_testnet ? "1" : "0",
+              is_enabled: conn.is_enabled ? "1" : "0",
+              is_active: conn.is_active ? "1" : "0",
+              is_predefined: "1",
+              created_at: conn.created_at,
+              updated_at: conn.updated_at,
+            }
+            
+            // Store connection in Redis
+            await client.hset(key, storageData)
+            // Add to connections set
+            await client.sadd("connections", conn.id)
+            console.log(`[v0] [Seed] Seeded connection: ${conn.name} (enabled: ${conn.is_enabled}, active: ${conn.is_active})`)
+            seededCount++
+          }
+        } catch (error) {
+          console.warn(`[v0] [Seed] Failed to seed connection ${conn.name}:`, error instanceof Error ? error.message : "unknown")
+        }
+      }
+      
+      console.log(`[v0] [Seed] Migration 011: Seeded ${seededCount}/${connections.length} predefined connections`)
+    },
+    down: async (client: any) => {
+      await client.set("_schema_version", "10")
+    },
+  },
         {
           id: "bingx-x01",
           name: "BingX X01",
