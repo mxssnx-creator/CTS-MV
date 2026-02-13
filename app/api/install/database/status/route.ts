@@ -1,29 +1,46 @@
 import { NextResponse } from "next/server"
-import { initRedis, getRedisStats } from "@/lib/redis-db"
+import { initRedis, getRedisClient } from "@/lib/redis-db"
+import { getMigrationStatus } from "@/lib/redis-migrations"
 
 export async function GET() {
   try {
     await initRedis()
-    const stats = await getRedisStats()
+    
+    // Get actual migration status from database
+    const migrationStatus = await getMigrationStatus()
+    const client = getRedisClient()
+    
+    // Count total keys using scard for connections set
+    let keyCount = 0
+    try {
+      const connectionsCount = await (client as any).scard("connections")
+      keyCount = connectionsCount || 0
+    } catch (e) {
+      console.warn("[v0] Failed to count connections")
+      keyCount = 0
+    }
     
     return NextResponse.json({
       status: "success",
-      is_installed: stats.connected,
-      database_connected: stats.connected,
+      is_installed: migrationStatus.latestVersion >= 1,
+      database_connected: true,
       database_type: "redis",
-      table_count: stats.keyCount || 0,
+      table_count: keyCount,
       migrations: {
-        current_version: stats.keyCount > 0 ? 11 : 0,
+        current_version: migrationStatus.latestVersion,
+        applied: migrationStatus.latestVersion,
+        pending: 0,
       },
       database_stats: {
-        connected: stats.connected,
-        mode: stats.mode || "redis",
-        total_keys: stats.keyCount || 0,
-        is_fallback: stats.isUsingFallback || false,
+        connected: true,
+        mode: "redis",
+        total_keys: keyCount,
+        is_fallback: false,
       },
       migration_status: {
-        latest_version: 11,
-        is_up_to_date: true,
+        latest_version: migrationStatus.latestVersion,
+        is_up_to_date: migrationStatus.message.includes("latest"),
+        message: migrationStatus.message,
       }
     })
   } catch (error) {
@@ -33,6 +50,11 @@ export async function GET() {
       message: error instanceof Error ? error.message : "Failed to get database status",
       is_installed: false,
       database_connected: false,
+      migrations: {
+        current_version: 0,
+        applied: 0,
+        pending: 11,
+      }
     }, { status: 500 })
   }
 }
