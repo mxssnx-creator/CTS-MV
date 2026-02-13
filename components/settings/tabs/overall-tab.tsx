@@ -12,7 +12,7 @@ import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Settings as SettingsIcon, RefreshCw, Download, Upload, X } from "lucide-react"
+import { Plus, RefreshCw, Download, Upload, X } from "lucide-react"
 import type { ExchangeConnection } from "@/lib/types"
 import type { Settings as AppSettings } from "@/lib/file-storage"
 import ExchangeConnectionManager from "@/components/settings/exchange-connection-manager"
@@ -447,26 +447,6 @@ export function OverallTab({
         </TabsContent>
 
         <TabsContent value="connection" className="space-y-6">
-          <div className="grid md:grid-cols-1 gap-4">
-            {/* Connection Manager Card */}
-            <Card className="settings-card border-2">
-              <CardHeader className="settings-card-header">
-                <CardTitle>Exchange Connections</CardTitle>
-                <CardDescription>Configure and manage exchange API connections</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Button 
-                  variant="outline" 
-                  className="w-full"
-                  onClick={() => document.dispatchEvent(new CustomEvent('open-add-connection'))}
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add New Connection
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
-
           {/* Exchange Connection Manager */}
           <ExchangeConnectionManager />
         </TabsContent>
