@@ -167,21 +167,6 @@ export async function getAllConnections(): Promise<any[]> {
 }
 
 /**
- * Update a connection
- */
-export async function updateConnection(connectionId: string, updates: any): Promise<void> {
-  const client = getRedisClient()
-  const key = `connection:${connectionId}`
-  
-  const updateData = {
-    ...updates,
-    updated_at: new Date().toISOString(),
-  }
-  
-  await client.hset(key, updateData)
-}
-
-/**
  * Delete a connection
  */
 export async function deleteConnection(connectionId: string): Promise<void> {
