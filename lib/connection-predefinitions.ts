@@ -401,7 +401,7 @@ export function getPredefinedAsExchangeConnections(): ExchangeConnection[] {
     position_mode: pred.positionMode,
     is_testnet: false,
     is_enabled: defaultEnabled.includes(pred.exchange.toLowerCase()),
-    is_active: false,
+    is_active: defaultEnabled.includes(pred.exchange.toLowerCase()), // Active if enabled
     is_predefined: true,
     is_live_trade: false,
     is_preset_trade: false,
