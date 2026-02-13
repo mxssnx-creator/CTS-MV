@@ -73,7 +73,7 @@ export function addActiveConnection(connectionId: string, exchangeName: string):
     id: `active-${Date.now()}`,
     connectionId,
     exchangeName,
-    isActive: true,
+    isActive: false, // New connections disabled by default
     addedAt: new Date().toISOString(),
   }
 

@@ -323,7 +323,7 @@ const migrations: Migration[] = [
               api_secret: "00998877009988770099887700998877",
               api_type: conn.api_type,
               connection_method: "library",
-              connection_library: "ccxt",
+              connection_library: "native",
               margin_type: "cross",
               position_mode: "hedge",
               is_testnet: "0",

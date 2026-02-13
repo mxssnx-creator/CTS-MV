@@ -12,13 +12,14 @@ import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
-import { Plus, RefreshCw, Download, Upload, X } from "lucide-react"
+import { Plus, Settings as SettingsIcon, RefreshCw, Download, Upload, X } from "lucide-react"
 import type { ExchangeConnection } from "@/lib/types"
 import type { Settings as AppSettings } from "@/lib/file-storage"
 import ExchangeConnectionManager from "@/components/settings/exchange-connection-manager"
 import InstallManager from "@/components/settings/install-manager"
 import { LogsViewer } from "@/components/settings/logs-viewer"
 import { StatisticsOverview } from "@/components/settings/statistics-overview"
+import { SettingsEditorDialog } from "@/components/settings/settings-editor-dialog"
 
 interface OverallTabProps {
   settings: AppSettings
@@ -56,6 +57,7 @@ export function OverallTab({
   importing,
 }: OverallTabProps) {
   const [overallSubTab, setOverallSubTab] = useState("main")
+  const [isSettingsDialogOpen, setIsSettingsDialogOpen] = useState(false)
 
   return (
     <TabsContent value="overall" className="space-y-6 animate-in fade-in duration-300">
@@ -447,8 +449,63 @@ export function OverallTab({
         </TabsContent>
 
         <TabsContent value="connection" className="space-y-6">
+          <div className="grid md:grid-cols-2 gap-4">
+            {/* Settings Editor Card */}
+            <Card className="settings-card border-2 hover:border-primary/50 transition-colors cursor-pointer"
+              onClick={() => setIsSettingsDialogOpen(true)}>
+              <CardHeader className="settings-card-header">
+                <div className="flex items-center gap-2">
+                  <SettingsIcon className="w-5 h-5 text-primary" />
+                  <CardTitle>Edit Settings</CardTitle>
+                </div>
+                <CardDescription>Manage core trading and system parameters</CardDescription>
+              </CardHeader>
+              <CardContent className="text-sm text-muted-foreground">
+                <p>Click to open settings editor with organized sections for:</p>
+                <ul className="list-disc list-inside mt-2 space-y-1">
+                  <li>Core Engine Configuration</li>
+                  <li>Data & Historical Settings</li>
+                  <li>Trade Engine Parameters</li>
+                  <li>System & UI Options</li>
+                </ul>
+              </CardContent>
+            </Card>
+
+            {/* Connection Manager Card */}
+            <Card className="settings-card border-2">
+              <CardHeader className="settings-card-header">
+                <CardTitle>Exchange Connections</CardTitle>
+                <CardDescription>Configure and manage exchange API connections</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button 
+                  variant="outline" 
+                  className="w-full"
+                  onClick={() => document.dispatchEvent(new CustomEvent('open-add-connection'))}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add New Connection
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+
           {/* Exchange Connection Manager */}
           <ExchangeConnectionManager />
+
+          {/* Settings Editor Dialog */}
+          <SettingsEditorDialog
+            isOpen={isSettingsDialogOpen}
+            onOpenChange={setIsSettingsDialogOpen}
+            settings={settings}
+            onSave={async (updatedSettings) => {
+              // Save settings via API or parent handler
+              Object.entries(updatedSettings).forEach(([key, value]) => {
+                handleSettingChange(key as keyof AppSettings, value)
+              })
+            }}
+            onSettingChange={handleSettingChange}
+          />
         </TabsContent>
 
         <TabsContent value="monitoring" className="space-y-4">
