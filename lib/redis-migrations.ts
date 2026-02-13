@@ -441,34 +441,229 @@ const migrations: Migration[] = [
     up: async (client: any) => {
       await client.set("_schema_version", "11")
       
-      // Import and seed predefined connections
-      const { getPredefinedConnectionsAsStatic } = await import("./connection-predefinitions")
-      const { createConnection, getConnection } = await import("./redis-db")
-      
-      const predefinedConnections = getPredefinedConnectionsAsStatic()
+      // Directly import and use predefined connections
+      const connections = [
+        {
+          id: "bybit-x03",
+          name: "Bybit X03",
+          exchange: "bybit",
+          api_type: "unified",
+          connection_method: "library",
+          connection_library: "native",
+          api_key: "00998877009988770099887700998877",
+          api_secret: "00998877009988770099887700998877",
+          margin_type: "cross",
+          position_mode: "hedge",
+          is_testnet: false,
+          is_enabled: false,
+          is_active: false,
+          is_predefined: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: "bingx-x01",
+          name: "BingX X01",
+          exchange: "bingx",
+          api_type: "perpetual_futures",
+          connection_method: "library",
+          connection_library: "native",
+          api_key: "00998877009988770099887700998877",
+          api_secret: "00998877009988770099887700998877",
+          margin_type: "cross",
+          position_mode: "hedge",
+          is_testnet: false,
+          is_enabled: true,
+          is_active: true,
+          is_predefined: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: "binance-x01",
+          name: "Binance X01",
+          exchange: "binance",
+          api_type: "perpetual_futures",
+          connection_method: "library",
+          connection_library: "native",
+          api_key: "00998877009988770099887700998877",
+          api_secret: "00998877009988770099887700998877",
+          margin_type: "cross",
+          position_mode: "hedge",
+          is_testnet: false,
+          is_enabled: false,
+          is_active: false,
+          is_predefined: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: "okx-x01",
+          name: "OKX X01",
+          exchange: "okx",
+          api_type: "unified",
+          connection_method: "library",
+          connection_library: "native",
+          api_key: "00998877009988770099887700998877",
+          api_secret: "00998877009988770099887700998877",
+          margin_type: "cross",
+          position_mode: "hedge",
+          is_testnet: false,
+          is_enabled: false,
+          is_active: false,
+          is_predefined: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: "gateio-x01",
+          name: "Gate.io X01",
+          exchange: "gateio",
+          api_type: "perpetual_futures",
+          connection_method: "library",
+          connection_library: "native",
+          api_key: "00998877009988770099887700998877",
+          api_secret: "00998877009988770099887700998877",
+          margin_type: "cross",
+          position_mode: "hedge",
+          is_testnet: false,
+          is_enabled: false,
+          is_active: false,
+          is_predefined: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: "kucoin-x01",
+          name: "KuCoin X01",
+          exchange: "kucoin",
+          api_type: "perpetual_futures",
+          connection_method: "library",
+          connection_library: "native",
+          api_key: "00998877009988770099887700998877",
+          api_secret: "00998877009988770099887700998877",
+          margin_type: "cross",
+          position_mode: "hedge",
+          is_testnet: false,
+          is_enabled: false,
+          is_active: false,
+          is_predefined: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: "mexc-x01",
+          name: "MEXC X01",
+          exchange: "mexc",
+          api_type: "perpetual_futures",
+          connection_method: "library",
+          connection_library: "native",
+          api_key: "00998877009988770099887700998877",
+          api_secret: "00998877009988770099887700998877",
+          margin_type: "cross",
+          position_mode: "hedge",
+          is_testnet: false,
+          is_enabled: false,
+          is_active: false,
+          is_predefined: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: "bitget-x01",
+          name: "Bitget X01",
+          exchange: "bitget",
+          api_type: "perpetual_futures",
+          connection_method: "library",
+          connection_library: "native",
+          api_key: "00998877009988770099887700998877",
+          api_secret: "00998877009988770099887700998877",
+          margin_type: "cross",
+          position_mode: "hedge",
+          is_testnet: false,
+          is_enabled: false,
+          is_active: false,
+          is_predefined: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: "pionex-x01",
+          name: "Pionex X01",
+          exchange: "pionex",
+          api_type: "perpetual_futures",
+          connection_method: "library",
+          connection_library: "native",
+          api_key: "00998877009988770099887700998877",
+          api_secret: "00998877009988770099887700998877",
+          margin_type: "cross",
+          position_mode: "hedge",
+          is_testnet: false,
+          is_enabled: true,
+          is_active: true,
+          is_predefined: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: "orangex-x01",
+          name: "OrangeX X01",
+          exchange: "orangex",
+          api_type: "perpetual_futures",
+          connection_method: "library",
+          connection_library: "native",
+          api_key: "00998877009988770099887700998877",
+          api_secret: "00998877009988770099887700998877",
+          margin_type: "cross",
+          position_mode: "hedge",
+          is_testnet: false,
+          is_enabled: true,
+          is_active: true,
+          is_predefined: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: "huobi-x01",
+          name: "Huobi X01",
+          exchange: "huobi",
+          api_type: "perpetual_futures",
+          connection_method: "library",
+          connection_library: "native",
+          api_key: "00998877009988770099887700998877",
+          api_secret: "00998877009988770099887700998877",
+          margin_type: "cross",
+          position_mode: "hedge",
+          is_testnet: false,
+          is_enabled: false,
+          is_active: false,
+          is_predefined: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      ]
+
       let seededCount = 0
       
-      for (const connection of predefinedConnections) {
+      for (const conn of connections) {
         try {
-          // Check if connection already exists using getConnection
-          const existing = await getConnection(connection.id)
+          const key = `connection:${conn.id}`
+          const existing = await client.hgetall(key)
           
-          if (!existing) {
-            // Ensure enabled connections are also active for trade engine auto-start
-            const connectionData = {
-              ...connection,
-              is_active: connection.is_enabled !== false, // Active if enabled
-            }
-            await createConnection(connectionData)
-            console.log(`[v0] Seeded predefined connection: ${connection.name} (enabled: ${connection.is_enabled}, active: ${connectionData.is_active})`)
+          if (!existing || Object.keys(existing).length === 0) {
+            // Store connection in Redis
+            await client.hset(key, conn)
+            // Add to connections set
+            await client.sadd("connections", conn.id)
+            console.log(`[v0] [Seed] Seeded connection: ${conn.name} (enabled: ${conn.is_enabled}, active: ${conn.is_active})`)
             seededCount++
           }
         } catch (error) {
-          console.warn(`[v0] Failed to seed connection ${connection.name}:`, error instanceof Error ? error.message : "unknown")
+          console.warn(`[v0] [Seed] Failed to seed connection ${conn.name}:`, error instanceof Error ? error.message : "unknown")
         }
       }
       
-      console.log(`[v0] Migration 011: Seeded ${seededCount}/${predefinedConnections.length} predefined connections`)
+      console.log(`[v0] [Seed] Migration 011: Seeded ${seededCount}/${connections.length} predefined connections`)
     },
     down: async (client: any) => {
       await client.set("_schema_version", "10")
