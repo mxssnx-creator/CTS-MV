@@ -17,7 +17,6 @@ export async function initRedis(): Promise<void> {
   }
 
   try {
-    // Use Vercel KV environment variables (standard for Vercel integrations)
     const url = process.env.KV_REST_API_URL
     const token = process.env.KV_REST_API_TOKEN
 
@@ -27,12 +26,8 @@ export async function initRedis(): Promise<void> {
       )
     }
 
-    redisClient = new Redis({
-      url,
-      token,
-    })
+    redisClient = new Redis({ url, token })
 
-    // Test connection
     const ping = await redisClient.ping()
     if (ping === "PONG") {
       isConnected = true
@@ -52,20 +47,19 @@ export async function initRedis(): Promise<void> {
  * Get Redis client instance
  */
 export function getRedisClient(): Redis {
-  if (!redisClient || !isConnected) {
+  if (!redisClient) {
     throw new Error("Redis not initialized. Call initRedis() first.")
   }
   return redisClient
 }
 
-/**
- * Store a connection in Redis
- */
+// ========== Connection CRUD ==========
+
 export async function saveConnection(connection: any): Promise<void> {
   const client = getRedisClient()
   const key = `connection:${connection.id}`
   
-  await client.hSet(key, {
+  await client.hset(key, {
     id: connection.id,
     name: connection.name,
     exchange: connection.exchange,
@@ -84,65 +78,31 @@ export async function saveConnection(connection: any): Promise<void> {
     updated_at: new Date().toISOString(),
   })
   
-  // Add to connections set
-  await client.sAdd("connections", connection.id)
+  await client.sadd("connections", connection.id)
 }
 
-/**
- * Get a specific connection
- */
 export async function getConnection(connectionId: string): Promise<any> {
   const client = getRedisClient()
   const key = `connection:${connectionId}`
-  const data = await client.hGetAll(key)
+  const data = await client.hgetall(key)
   
   if (!data || Object.keys(data).length === 0) {
     return null
   }
 
   return {
-    id: data.id,
-    name: data.name,
-    exchange: data.exchange,
-    api_key: data.api_key || "",
-    api_secret: data.api_secret || "",
-    api_type: data.api_type || "spot",
-    connection_method: data.connection_method || "rest",
-    connection_library: data.connection_library || "ccxt",
-    margin_type: data.margin_type || "isolated",
-    position_mode: data.position_mode || "one-way",
+    ...data,
     is_testnet: data.is_testnet === "1",
     is_enabled: data.is_enabled === "1",
     is_active: data.is_active === "1",
-    api_passphrase: data.api_passphrase || "",
-    created_at: data.created_at,
-    updated_at: data.updated_at,
   }
 }
 
-/**
- * Update a connection
- */
-export async function updateConnection(connectionId: string, updates: any): Promise<void> {
-  const client = getRedisClient()
-  const connection = await getConnection(connectionId)
-  
-  if (!connection) {
-    throw new Error(`Connection ${connectionId} not found`)
-  }
-
-  const updated = { ...connection, ...updates }
-  await saveConnection(updated)
-}
-
-/**
- * Get all connections
- */
 export async function getAllConnections(): Promise<any[]> {
   const client = getRedisClient()
   
   try {
-    const connectionIds = await client.sMembers("connections")
+    const connectionIds = await client.smembers("connections")
     
     if (!connectionIds || connectionIds.length === 0) {
       return []
@@ -163,40 +123,32 @@ export async function getAllConnections(): Promise<any[]> {
   }
 }
 
-/**
- * Delete a connection
- */
+export async function updateConnection(connectionId: string, updates: any): Promise<void> {
+  const connection = await getConnection(connectionId)
+  
+  if (!connection) {
+    throw new Error(`Connection ${connectionId} not found`)
+  }
+
+  const updated = { ...connection, ...updates, updated_at: new Date().toISOString() }
+  await saveConnection(updated)
+}
+
 export async function deleteConnection(connectionId: string): Promise<void> {
   const client = getRedisClient()
   const key = `connection:${connectionId}`
   
   await client.del(key)
-  await client.sRem("connections", connectionId)
+  await client.srem("connections", connectionId)
 }
 
-/**
- * Get all enabled connections
- */
 export async function getEnabledConnections(): Promise<any[]> {
   const connections = await getAllConnections()
-  return connections.filter(conn => conn.is_enabled === true || conn.is_enabled === "true")
-}
-
-// ========== Connection CRUD ==========
-
-/**
- * Create a new connection (alias for saveConnection)
- */
-export async function createConnection(connection: any): Promise<any> {
-  await saveConnection(connection)
-  return connection
+  return connections.filter(conn => conn.is_enabled === true)
 }
 
 // ========== Trade CRUD ==========
 
-/**
- * Create a trade
- */
 export async function createTrade(connectionId: string, trade: any): Promise<any> {
   const client = getRedisClient()
   const key = `trade:${trade.id}`
@@ -207,29 +159,23 @@ export async function createTrade(connectionId: string, trade: any): Promise<any
     tradeData[k] = typeof v === "object" ? JSON.stringify(v) : String(v ?? "")
   }
 
-  await client.hSet(key, tradeData)
-  await client.sAdd(setKey, trade.id)
+  await client.hset(key, tradeData)
+  await client.sadd(setKey, trade.id)
   return trade
 }
 
-/**
- * Get a trade
- */
 export async function getTrade(tradeId: string): Promise<any> {
   const client = getRedisClient()
   const key = `trade:${tradeId}`
-  const data = await client.hGetAll(key)
+  const data = await client.hgetall(key)
   if (!data || Object.keys(data).length === 0) return null
   return data
 }
 
-/**
- * Get all trades for a connection
- */
 export async function getConnectionTrades(connectionId: string): Promise<any[]> {
   const client = getRedisClient()
   const setKey = `trades:${connectionId}`
-  const tradeIds = await client.sMembers(setKey)
+  const tradeIds = await client.smembers(setKey)
   if (!tradeIds || tradeIds.length === 0) return []
 
   const trades = []
@@ -240,29 +186,24 @@ export async function getConnectionTrades(connectionId: string): Promise<any[]> 
   return trades
 }
 
-/**
- * Update a trade
- */
 export async function updateTrade(tradeId: string, updates: any): Promise<any> {
-  const client = getRedisClient()
-  const key = `trade:${tradeId}`
   const existing = await getTrade(tradeId)
   if (!existing) throw new Error(`Trade ${tradeId} not found`)
 
   const updated = { ...existing, ...updates, updated_at: new Date().toISOString() }
+  const client = getRedisClient()
+  const key = `trade:${tradeId}`
+  
   const tradeData: Record<string, string> = {}
   for (const [k, v] of Object.entries(updated)) {
     tradeData[k] = typeof v === "object" ? JSON.stringify(v) : String(v ?? "")
   }
-  await client.hSet(key, tradeData)
+  await client.hset(key, tradeData)
   return updated
 }
 
 // ========== Position CRUD ==========
 
-/**
- * Create a position
- */
 export async function createPosition(connectionId: string, position: any): Promise<any> {
   const client = getRedisClient()
   const key = `position:${position.id}`
@@ -273,29 +214,23 @@ export async function createPosition(connectionId: string, position: any): Promi
     posData[k] = typeof v === "object" ? JSON.stringify(v) : String(v ?? "")
   }
 
-  await client.hSet(key, posData)
-  await client.sAdd(setKey, position.id)
+  await client.hset(key, posData)
+  await client.sadd(setKey, position.id)
   return position
 }
 
-/**
- * Get a position
- */
 export async function getPosition(positionId: string): Promise<any> {
   const client = getRedisClient()
   const key = `position:${positionId}`
-  const data = await client.hGetAll(key)
+  const data = await client.hgetall(key)
   if (!data || Object.keys(data).length === 0) return null
   return data
 }
 
-/**
- * Get all positions for a connection
- */
 export async function getConnectionPositions(connectionId: string): Promise<any[]> {
   const client = getRedisClient()
   const setKey = `positions:${connectionId}`
-  const positionIds = await client.sMembers(setKey)
+  const positionIds = await client.smembers(setKey)
   if (!positionIds || positionIds.length === 0) return []
 
   const positions = []
@@ -306,49 +241,94 @@ export async function getConnectionPositions(connectionId: string): Promise<any[
   return positions
 }
 
-/**
- * Update a position
- */
 export async function updatePosition(positionId: string, updates: any): Promise<any> {
-  const client = getRedisClient()
-  const key = `position:${positionId}`
   const existing = await getPosition(positionId)
   if (!existing) throw new Error(`Position ${positionId} not found`)
 
   const updated = { ...existing, ...updates, updated_at: new Date().toISOString() }
+  const client = getRedisClient()
+  const key = `position:${positionId}`
+  
   const posData: Record<string, string> = {}
   for (const [k, v] of Object.entries(updated)) {
     posData[k] = typeof v === "object" ? JSON.stringify(v) : String(v ?? "")
   }
-  await client.hSet(key, posData)
+  await client.hset(key, posData)
   return updated
 }
 
-/**
- * Delete a position
- */
 export async function deletePosition(connectionId: string, positionId: string): Promise<void> {
   const client = getRedisClient()
   const key = `position:${positionId}`
   const setKey = `positions:${connectionId}`
 
   await client.del(key)
-  await client.sRem(setKey, positionId)
+  await client.srem(setKey, positionId)
+}
+
+// ========== Indications ==========
+
+export async function saveIndication(connectionId: string, indication: any): Promise<void> {
+  const client = getRedisClient()
+  const key = `indication:${indication.id}`
+  const setKey = `indications:${connectionId}`
+  
+  const indicationData: Record<string, string> = {}
+  for (const [k, v] of Object.entries(indication)) {
+    indicationData[k] = typeof v === "object" ? JSON.stringify(v) : String(v ?? "")
+  }
+  
+  await client.hset(key, indicationData)
+  await client.sadd(setKey, indication.id)
+}
+
+export async function getIndications(connectionId: string): Promise<any[]> {
+  const client = getRedisClient()
+  const setKey = `indications:${connectionId}`
+  const indicationIds = await client.smembers(setKey)
+  if (!indicationIds || indicationIds.length === 0) return []
+  
+  const indications = []
+  for (const indicationId of indicationIds) {
+    const key = `indication:${indicationId}`
+    const indication = await client.hgetall(key)
+    if (indication && Object.keys(indication).length > 0) {
+      indications.push(indication)
+    }
+  }
+  return indications
+}
+
+// ========== Market Data ==========
+
+export async function saveMarketData(symbol: string, data: any): Promise<void> {
+  const client = getRedisClient()
+  const key = `market_data:${symbol}`
+  
+  const marketData: Record<string, string> = {}
+  for (const [k, v] of Object.entries(data)) {
+    marketData[k] = typeof v === "object" ? JSON.stringify(v) : String(v ?? "")
+  }
+  
+  await client.hset(key, marketData)
+  await client.expire(key, 300)
+}
+
+export async function getMarketData(symbol: string): Promise<any> {
+  const client = getRedisClient()
+  const key = `market_data:${symbol}`
+  const data = await client.hgetall(key)
+  if (!data || Object.keys(data).length === 0) return null
+  return data
 }
 
 // ========== Settings ==========
 
-/**
- * Set a settings value
- */
 export async function setSettings(key: string, value: any): Promise<void> {
   const client = getRedisClient()
   await client.set(`settings:${key}`, JSON.stringify(value))
 }
 
-/**
- * Get a settings value
- */
 export async function getSettings(key: string): Promise<any> {
   const client = getRedisClient()
   const value = await client.get(`settings:${key}`)
@@ -360,9 +340,6 @@ export async function getSettings(key: string): Promise<any> {
   }
 }
 
-/**
- * Delete a settings value
- */
 export async function deleteSettings(key: string): Promise<void> {
   const client = getRedisClient()
   await client.del(`settings:${key}`)
@@ -370,38 +347,26 @@ export async function deleteSettings(key: string): Promise<void> {
 
 // ========== Utilities ==========
 
-/**
- * Flush all data from Redis
- */
 export async function flushAll(): Promise<void> {
   const client = getRedisClient()
-  await client.flushAll()
+  await client.flushdb()
 }
 
-/**
- * Close Redis connection
- */
 export async function closeRedis(): Promise<void> {
   redisClient = null
   isConnected = false
 }
 
-/**
- * Check if Redis is connected
- */
 export function isRedisConnected(): boolean {
   return isConnected && redisClient !== null
 }
 
-/**
- * Get Redis stats
- */
 export async function getRedisStats(): Promise<any> {
   if (!isConnected || !redisClient) {
     return { connected: false }
   }
   try {
-    const dbSize = await redisClient.dbSize()
+    const dbSize = await redisClient.dbsize()
     return {
       connected: true,
       dbSize,
@@ -412,9 +377,6 @@ export async function getRedisStats(): Promise<any> {
   }
 }
 
-/**
- * Verify Redis health
- */
 export async function verifyRedisHealth(): Promise<boolean> {
   try {
     if (!redisClient) {
@@ -427,77 +389,9 @@ export async function verifyRedisHealth(): Promise<boolean> {
   }
 }
 
-// ========== Indications ==========
-
-/**
- * Save an indication
- */
-export async function saveIndication(connectionId: string, indication: any): Promise<void> {
-  const client = getRedisClient()
-  const key = `indication:${indication.id}`
-  const setKey = `indications:${connectionId}`
-  
-  const indicationData: Record<string, string> = {}
-  for (const [k, v] of Object.entries(indication)) {
-    indicationData[k] = typeof v === "object" ? JSON.stringify(v) : String(v ?? "")
-  }
-  
-  await client.hSet(key, indicationData)
-  await client.sAdd(setKey, indication.id)
-}
-
-/**
- * Get all indications for a connection
- */
-export async function getIndications(connectionId: string): Promise<any[]> {
-  const client = getRedisClient()
-  const setKey = `indications:${connectionId}`
-  const indicationIds = await client.sMembers(setKey)
-  if (!indicationIds || indicationIds.length === 0) return []
-  
-  const indications = []
-  for (const indicationId of indicationIds) {
-    const key = `indication:${indicationId}`
-    const indication = await client.hGetAll(key)
-    if (indication && Object.keys(indication).length > 0) {
-      indications.push(indication)
-    }
-  }
-  return indications
-}
-
-// ========== Market Data ==========
-
-/**
- * Save market data for a symbol
- */
-export async function saveMarketData(symbol: string, data: any): Promise<void> {
-  const client = getRedisClient()
-  const key = `market_data:${symbol}`
-  
-  const marketData: Record<string, string> = {}
-  for (const [k, v] of Object.entries(data)) {
-    marketData[k] = typeof v === "object" ? JSON.stringify(v) : String(v ?? "")
-  }
-  
-  await client.hSet(key, marketData)
-  await client.expire(key, 300) // 5 minutes TTL
-}
-
-/**
- * Get market data for a symbol
- */
-export async function getMarketData(symbol: string): Promise<any> {
-  const client = getRedisClient()
-  const key = `market_data:${symbol}`
-  const data = await client.hGetAll(key)
-  if (!data || Object.keys(data).length === 0) return null
-  return data
-}
-
-// ========== Aliases for backward compat ==========
-
+// Backward compatibility aliases
 export const saveTrade = createTrade
 export const savePosition = createPosition
 export const getTradesForConnection = getConnectionTrades
 export const getPositionsForConnection = getConnectionPositions
+export const createConnection = saveConnection
