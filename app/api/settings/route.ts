@@ -1,19 +1,24 @@
 import { NextResponse } from "next/server"
-import { loadSettingsAsync, saveSettings as saveSettingsToFile } from "@/lib/settings-storage"
+import { getSettings, setSettings } from "@/lib/redis-db"
 
 export const runtime = "nodejs"
 
 export async function GET() {
   try {
-    console.log("[v0] GET /api/settings - Loading settings from file...")
+    console.log("[v0] GET /api/settings - Loading settings from Redis...")
 
-    const settings = await loadSettingsAsync()
+    const settings = await getSettings("app_settings")
     
-    console.log("[v0] Settings loaded successfully from file:", Object.keys(settings).length, "keys")
+    if (!settings) {
+      console.warn("[v0] No settings found in Redis, returning empty settings")
+      return NextResponse.json({ settings: {} })
+    }
+    
+    console.log("[v0] Settings loaded successfully from Redis:", Object.keys(settings).length, "keys")
     return NextResponse.json({ settings })
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : "Unknown error"
-    console.error("[v0] Failed to get settings from file:", errorMsg)
+    console.error("[v0] Failed to get settings from Redis:", errorMsg)
 
     return NextResponse.json({ error: "Failed to load settings", details: errorMsg }, { status: 500 })
   }
@@ -23,16 +28,16 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
 
-    console.log("[v0] Saving settings to file (POST):", Object.keys(body).length, "keys")
+    console.log("[v0] Saving settings to Redis (POST):", Object.keys(body).length, "keys")
 
-    saveSettingsToFile(body)
+    await setSettings("app_settings", body)
 
-    console.log("[v0] Settings saved successfully to file")
+    console.log("[v0] Settings saved successfully to Redis")
 
     return NextResponse.json({ success: true })
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : "Unknown error"
-    console.error("[v0] Failed to save settings to file:", errorMsg)
+    console.error("[v0] Failed to save settings to Redis:", errorMsg)
 
     return NextResponse.json(
       { error: "Failed to update settings", details: errorMsg },
@@ -46,20 +51,20 @@ export async function PUT(request: Request) {
     const body = await request.json()
     const settings = body.settings || body
 
-    console.log("[v0] Saving settings to file (PUT):", Object.keys(settings).length, "keys")
+    console.log("[v0] Saving settings to Redis (PUT):", Object.keys(settings).length, "keys")
 
     // Get existing settings and merge with new ones
-    const existingSettings = await loadSettingsAsync()
+    const existingSettings = (await getSettings("app_settings")) || {}
     const mergedSettings = { ...existingSettings, ...settings }
     
-    saveSettingsToFile(mergedSettings)
+    await setSettings("app_settings", mergedSettings)
 
-    console.log("[v0] Settings updated successfully to file")
+    console.log("[v0] Settings updated successfully in Redis")
 
     return NextResponse.json({ success: true, settings: mergedSettings })
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : "Unknown error"
-    console.error("[v0] Failed to update settings to file:", errorMsg)
+    console.error("[v0] Failed to update settings in Redis:", errorMsg)
 
     return NextResponse.json(
       { error: "Failed to update settings", details: errorMsg },
