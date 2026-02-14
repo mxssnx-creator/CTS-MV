@@ -427,7 +427,10 @@ export function ConnectionCard({
                   {connection.last_test_status === "success" ? "Connection Active" : "Connection Failed"}
                 </div>
                 {connection.last_test_balance !== undefined && (
-                  <div className="text-xs mt-1">Balance: ${Number(connection.last_test_balance).toFixed(2)} USDT</div>
+                  <div className="text-xs mt-1">USDT Balance: ${Number(connection.last_test_balance).toFixed(2)}</div>
+                )}
+                {connection.last_test_assets !== undefined && (
+                  <div className="text-xs mt-1 font-semibold text-green-700">Total Assets: ${Number(connection.last_test_assets).toFixed(2)}</div>
                 )}
                 {connection.last_test_at && (
                   <div className="text-xs mt-1">

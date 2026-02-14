@@ -132,11 +132,21 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const duration = Date.now() - startTime
     testLog.push(`[${new Date().toISOString()}] Connection successful!`)
     testLog.push(`[${new Date().toISOString()}] Account Balance: ${result.balance.toFixed(2)} USDT`)
+    
+    // Calculate total assets across all balances
+    const totalAssets = (result.balances || []).reduce((sum: number, b: any) => {
+      const balanceValue = Number.parseFloat(b.total || b.balance || b.free || "0")
+      return sum + balanceValue
+    }, 0)
+    
+    testLog.push(`[${new Date().toISOString()}] Total Assets: ${totalAssets.toFixed(2)}`)
+    testLog.push(`[${new Date().toISOString()}] Assets breakdown: ${result.balances?.length || 0} currencies`)
 
     await updateConnection(id, {
       ...connection,
       last_test_status: "success",
       last_test_balance: result.balance,
+      last_test_assets: totalAssets,
       last_test_log: testLog,
       last_test_at: new Date().toISOString(),
       api_capabilities: JSON.stringify(result.capabilities || []),
@@ -154,6 +164,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({
       success: true,
       balance: result.balance,
+      totalAssets: totalAssets,
       balances: result.balances || [],
       capabilities: result.capabilities || [],
       log: testLog,
