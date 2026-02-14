@@ -40,39 +40,45 @@ export function AddActiveConnectionDialog({
   const loadConnections = async () => {
     setLoading(true)
     try {
-      console.log("[v0] [AddDialog] Loading enabled base connections from Settings...")
+      console.log("[v0] [AddDialog] Loading enabled connections from Settings...")
       // Load ENABLED connections from settings (is_enabled=true for trade engine)
-      const response = await fetch("/api/settings/connections?enabled=true")
+      const response = await fetch("/api/settings/connections?enabled=true", {
+        cache: "no-store",
+        headers: { "Cache-Control": "no-cache" },
+      })
       if (!response.ok) {
         console.error("[v0] Failed to load connections:", response.status)
+        toast.error("Failed to load connections")
         return
       }
 
-      let data
-      try {
-        data = await response.json()
-      } catch (parseError) {
-        console.error("[v0] Failed to parse connections response:", parseError)
-        return
-      }
-
-      const connections = Array.isArray(data) ? data : (data?.connections || [])
+      const data = await response.json()
+      const connections = data.connections || []
       console.log("[v0] [AddDialog] Loaded", connections.length, "enabled connections from Settings")
-      setEnabledConnections(connections)
+      
+      // Filter to show only connections that have real credentials (inserted from Settings)
+      const configuredConnections = connections.filter((c: any) => {
+        const hasRealCredentials = c.api_key && c.api_key.length > 0 && !c.api_key.includes("PLACEHOLDER")
+        return hasRealCredentials
+      })
+      
+      console.log("[v0] [AddDialog] Filtered to", configuredConnections.length, "configured connections with credentials")
+      setEnabledConnections(configuredConnections)
 
       // Load currently active connections from dashboard
       try {
         const activeConns = await loadActiveConnections()
-        setActiveConnections(activeConns)
-        console.log("[v0] [AddDialog] Found", activeConns.length, "connections already on active list")
+        setActiveConnections(activeConns || [])
+        console.log("[v0] [AddDialog] Found", activeConns?.length || 0, "connections already on active list")
       } catch (e) {
         console.log("[v0] Could not load active connections:", e)
+        setActiveConnections([])
       }
 
       // Set first enabled connection as default
-      if (connections.length > 0 && !selectedConnection) {
-        setSelectedConnection(connections[0].id || "")
-        console.log("[v0] [AddDialog] Auto-selected first connection:", connections[0].name)
+      if (configuredConnections.length > 0 && !selectedConnection) {
+        setSelectedConnection(configuredConnections[0].id || "")
+        console.log("[v0] [AddDialog] Auto-selected first connection:", configuredConnections[0].name)
       }
     } catch (error) {
       console.error("[v0] Error loading connections:", error)
@@ -132,7 +138,7 @@ export function AddActiveConnectionDialog({
         <DialogHeader>
           <DialogTitle>Add Connection to Active List</DialogTitle>
           <DialogDescription>
-            Select an enabled connection from Settings to add to your actively using connections. New connections are inactive by default.
+            Select an enabled connection from Settings that has valid credentials configured. These connections are available to add to your active trading list.
           </DialogDescription>
         </DialogHeader>
 

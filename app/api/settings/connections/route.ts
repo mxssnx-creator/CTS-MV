@@ -59,12 +59,20 @@ export async function GET(request: NextRequest) {
 
     // Filter by is_enabled for trade engine status (Settings connections)
     if (enabled === "true") {
-      connections = connections.filter((c) => c.is_enabled === true || c.is_enabled === "1")
+      connections = connections.filter((c) => {
+        // Handle both boolean and string representations
+        const isEnabled = c.is_enabled === true || c.is_enabled === "1" || c.is_enabled === "true"
+        return isEnabled
+      })
     }
 
     // Filter by is_enabled_dashboard for actively using connections (INDEPENDENT from Settings)
     if (dashboard === "true") {
-      connections = connections.filter((c) => c.is_enabled_dashboard === true || c.is_enabled_dashboard === "1")
+      connections = connections.filter((c) => {
+        // Handle both boolean and string representations
+        const isEnabledDash = c.is_enabled_dashboard === true || c.is_enabled_dashboard === "1" || c.is_enabled_dashboard === "true"
+        return isEnabledDash
+      })
     }
 
     return NextResponse.json({ success: true, count: connections.length, connections })
