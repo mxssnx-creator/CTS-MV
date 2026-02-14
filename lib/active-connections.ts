@@ -1,7 +1,12 @@
 /**
  * Active Connections Manager
- * Handles connections currently visible on the dashboard
- * Now uses Redis as single source of truth (via is_enabled_dashboard field)
+ * Handles connections currently actively using (INDEPENDENT from Settings)
+ * Uses Redis as single source of truth (via is_enabled_dashboard field)
+ * 
+ * INDEPENDENCE GUARANTEE:
+ * - Toggling an Active connection does NOT affect Settings connections
+ * - Settings connections status (is_enabled) is COMPLETELY INDEPENDENT
+ * - Each has its own toggle/state system managed separately
  */
 
 import { getRedisHelpers } from "./redis-helpers"
@@ -22,7 +27,8 @@ export async function loadActiveConnections(): Promise<ActiveConnection[]> {
     // Get all connections from Redis
     const allConnections = await redis.getAllConnections()
     
-    // Filter for connections that are visible on dashboard (is_enabled_dashboard = true)
+    // Filter for connections that are actively using (is_enabled_dashboard = true)
+    // Status is INDEPENDENT from Settings connections
     const activeConnections: ActiveConnection[] = []
     
     for (const conn of allConnections) {
@@ -31,13 +37,13 @@ export async function loadActiveConnections(): Promise<ActiveConnection[]> {
           id: `active-${conn.id}`,
           connectionId: conn.id,
           exchangeName: conn.exchange.charAt(0).toUpperCase() + conn.exchange.slice(1),
-          isActive: conn.is_enabled === true || conn.is_enabled === "1", // Button state matches is_enabled
+          isActive: conn.is_enabled === true || conn.is_enabled === "1", // Independent toggle
           addedAt: conn.created_at || new Date().toISOString(),
         })
       }
     }
     
-    console.log(`[v0] [ActiveConnections] Loaded ${activeConnections.length} active connections from Redis`)
+    console.log(`[v0] [ActiveConnections] Loaded ${activeConnections.length} actively using connections (INDEPENDENT from Settings)`)
     return activeConnections
   } catch (error) {
     console.error("[v0] Error loading active connections from Redis:", error)
@@ -51,14 +57,14 @@ export async function saveActiveConnections(connections: ActiveConnection[]): Pr
     const redis = await getRedisHelpers()
     await redis.initRedis()
     
-    // This function is deprecated - active connections now stored via is_enabled_dashboard in connection records
-    console.log(`[v0] [ActiveConnections] Updating ${connections.length} connections in Redis`)
+    // Update active connections - toggling Active does NOT affect Settings
+    console.log(`[v0] [ActiveConnections] Updating ${connections.length} active connections in Redis (independent update)`)
     
     for (const ac of connections) {
       try {
         const connection = await redis.getConnection(ac.connectionId)
         if (connection) {
-          // Update the connection's enabled state based on isActive
+          // Update only the active list toggle - does NOT affect Settings is_enabled
           connection.is_enabled = ac.isActive ? "1" : "0"
           await redis.updateConnection(ac.connectionId, connection)
         }
@@ -81,11 +87,11 @@ export async function addActiveConnection(connectionId: string, exchangeName: st
       throw new Error(`Connection ${connectionId} not found`)
     }
     
-    // Mark connection as visible on dashboard
+    // Mark connection as actively using - does NOT affect Settings status
     connection.is_enabled_dashboard = "1"
     await redis.updateConnection(connectionId, connection)
     
-    console.log(`[v0] [ActiveConnections] Added ${connectionId} to dashboard`)
+    console.log(`[v0] [ActiveConnections] Added ${connectionId} to actively using (INDEPENDENT from Settings)`)
     
     return {
       id: `active-${connectionId}`,
@@ -107,10 +113,10 @@ export async function removeActiveConnection(connectionId: string): Promise<void
     
     const connection = await redis.getConnection(connectionId)
     if (connection) {
-      // Mark connection as not visible on dashboard
+      // Mark connection as not actively using - does NOT affect Settings status
       connection.is_enabled_dashboard = "0"
       await redis.updateConnection(connectionId, connection)
-      console.log(`[v0] [ActiveConnections] Removed ${connectionId} from dashboard`)
+      console.log(`[v0] [ActiveConnections] Removed ${connectionId} from actively using (Settings unchanged)`)
     }
   } catch (error) {
     console.error("[v0] Error removing active connection:", error)
@@ -125,10 +131,10 @@ export async function toggleActiveConnection(connectionId: string, isActive: boo
     
     const connection = await redis.getConnection(connectionId)
     if (connection) {
-      // Toggle the enabled state
+      // Toggle only the active list state - completely independent from Settings
       connection.is_enabled = isActive ? "1" : "0"
       await redis.updateConnection(connectionId, connection)
-      console.log(`[v0] [ActiveConnections] Toggled ${connectionId}: ${isActive ? "enabled" : "disabled"}`)
+      console.log(`[v0] [ActiveConnections] Toggled ${connectionId}: ${isActive ? "active" : "inactive"} (Settings is_enabled independent)`)
     }
   } catch (error) {
     console.error("[v0] Error toggling active connection:", error)

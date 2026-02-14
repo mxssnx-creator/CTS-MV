@@ -18,12 +18,12 @@ export async function GET(request: NextRequest) {
       connections = connections.filter((c) => c.exchange?.toLowerCase() === exchange.toLowerCase())
     }
 
-    // Filter by is_enabled for trade engine status
+    // Filter by is_enabled for trade engine status (Settings connections)
     if (enabled === "true") {
       connections = connections.filter((c) => c.is_enabled === true || c.is_enabled === "1")
     }
 
-    // Filter by is_enabled_dashboard for dashboard visibility
+    // Filter by is_enabled_dashboard for actively using connections (INDEPENDENT from Settings)
     if (dashboard === "true") {
       connections = connections.filter((c) => c.is_enabled_dashboard === true || c.is_enabled_dashboard === "1")
     }

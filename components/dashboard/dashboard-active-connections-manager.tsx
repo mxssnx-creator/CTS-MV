@@ -112,7 +112,7 @@ export function DashboardActiveConnectionsManager() {
       await removeActiveConnection(connectionId)
       setActiveConnections(activeConnections.filter(ac => ac.connectionId !== connectionId))
       toast.success("Connection removed", {
-        description: `${connectionName} has been removed from dashboard`
+        description: `${connectionName} has been removed from active connections`
       })
     } catch (error) {
       toast.error("Failed to remove connection")
@@ -133,7 +133,7 @@ export function DashboardActiveConnectionsManager() {
         <Card>
           <CardContent className="pt-6 text-center text-muted-foreground">
             <p className="mb-3">No active connections</p>
-            <p className="text-sm text-muted-foreground">Add connections from Settings to start monitoring them here.</p>
+            <p className="text-sm text-muted-foreground">Add connections from Settings to start using them.</p>
           </CardContent>
         </Card>
       ) : (
@@ -208,9 +208,9 @@ export function DashboardActiveConnectionsManager() {
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                           <AlertDialogHeader>
-                            <AlertDialogTitle>Remove Connection</AlertDialogTitle>
+                            <AlertDialogTitle>Remove from Active List</AlertDialogTitle>
                             <AlertDialogDescription>
-                              Are you sure you want to remove "{details?.name || conn.connectionId}" from the dashboard? This action cannot be undone.
+                              Are you sure you want to remove "{details?.name || conn.connectionId}" from actively using? This action cannot be undone.
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <div className="flex gap-2 justify-end">

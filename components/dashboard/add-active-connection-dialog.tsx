@@ -128,12 +128,12 @@ export function AddActiveConnectionDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Add Connection to Dashboard</DialogTitle>
-          <DialogDescription>
-            Select an enabled connection from Settings to add to the active connections panel. The toggle button below is separate and only controls whether the trade engine is active for that connection.
-          </DialogDescription>
-        </DialogHeader>
+      <DialogHeader>
+        <DialogTitle>Add Connection to Active List</DialogTitle>
+        <DialogDescription>
+          Select an enabled connection from Settings to add to your actively using connections. New connections are inactive by default.
+        </DialogDescription>
+      </DialogHeader>
 
         <div className="space-y-4">
           {loading ? (
@@ -143,35 +143,37 @@ export function AddActiveConnectionDialog({
             </div>
           ) : (
             <>
-              {/* Show Inserted Connections on Dashboard */}
-              {activeConnections.length > 0 && (
+              {/* Show Inserted Connections on Active List */}
+              {insertedConnectionsList.length > 0 && (
                 <div className="space-y-2">
-                  <Label className="font-medium text-sm">Already on Dashboard</Label>
+                  <Label className="font-medium text-sm">Already Active</Label>
                   <Card className="bg-blue-50 border-blue-200">
                     <CardContent className="pt-4">
                       <div className="grid grid-cols-1 gap-2">
-                        {activeConnections.map((ac) => (
+                        {insertedConnectionsList.map((ac) => (
                           <div key={ac.id} className="flex items-center justify-between p-2 bg-white border border-blue-100 rounded">
                             <div className="flex-1 text-sm">
                               <div className="font-medium">{ac.exchangeName}</div>
-                              <div className="text-xs text-muted-foreground">ID: {ac.connectionId}</div>
+                              <div className="text-xs text-muted-foreground">Connection ID: {ac.connectionId}</div>
                             </div>
                             <div className="flex gap-2">
-                              <Badge variant="outline" className="text-xs bg-green-50">
-                                Inserted
+                              <Badge 
+                                variant="outline"
+                                className="text-xs bg-green-50"
+                              >
+                                Active
                               </Badge>
-                              <Badge variant={ac.isActive ? "default" : "secondary"} className="text-xs">
-                                Toggle: {ac.isActive ? "On" : "Off"}
+                              <Badge 
+                                variant={ac.isActive ? "default" : "secondary"}
+                                className="text-xs"
+                              >
+                                {ac.isActive ? "Toggle: On" : "Toggle: Off"}
                               </Badge>
                             </div>
                           </div>
                         ))}
                       </div>
-                      <p className="text-xs text-blue-700 mt-3">
-                        <strong>Inserted:</strong> Connection is added to dashboard (separate from toggle state)
-                        <br />
-                        <strong>Toggle:</strong> Controls if trade engine is active for this connection
-                      </p>
+                      <p className="text-xs text-blue-700 mt-3">These connections are actively using. The toggle button controls whether each connection's trade engine is active (completely independent from Settings).</p>
                     </CardContent>
                   </Card>
                 </div>
@@ -256,12 +258,11 @@ export function AddActiveConnectionDialog({
 
                   <Card className="border-blue-200 bg-blue-50/50">
                     <CardContent className="pt-4 text-xs">
-                      <p className="text-blue-900 font-semibold mb-2">Important:</p>
+                      <p className="text-blue-900 font-semibold mb-2">Adding to Active List:</p>
                       <ul className="text-blue-800 space-y-1">
-                        <li>• <strong>Inserted</strong> = Connection added to dashboard (permanent until removed)</li>
-                        <li>• <strong>Toggle</strong> = Separate control for activating trade engine</li>
-                        <li>• You can add a connection and keep its toggle off</li>
-                        <li>• Toggle on/off independently from the dashboard panel</li>
+                        <li>• Must be enabled (is_enabled = true) in Settings</li>
+                        <li>• Will be added in <strong>inactive</strong> state</li>
+                        <li>• Toggle button controls trade engine independently from Settings</li>
                       </ul>
                     </CardContent>
                   </Card>
