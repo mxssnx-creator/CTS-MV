@@ -376,6 +376,14 @@ export async function getConnection(connectionId: string): Promise<any> {
   const key = `connection:${connectionId}`
   const data = await client.hgetall(key)
   if (!data || Object.keys(data).length === 0) return null
+  
+  // Helper to convert string booleans to actual booleans
+  const toBool = (val: any): boolean => {
+    if (typeof val === 'boolean') return val
+    if (typeof val === 'string') return val === '1' || val === 'true'
+    return !!val
+  }
+  
   return {
     id: data.id, name: data.name, exchange: data.exchange,
     api_key: data.api_key || "", api_secret: data.api_secret || "",
@@ -384,13 +392,13 @@ export async function getConnection(connectionId: string): Promise<any> {
     connection_library: data.connection_library || "ccxt",
     margin_type: data.margin_type || "isolated",
     position_mode: data.position_mode || "one-way",
-    is_testnet: data.is_testnet === "1", 
-    is_enabled: data.is_enabled === "1",
-    is_enabled_dashboard: data.is_enabled_dashboard === "1", // Dashboard visibility
-    is_active: data.is_active === "1", 
-    is_predefined: data.is_predefined === "1",
-    is_live_trade: data.is_live_trade === "1", 
-    is_preset_trade: data.is_preset_trade === "1",
+    is_testnet: toBool(data.is_testnet), 
+    is_enabled: toBool(data.is_enabled),
+    is_enabled_dashboard: toBool(data.is_enabled_dashboard), // Dashboard visibility
+    is_active: toBool(data.is_active), 
+    is_predefined: toBool(data.is_predefined),
+    is_live_trade: toBool(data.is_live_trade), 
+    is_preset_trade: toBool(data.is_preset_trade),
     api_passphrase: data.api_passphrase || "",
     created_at: data.created_at, 
     updated_at: data.updated_at,
@@ -407,16 +415,33 @@ export async function getAllConnections(): Promise<any[]> {
   const client = getClient()
   try {
     const ids = await client.smembers("connections")
-    if (!ids || ids.length === 0) return []
+    console.log("[v0] [DB] getAllConnections - retrieved IDs from set:", ids?.length || 0, "IDs")
+    
+    if (!ids || ids.length === 0) {
+      console.log("[v0] [DB] No connection IDs found in 'connections' set")
+      return []
+    }
     
     // Fetch all connections in parallel with Promise.all
     const results = await Promise.all(
       ids.map(id => client.hgetall(`connection:${id}`))
     )
     
+    console.log("[v0] [DB] Fetched connection data:", results.length, "results")
+    
     const connections = []
-    for (const data of results) {
+    for (let i = 0; i < results.length; i++) {
+      const data = results[i]
+      console.log(`[v0] [DB] Processing connection ${i}:`, data ? Object.keys(data).length : 0, "fields")
+      
       if (data && Object.keys(data).length > 0) {
+        // Helper to convert string booleans to actual booleans
+        const toBool = (val: any): boolean => {
+          if (typeof val === 'boolean') return val
+          if (typeof val === 'string') return val === '1' || val === 'true'
+          return !!val
+        }
+        
         // Convert string boolean values to actual booleans
         connections.push({
           id: data.id,
@@ -430,19 +455,20 @@ export async function getAllConnections(): Promise<any[]> {
           connection_library: data.connection_library || "ccxt",
           margin_type: data.margin_type || "isolated",
           position_mode: data.position_mode || "one-way",
-          is_testnet: data.is_testnet === "1",
-          is_enabled: data.is_enabled === "1",
-          is_enabled_dashboard: data.is_enabled_dashboard === "1",
-          is_active: data.is_active === "1",
-          is_predefined: data.is_predefined === "1",
-          is_live_trade: data.is_live_trade === "1",
-          is_preset_trade: data.is_preset_trade === "1",
+          is_testnet: toBool(data.is_testnet),
+          is_enabled: toBool(data.is_enabled),
+          is_enabled_dashboard: toBool(data.is_enabled_dashboard),
+          is_active: toBool(data.is_active),
+          is_predefined: toBool(data.is_predefined),
+          is_live_trade: toBool(data.is_live_trade),
+          is_preset_trade: toBool(data.is_preset_trade),
           api_passphrase: data.api_passphrase || "",
           created_at: data.created_at,
           updated_at: data.updated_at,
         })
       }
     }
+    console.log("[v0] [DB] getAllConnections - returning", connections.length, "connections")
     return connections
   } catch (error) {
     console.error("[v0] [DB] Failed to get all connections:", error)
