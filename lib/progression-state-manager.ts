@@ -4,7 +4,7 @@
  * State is persisted to Redis for durability across restarts
  */
 
-import { getClient } from "@/lib/redis-db"
+import { getRedisClient } from "@/lib/redis-db"
 
 export interface ProgressionState {
   connectionId: string
@@ -26,7 +26,7 @@ export class ProgressionStateManager {
    */
   static async getProgressionState(connectionId: string): Promise<ProgressionState> {
     try {
-      const client = getClient()
+      const client = getRedisClient()
       const key = `progression:${connectionId}`
       const data = await client.hgetall(key)
 
@@ -84,7 +84,7 @@ export class ProgressionStateManager {
    */
   static async incrementCycle(connectionId: string, successful: boolean, profit: number = 0): Promise<void> {
     try {
-      const client = getClient()
+      const client = getRedisClient()
       const key = `progression:${connectionId}`
 
       // Get current state
@@ -122,7 +122,7 @@ export class ProgressionStateManager {
    */
   static async recordTrade(connectionId: string, successful: boolean, profit: number = 0): Promise<void> {
     try {
-      const client = getClient()
+      const client = getRedisClient()
       const key = `progression:${connectionId}`
 
       // Get current state
@@ -154,7 +154,7 @@ export class ProgressionStateManager {
    */
   static async resetProgressionState(connectionId: string): Promise<void> {
     try {
-      const client = getClient()
+      const client = getRedisClient()
       const key = `progression:${connectionId}`
       await client.del(key)
       console.log(`[v0] [Progression] State reset for ${connectionId}`)

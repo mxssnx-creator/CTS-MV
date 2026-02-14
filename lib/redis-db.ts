@@ -409,18 +409,13 @@ export async function getAllConnections(): Promise<any[]> {
     const ids = await client.smembers("connections")
     if (!ids || ids.length === 0) return []
     
-    // Use Redis pipeline to fetch all connections in ONE batch instead of looping
-    const pipeline = client.pipeline()
-    for (const id of ids) {
-      pipeline.hgetall(`connection:${id}`)
-    }
-    const results = await pipeline.exec()
-    
-    if (!results || !Array.isArray(results)) return []
+    // Fetch all connections in parallel with Promise.all
+    const results = await Promise.all(
+      ids.map(id => client.hgetall(`connection:${id}`))
+    )
     
     const connections = []
-    for (let i = 0; i < results.length; i++) {
-      const data = results[i] as Record<string, any>
+    for (const data of results)
       if (data && Object.keys(data).length > 0) {
         // Convert string boolean values to actual booleans
         connections.push({
@@ -496,14 +491,10 @@ export async function getConnectionTrades(connectionId: string): Promise<any[]> 
   const ids = await client.smembers(`trades:${connectionId}`)
   if (!ids || ids.length === 0) return []
   
-  // Use Redis pipeline to fetch all trades in ONE batch
-  const pipeline = client.pipeline()
-  for (const id of ids) {
-    pipeline.hgetall(`trade:${id}`)
-  }
-  const results = await pipeline.exec()
-  
-  if (!results || !Array.isArray(results)) return []
+  // Fetch all trades in parallel
+  const results = await Promise.all(
+    ids.map(id => client.hgetall(`trade:${id}`))
+  )
   
   const trades = []
   for (const data of results) {
@@ -552,14 +543,10 @@ export async function getConnectionPositions(connectionId: string): Promise<any[
   const ids = await client.smembers(`positions:${connectionId}`)
   if (!ids || ids.length === 0) return []
   
-  // Use Redis pipeline to fetch all positions in ONE batch
-  const pipeline = client.pipeline()
-  for (const id of ids) {
-    pipeline.hgetall(`position:${id}`)
-  }
-  const results = await pipeline.exec()
-  
-  if (!results || !Array.isArray(results)) return []
+  // Fetch all positions in parallel
+  const results = await Promise.all(
+    ids.map(id => client.hgetall(`position:${id}`))
+  )
   
   const positions = []
   for (const data of results) {
