@@ -91,16 +91,28 @@ export class BingXConnector extends BaseExchangeConnector {
       // Parse balance data
       const balanceData = data.data?.balance || []
       if (!Array.isArray(balanceData)) {
+        this.logError(`Invalid balance data format: ${JSON.stringify(balanceData).substring(0, 200)}`)
         throw new Error("Invalid balance data format from API")
       }
 
-      const usdtBalance = Number.parseFloat(balanceData.find((b: any) => b.asset === "USDT")?.balance || "0")
+      this.log(`[Debug] Received ${balanceData.length} balance entries`)
+      if (balanceData.length > 0) {
+        this.log(`[Debug] First balance entry: ${JSON.stringify(balanceData[0]).substring(0, 300)}`)
+      }
 
+      // Extract USDT balance - BingX returns balance as a number
+      const usdtEntry = balanceData.find((b: any) => b.asset === "USDT")
+      const usdtBalance = usdtEntry ? Number.parseFloat(usdtEntry.balance || usdtEntry.total || "0") : 0
+      
+      this.log(`[Debug] USDT entry: ${JSON.stringify(usdtEntry)}`)
+      this.log(`[Debug] USDT balance value: ${usdtBalance}`)
+
+      // Map all balances with proper field extraction
       const balances = balanceData.map((b: any) => ({
         asset: b.asset || "UNKNOWN",
-        free: Number.parseFloat(b.availableMargin || "0"),
-        locked: Number.parseFloat(b.frozenMargin || "0"),
-        total: Number.parseFloat(b.balance || "0"),
+        free: Number.parseFloat(b.availableMargin || b.free || "0"),
+        locked: Number.parseFloat(b.frozenMargin || b.locked || "0"),
+        total: Number.parseFloat(b.balance || b.total || "0"),
       }))
 
       this.log(`✓ Account Balance: ${usdtBalance.toFixed(2)} USDT`)
