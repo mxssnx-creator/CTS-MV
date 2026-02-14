@@ -126,7 +126,7 @@ export class GlobalTradeEngineCoordinator {
    */
   async startAll(): Promise<void> {
     try {
-      console.log("[v0] [Coordinator] Starting all trade engines for enabled connections...")
+      console.log("[v0] [Coordinator] Starting global trade engine (all available connections)...")
       
       // Import Redis functions
       const { initRedis, getAllConnections } = await import("@/lib/redis-db")
@@ -141,23 +141,25 @@ export class GlobalTradeEngineCoordinator {
         return
       }
       
-      // Filter for enabled connections (independent from active list)
-      const enabledConnections = connections.filter((c) => {
-        const isEnabled = c.is_enabled === true || c.is_enabled === "true" || c.is_enabled === "1"
-        return isEnabled
+      // Get ALL connections (not just enabled) - global engine can start without restrictions
+      // Filter out connections that have no API credentials though
+      const validConnections = connections.filter((c) => {
+        const hasCredentials = (c.api_key || c.apiKey) && (c.api_secret || c.apiSecret)
+        return hasCredentials
       })
       
-      console.log(`[v0] [Coordinator] Found ${enabledConnections.length} enabled connections`)
+      console.log(`[v0] [Coordinator] Found ${validConnections.length} connections with valid credentials`)
       
-      if (enabledConnections.length === 0) {
-        console.log("[v0] [Coordinator] No enabled connections to start")
+      if (validConnections.length === 0) {
+        console.warn("[v0] [Coordinator] WARNING: No connections with valid credentials to start")
+        this.isGloballyRunning = true // Mark as running even with no connections
         return
       }
       
       const settings = await loadSettingsAsync()
       let successCount = 0
       
-      for (const connection of enabledConnections) {
+      for (const connection of validConnections) {
         try {
           const config: EngineConfig = {
             connectionId: connection.id,
@@ -174,9 +176,10 @@ export class GlobalTradeEngineCoordinator {
         }
       }
       
-      console.log(`[v0] [Coordinator] ✓ All engines started: ${successCount}/${enabledConnections.length}`)
+      this.isGloballyRunning = true
+      console.log(`[v0] [Coordinator] ✓ Global engine started: ${successCount}/${validConnections.length} connections active`)
     } catch (error) {
-      console.error("[v0] [Coordinator] Failed to start all engines:", error)
+      console.error("[v0] [Coordinator] Failed to start global engine:", error)
     }
   }
 
@@ -270,72 +273,88 @@ export class GlobalTradeEngineCoordinator {
    * Pause all engines
    */
   async pause(): Promise<void> {
-    console.log("[v0] Pausing all TradeEngines...")
+    console.log("[v0] [Coordinator] PAUSING global trade engine - stopping ALL engines...")
 
     this.isPaused = true
+    this.isGloballyRunning = false
 
-    // Pause all engine managers
-    for (const [connectionId, manager] of this.engineManagers.entries()) {
+    // Stop ALL engine managers immediately
+    const allConnectionIds = Array.from(this.engineManagers.keys())
+    console.log(`[v0] [Coordinator] Stopping ${allConnectionIds.length} trade engine(s)...`)
+
+    for (const connectionId of allConnectionIds) {
       try {
-        await manager.stop()
-        console.log(`[v0] Paused engine for connection: ${connectionId}`)
+        const manager = this.engineManagers.get(connectionId)
+        if (manager) {
+          await manager.stop()
+          console.log(`[v0] [Coordinator] ✓ Stopped engine for connection: ${connectionId}`)
+        }
       } catch (error) {
-        console.error(`[v0] Failed to pause engine for connection ${connectionId}:`, error)
+        console.error(`[v0] [Coordinator] Failed to stop engine for connection ${connectionId}:`, error)
       }
     }
 
-    console.log("[v0] All TradeEngines paused")
+    console.log("[v0] [Coordinator] ✓ Global trade engine PAUSED - all engines stopped")
   }
 
   /**
    * Resume all engines
    */
   async resume(): Promise<void> {
-    console.log("[v0] Resuming all TradeEngines...")
+    console.log("[v0] [Coordinator] RESUMING global trade engine - restarting all engines...")
 
     if (!this.isPaused) {
-      console.log("[v0] TradeEngines are not paused, nothing to resume")
+      console.log("[v0] [Coordinator] TradeEngines are not paused, nothing to resume")
       return
     }
 
     this.isPaused = false
+    this.isGloballyRunning = true
 
     try {
-      let connections: any[] = []
-      try {
-        const { loadConnections } = await import("@/lib/file-storage")
-        connections = loadConnections().filter((c) => c.is_active)
-      } catch (fileError) {
-        console.error("[v0] Failed to load connections from file, trying database:", fileError)
-        // Fallback to database if file loading fails
-        connections = await sql<any>`
-          SELECT id, exchange, api_key, api_secret 
-          FROM exchange_connections 
-          WHERE is_active = true
-        `
+      const { initRedis, getAllConnections } = await import("@/lib/redis-db")
+      const { loadSettingsAsync } = await import("@/lib/settings-storage")
+
+      await initRedis()
+      const connections = await getAllConnections()
+      
+      if (!Array.isArray(connections)) {
+        console.error("[v0] [Coordinator] ERROR: connections is not an array during resume")
+        return
       }
 
-      console.log(`[v0] Found ${connections.length} active connections to resume`)
+      // Get all connections with valid credentials
+      const validConnections = connections.filter((c) => {
+        const hasCredentials = (c.api_key || c.apiKey) && (c.api_secret || c.apiSecret)
+        return hasCredentials
+      })
+
+      console.log(`[v0] [Coordinator] Found ${validConnections.length} connections to resume`)
+
+      const settings = await loadSettingsAsync()
+      let resumedCount = 0
 
       // Restart engine for each connection
-      for (const connection of connections) {
+      for (const connection of validConnections) {
         try {
           const config: EngineConfig = {
             connectionId: connection.id,
-            indicationInterval: 5,
-            strategyInterval: 10,
-            realtimeInterval: 3,
+            indicationInterval: settings.mainEngineIntervalMs ? settings.mainEngineIntervalMs / 1000 : 5,
+            strategyInterval: settings.strategyUpdateIntervalMs ? settings.strategyUpdateIntervalMs / 1000 : 10,
+            realtimeInterval: settings.realtimeIntervalMs ? settings.realtimeIntervalMs / 1000 : 3,
           }
 
           await this.startEngine(connection.id, config)
+          resumedCount++
+          console.log(`[v0] [Coordinator] ✓ Resumed: ${connection.name}`)
         } catch (error) {
-          console.error(`[v0] Failed to resume engine for connection ${connection.id}:`, error)
+          console.error(`[v0] [Coordinator] Failed to resume engine for connection ${connection.id}:`, error)
         }
       }
 
-      console.log("[v0] All TradeEngines resumed")
+      console.log(`[v0] [Coordinator] ✓ Global trade engine RESUMED: ${resumedCount} engines restarted`)
     } catch (error) {
-      console.error("[v0] Failed to resume engines:", error)
+      console.error("[v0] [Coordinator] Failed to resume engines:", error)
       throw error
     }
   }
