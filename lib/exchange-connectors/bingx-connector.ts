@@ -36,13 +36,22 @@ export class BingXConnector extends BaseExchangeConnector {
     this.log("Generating signature...")
 
     try {
-      const queryString = `timestamp=${timestamp}`
+      // Build query parameters and sort them (BingX requirement)
+      const params: Record<string, string> = {
+        timestamp: String(timestamp),
+      }
+
+      // Sort parameters alphabetically and build query string
+      const sortedKeys = Object.keys(params).sort()
+      const queryString = sortedKeys.map(key => `${key}=${params[key]}`).join('&')
+
+      // Generate signature from the query string
       const signature = crypto.createHmac("sha256", this.credentials.apiSecret).update(queryString).digest("hex")
 
       this.log("Fetching account balance...")
 
       const response = await this.rateLimitedFetch(
-        `${baseUrl}/openApi/swap/v2/user/balance?${queryString}&signature=${signature}`,
+        `${baseUrl}/openApi/swap/v3/user/balance?${queryString}&signature=${signature}`,
         {
           method: "GET",
           headers: {

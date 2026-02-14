@@ -6,6 +6,7 @@ import { ExchangeProvider } from "@/lib/exchange-context"
 import { ConnectionStateProvider } from "@/lib/connection-state"
 import { SidebarProvider } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
+import { SystemInitializer } from "@/components/system-initializer"
 import { Toaster } from "@/components/ui/sonner"
 
 export const dynamic = "force-dynamic"
@@ -24,6 +25,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="min-h-screen bg-background font-sans">
+        <SystemInitializer />
         <AuthProvider>
           <ConnectionStateProvider>
             <ExchangeProvider>
