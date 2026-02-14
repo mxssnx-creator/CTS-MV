@@ -415,7 +415,7 @@ export async function getAllConnections(): Promise<any[]> {
     )
     
     const connections = []
-    for (const data of results)
+    for (const data of results) {
       if (data && Object.keys(data).length > 0) {
         // Convert string boolean values to actual booleans
         connections.push({
