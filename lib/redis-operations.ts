@@ -5,7 +5,7 @@ export const RedisConnections = {
   async createConnection(conn: any) {
     const client = getRedisClient()
     const key = `connection:${conn.id}`
-    await client.hset(key, {
+    const data: Record<string, string> = {
       id: conn.id,
       name: conn.name,
       exchange: conn.exchange,
@@ -14,7 +14,12 @@ export const RedisConnections = {
       is_enabled: conn.is_enabled ? "1" : "0",
       is_active: conn.is_active ? "1" : "0",
       created_at: new Date().toISOString(),
-    })
+    }
+    const args: string[] = []
+    for (const [k, v] of Object.entries(data)) {
+      args.push(k, v)
+    }
+    await client.hmset(key, ...args)
     await client.sadd("connections:all", conn.id)
     return conn
   },
@@ -124,10 +129,23 @@ export const RedisSettings = {
 
 // ========== Monitoring ==========
 export const RedisMonitoring = {
-  async recordEvent(event: any) {
+  async recordEvent(eventType: string, eventData?: any) {
     const client = getRedisClient()
-    const eventId = `event:${Date.now()}`
-    await client.hset(eventId, event)
+    const eventId = `event:${Date.now()}_${Math.random().toString(36).substr(2, 6)}`
+    const data: Record<string, string> = {
+      type: eventType,
+      timestamp: new Date().toISOString(),
+    }
+    if (eventData && typeof eventData === "object") {
+      for (const [k, v] of Object.entries(eventData)) {
+        data[k] = String(v ?? "")
+      }
+    }
+    const args: string[] = []
+    for (const [k, v] of Object.entries(data)) {
+      args.push(k, v)
+    }
+    await client.hmset(eventId, ...args)
     await client.sadd("monitoring:events", eventId)
     await client.expire(eventId, 2592000) // 30 days
   },

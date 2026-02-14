@@ -388,8 +388,8 @@ class LocalRedis {
 // Global singleton instance
 let localRedisInstance: LocalRedis | null = null
 
-/** Get (or create) the local Redis singleton */
-export async function getLocalRedis(): Promise<LocalRedis> {
+/** Get (or create) the local Redis singleton - synchronous */
+export function getLocalRedis(): LocalRedis {
   if (!localRedisInstance) {
     localRedisInstance = new LocalRedis()
   }
@@ -397,7 +397,7 @@ export async function getLocalRedis(): Promise<LocalRedis> {
 }
 
 /** Destroy the local Redis instance */
-export async function destroyLocalRedis(): Promise<void> {
+export function destroyLocalRedis(): void {
   if (localRedisInstance) {
     localRedisInstance.destroy()
     localRedisInstance = null
