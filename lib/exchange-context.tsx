@@ -28,18 +28,28 @@ export function ExchangeProvider({ children }: { children: ReactNode }) {
     loadingRef.current = true
     setIsLoading(true)
     try {
-      console.log("[v0] [Exchange Context] Loading all connections for exchange selector...")
-      // Load ALL connections, not just enabled/active ones
-      const response = await fetch("/api/settings/connections")
+      console.log("[v0] [Exchange Context] Loading dashboard active connections for exchange selector...")
+      // Load ONLY connections that are added to active list (is_enabled_dashboard="1")
+      const response = await fetch("/api/settings/connections?dashboard=true", {
+        cache: "no-store",
+        headers: { "Cache-Control": "no-cache" },
+      })
       if (response.ok) {
         const data = await response.json()
         const connections = data.connections || []
-        setActiveConnections(connections)
-        console.log("[v0] [Exchange Context] Loaded", connections.length, "connections")
+        
+        // Filter to only show dashboard-active connections (is_enabled_dashboard=1 or true)
+        const dashboardActive = connections.filter((c: any) => {
+          const isDashboardEnabled = c.is_enabled_dashboard === true || c.is_enabled_dashboard === "1" || c.is_enabled_dashboard === "true"
+          return isDashboardEnabled
+        })
+        
+        setActiveConnections(dashboardActive)
+        console.log("[v0] [Exchange Context] Loaded", dashboardActive.length, "dashboard-active connections from", connections.length, "total")
         
         // Auto-select first connection if none selected
-        if (!selectedExchange && connections.length > 0) {
-          setSelectedExchange(connections[0].exchange)
+        if (!selectedExchange && dashboardActive.length > 0) {
+          setSelectedExchange(dashboardActive[0].exchange)
         }
       }
     } catch (error) {
