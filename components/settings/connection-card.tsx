@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
-import { Power, Trash2, Settings, ChevronDown, Loader2, AlertCircle, CheckCircle2, Edit2 } from "lucide-react"
+import { Power, Trash2, Settings, ChevronDown, Loader2, AlertCircle, CheckCircle2, Edit2, Lock, Eye, EyeOff } from "lucide-react"
 import { useState, useEffect } from "react"
 import { toast } from "@/lib/simple-toast"
 import { isHTMLResponse, parseHTMLResponse, parseCloudflareError } from "@/lib/html-response-parser"
@@ -25,7 +25,13 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { ExchangeConnection } from "@/lib/types"
+import {
+  EXCHANGE_CONNECTION_METHODS,
+  CONNECTION_METHODS,
+  EXCHANGE_LIBRARY_PACKAGES,
+} from "@/lib/connection-predefinitions"
 
 interface ConnectionCardProps {
   connection: ExchangeConnection
@@ -53,6 +59,8 @@ export function ConnectionCard({
   const [testingConnection, setTestingConnection] = useState(false)
   const [logsExpanded, setLogsExpanded] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [editDialogTab, setEditDialogTab] = useState("basic")
+  const [showSecrets, setShowSecrets] = useState(false)
   const [showTestLogInstant, setShowTestLogInstant] = useState(false)
   const [testLogs, setTestLogs] = useState<string[]>([])
   const [workingStatus, setWorkingStatus] = useState<"idle" | "testing" | "success" | "error">("idle")
@@ -65,12 +73,28 @@ export function ConnectionCard({
     name: connection.name,
     api_type: connection.api_type,
     connection_method: connection.connection_method,
-    connection_library: connection.connection_library,
+    connection_library: connection.connection_library || "native",
     margin_type: connection.margin_type,
     position_mode: connection.position_mode,
     is_testnet: connection.is_testnet,
     api_passphrase: connection.api_passphrase || "",
   })
+
+  // Auto-set connection library based on connection method when editFormData changes
+  useEffect(() => {
+    let defaultLibrary = "native"
+    if (editFormData.connection_method === "rest") {
+      defaultLibrary = "native"
+    } else if (editFormData.connection_method === "websocket") {
+      defaultLibrary = "native"
+    } else if (editFormData.connection_method === "library") {
+      defaultLibrary = "original"
+    }
+
+    if (editFormData.connection_library !== defaultLibrary) {
+      setEditFormData(prev => ({ ...prev, connection_library: defaultLibrary }))
+    }
+  }, [editFormData.connection_method])
 
   // Poll for engine status when enabled
   useEffect(() => {
@@ -488,163 +512,288 @@ export function ConnectionCard({
 
       {/* Edit Settings Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Connection Settings</DialogTitle>
-            <DialogDescription>Update API credentials and connection name for {connection.name}</DialogDescription>
+            <DialogDescription>Update configuration for {connection.name}</DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-name">Connection Name</Label>
-              <Input
-                id="edit-name"
-                value={editFormData.name}
-                onChange={(e) => setEditFormData((prev) => ({ ...prev, name: e.target.value }))}
-                placeholder="e.g., My Bybit Connection"
-              />
-            </div>
+          <Tabs value={editDialogTab} onValueChange={setEditDialogTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="basic">Basic Info</TabsTrigger>
+              <TabsTrigger value="api">API Credentials</TabsTrigger>
+              <TabsTrigger value="advanced">Advanced</TabsTrigger>
+            </TabsList>
 
-            {/* API Type and Connection Method */}
-            <div className="grid md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-api-type">API Type</Label>
-                <Select value={editFormData.api_type} onValueChange={(value) => setEditFormData(prev => ({ ...prev, api_type: value }))}>
-                  <SelectTrigger id="edit-api-type">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="spot">Spot</SelectItem>
-                    <SelectItem value="perpetual_futures">Perpetual Futures</SelectItem>
-                    <SelectItem value="linear_swap">Linear Swap</SelectItem>
-                  </SelectContent>
-                </Select>
+            {/* Basic Info Tab */}
+            <TabsContent value="basic" className="space-y-4 mt-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-name" className="font-medium text-xs">Connection Name</Label>
+                  <Input
+                    id="edit-name"
+                    value={editFormData.name}
+                    onChange={(e) => setEditFormData((prev) => ({ ...prev, name: e.target.value }))}
+                    placeholder="e.g., My Bybit Connection"
+                    className="bg-white h-8 text-sm"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="edit-api-type" className="font-medium text-xs">API Type</Label>
+                  <Select value={editFormData.api_type} onValueChange={(value) => setEditFormData(prev => ({ ...prev, api_type: value }))}>
+                    <SelectTrigger id="edit-api-type" className="bg-white h-8 text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="spot">Spot</SelectItem>
+                      <SelectItem value="perpetual_futures">Perpetual Futures</SelectItem>
+                      <SelectItem value="linear_swap">Linear Swap</SelectItem>
+                      <SelectItem value="unified">Unified</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="edit-connection-method" className="font-medium text-xs">Connection Method</Label>
+                  <Select value={editFormData.connection_method} onValueChange={(value) => setEditFormData(prev => ({ ...prev, connection_method: value }))}>
+                    <SelectTrigger id="edit-connection-method" className="bg-white h-8 text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(EXCHANGE_CONNECTION_METHODS[connection.exchange] || ["rest"]).map((method) => {
+                        const methodInfo = CONNECTION_METHODS[method as keyof typeof CONNECTION_METHODS]
+                        return (
+                          <SelectItem key={method} value={method}>
+                            <span className="text-sm">{methodInfo?.label || method.toUpperCase()}</span>
+                          </SelectItem>
+                        )
+                      })}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="edit-connection-library" className="font-medium text-xs">Library</Label>
+                  <Select value={editFormData.connection_library || "native"} onValueChange={(value) => setEditFormData(prev => ({ ...prev, connection_library: value }))}>
+                    <SelectTrigger id="edit-connection-library" className="bg-white h-8 text-sm">
+                      <SelectValue placeholder="Select library..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {editFormData.connection_method === "rest" && (
+                        <>
+                          <SelectItem value="native"><span className="text-sm">Native (Default)</span></SelectItem>
+                          <SelectItem value="ccxt"><span className="text-sm">CCXT</span></SelectItem>
+                        </>
+                      )}
+                      {editFormData.connection_method === "library" && (
+                        <>
+                          <SelectItem value="original"><span className="text-sm">Original - {EXCHANGE_LIBRARY_PACKAGES[connection.exchange] || "Exchange SDK"}</span></SelectItem>
+                          <SelectItem value="ccxt"><span className="text-sm">CCXT</span></SelectItem>
+                        </>
+                      )}
+                      {editFormData.connection_method === "websocket" && (
+                        <>
+                          <SelectItem value="native"><span className="text-sm">Native (Default)</span></SelectItem>
+                        </>
+                      )}
+                      {editFormData.connection_method === "hybrid" && (
+                        <>
+                          <SelectItem value="native"><span className="text-sm">Native (Default)</span></SelectItem>
+                          <SelectItem value="ccxt"><span className="text-sm">CCXT</span></SelectItem>
+                        </>
+                      )}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {editFormData.connection_library === "native" && "Built-in native implementation"}
+                    {editFormData.connection_library === "original" && `Official ${connection.exchange.toUpperCase()} SDK`}
+                    {editFormData.connection_library === "ccxt" && "Universal CCXT library (cross-exchange)"}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="edit-margin" className="font-medium text-xs">Margin Type</Label>
+                  <Select value={editFormData.margin_type} onValueChange={(value) => setEditFormData(prev => ({ ...prev, margin_type: value }))}>
+                    <SelectTrigger id="edit-margin" className="bg-white h-8 text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cross">Cross Margin</SelectItem>
+                      <SelectItem value="isolated">Isolated Margin</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="edit-position" className="font-medium text-xs">Position Mode</Label>
+                  <Select value={editFormData.position_mode} onValueChange={(value) => setEditFormData(prev => ({ ...prev, position_mode: value }))}>
+                    <SelectTrigger id="edit-position" className="bg-white h-8 text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="hedge">Hedge Mode (Bidirectional)</SelectItem>
+                      <SelectItem value="one_way">One Way Mode</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="edit-connection-method">Connection Method</Label>
-                <Select value={editFormData.connection_method} onValueChange={(value) => setEditFormData(prev => ({ ...prev, connection_method: value }))}>
-                  <SelectTrigger id="edit-connection-method">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="rest">REST API</SelectItem>
-                    <SelectItem value="websocket">WebSocket</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Rate Limit Info */}
-            <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded p-3 text-xs">
-              <div className="font-semibold text-amber-900 dark:text-amber-200 mb-1">Rate Limits ({editFormData.connection_method === "rest" ? "REST API" : "WebSocket"})</div>
-              <div className="text-amber-800 dark:text-amber-300 space-y-1">
-                {editFormData.connection_method === "rest" ? (
-                  <>
-                    <div>• Public: 1000 requests/10 seconds</div>
-                    <div>• Private: 100 requests/10 seconds</div>
-                    <div>• Recommended Delay: 10-50ms between requests</div>
-                  </>
-                ) : (
-                  <>
-                    <div>• Unlimited message rate</div>
-                    <div>• Max 10 concurrent connections</div>
-                    <div>• Best for real-time updates</div>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* Margin & Position Settings */}
-            <div className="grid md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-margin">Margin Type</Label>
-                <Select value={editFormData.margin_type} onValueChange={(value) => setEditFormData(prev => ({ ...prev, margin_type: value }))}>
-                  <SelectTrigger id="edit-margin">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="cross">Cross Margin</SelectItem>
-                    <SelectItem value="isolated">Isolated Margin</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="edit-position">Position Mode</Label>
-                <Select value={editFormData.position_mode} onValueChange={(value) => setEditFormData(prev => ({ ...prev, position_mode: value }))}>
-                  <SelectTrigger id="edit-position">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="hedge">Hedge Mode (Bidirectional)</SelectItem>
-                    <SelectItem value="one_way">One Way Mode</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Testnet Toggle */}
-            <div className="flex items-center justify-between p-3 border rounded-lg">
-              <div>
-                <Label>Use Testnet</Label>
-                <p className="text-xs text-muted-foreground">Test connections on testnet before live trading</p>
-              </div>
-              <Switch
-                id="edit-testnet"
-                checked={editFormData.is_testnet}
-                onCheckedChange={(checked) => setEditFormData(prev => ({ ...prev, is_testnet: checked }))}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="edit-api-key">API Key</Label>
-              <Input
-                id="edit-api-key"
-                type="password"
-                value={editFormData.api_key}
-                onChange={(e) => setEditFormData((prev) => ({ ...prev, api_key: e.target.value }))}
-                placeholder="Enter your API key"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="edit-api-secret">API Secret</Label>
-              <Input
-                id="edit-api-secret"
-                type="password"
-                value={editFormData.api_secret}
-                onChange={(e) => setEditFormData((prev) => ({ ...prev, api_secret: e.target.value }))}
-                placeholder="Enter your API secret"
-              />
-            </div>
-
-            {connection.exchange === "okx" && (
-              <div className="space-y-2">
-                <Label htmlFor="edit-passphrase">API Passphrase (OKX only)</Label>
-                <Input
-                  id="edit-passphrase"
-                  type="password"
-                  value={editFormData.api_passphrase}
-                  onChange={(e) => setEditFormData((prev) => ({ ...prev, api_passphrase: e.target.value }))}
-                  placeholder="Enter your API passphrase"
+              {/* Testnet Toggle */}
+              <div className="flex items-center justify-between p-3 border rounded-lg">
+                <div>
+                  <Label className="font-medium text-xs">Use Testnet</Label>
+                  <p className="text-xs text-muted-foreground">Test connections on testnet before live trading</p>
+                </div>
+                <Switch
+                  id="edit-testnet"
+                  checked={editFormData.is_testnet}
+                  onCheckedChange={(checked) => setEditFormData(prev => ({ ...prev, is_testnet: checked }))}
                 />
               </div>
-            )}
+            </TabsContent>
 
-            <div className="bg-blue-50 border border-blue-200 rounded p-2 text-xs text-blue-900">
-              ℹ️ Your API credentials are encrypted and only used for secure connections to {connection.exchange}.
-            </div>
-          </div>
+            {/* API Credentials Tab */}
+            <TabsContent value="api" className="space-y-4 mt-4">
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex gap-3">
+                <AlertCircle className="h-4 w-4 shrink-0 text-amber-900 mt-0.5" />
+                <div className="text-sm text-amber-900">
+                  <p className="font-semibold mb-1">Secure Your Credentials</p>
+                  <p className="text-xs">Your API credentials are encrypted and never shared. Never paste credentials in untrusted environments.</p>
+                </div>
+              </div>
 
-          <DialogFooter>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-api-key" className="font-medium flex items-center gap-2">
+                    <Lock className="h-4 w-4" />
+                    API Key
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="edit-api-key"
+                      type={showSecrets ? "text" : "password"}
+                      value={editFormData.api_key}
+                      onChange={(e) => setEditFormData((prev) => ({ ...prev, api_key: e.target.value }))}
+                      placeholder="Enter your API key"
+                      className="pr-10 bg-white"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowSecrets(!showSecrets)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      {showSecrets ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="edit-api-secret" className="font-medium flex items-center gap-2">
+                    <Lock className="h-4 w-4" />
+                    API Secret
+                  </Label>
+                  <Input
+                    id="edit-api-secret"
+                    type={showSecrets ? "text" : "password"}
+                    value={editFormData.api_secret}
+                    onChange={(e) => setEditFormData((prev) => ({ ...prev, api_secret: e.target.value }))}
+                    placeholder="Enter your API secret"
+                    className="bg-white"
+                  />
+                </div>
+
+                {connection.exchange === "okx" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-passphrase" className="font-medium">API Passphrase (OKX only)</Label>
+                    <Input
+                      id="edit-passphrase"
+                      type={showSecrets ? "text" : "password"}
+                      value={editFormData.api_passphrase}
+                      onChange={(e) => setEditFormData((prev) => ({ ...prev, api_passphrase: e.target.value }))}
+                      placeholder="Enter your API passphrase"
+                      className="bg-white"
+                    />
+                  </div>
+                )}
+
+                <div className="bg-blue-50 border border-blue-200 rounded p-2 text-xs text-blue-900">
+                  ℹ️ Your API credentials are encrypted and only used for secure connections to {connection.exchange}.
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* Advanced Tab */}
+            <TabsContent value="advanced" className="space-y-4 mt-4">
+              <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded p-3 text-xs">
+                <div className="font-semibold text-blue-900 dark:text-blue-200 mb-2">
+                  Rate Limits ({editFormData.connection_method === "rest" ? "REST API" : editFormData.connection_method === "websocket" ? "WebSocket" : "Library"})
+                </div>
+                <div className="text-blue-800 dark:text-blue-300 space-y-1">
+                  {editFormData.connection_method === "rest" ? (
+                    <>
+                      <div>• Public requests: 1000 per 10 seconds</div>
+                      <div>• Private requests: 100 per 10 seconds</div>
+                      <div>• Recommended delay: 10-50ms between requests</div>
+                      <div>• Check exchange docs for tier-specific limits</div>
+                    </>
+                  ) : editFormData.connection_method === "websocket" ? (
+                    <>
+                      <div>• Unlimited message rate on WebSocket</div>
+                      <div>• Max 10 concurrent connections</div>
+                      <div>• Best for real-time market data</div>
+                      <div>• Lower latency than REST polling</div>
+                    </>
+                  ) : (
+                    <>
+                      <div>• Depends on selected library</div>
+                      <div>• {editFormData.connection_library === "original" ? "Official SDK rate limits" : "Universal CCXT limits"}</div>
+                      <div>• Contact {connection.exchange.toUpperCase()} for tier limits</div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="bg-purple-50 dark:bg-purple-950 border border-purple-200 dark:border-purple-800 rounded p-3 text-xs">
+                <div className="font-semibold text-purple-900 dark:text-purple-200 mb-2">
+                  Library: {editFormData.connection_library === "native" ? "Native" : editFormData.connection_library === "ccxt" ? "CCXT" : "Original SDK"}
+                </div>
+                <div className="text-purple-800 dark:text-purple-300 space-y-1">
+                  {editFormData.connection_library === "native" ? (
+                    <>
+                      <div>• Built-in implementation</div>
+                      <div>• Optimized for this exchange</div>
+                      <div>• No external dependencies</div>
+                      <div>• Fast and reliable</div>
+                    </>
+                  ) : editFormData.connection_library === "ccxt" ? (
+                    <>
+                      <div>• Universal cross-exchange library</div>
+                      <div>• Unified API across exchanges</div>
+                      <div>• Community maintained</div>
+                      <div>• Good for multi-exchange setups</div>
+                    </>
+                  ) : (
+                    <>
+                      <div>• Official exchange SDK</div>
+                      <div>• Complete feature support</div>
+                      <div>• Latest exchange features</div>
+                      <div>• Direct vendor support</div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </TabsContent>
+          </Tabs>
+
+          <DialogFooter className="mt-6">
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
               Cancel
             </Button>
             <Button onClick={handleSaveSettings} disabled={savingSettings}>
               {savingSettings ? (
                 <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Saving...
                 </>
               ) : (
