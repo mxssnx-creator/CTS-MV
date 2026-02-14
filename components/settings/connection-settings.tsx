@@ -151,7 +151,10 @@ export function ConnectionSettings({
                     <Switch
                       id={`enabled-${conn.id}`}
                       checked={conn.is_enabled}
-                      onCheckedChange={() => onConnectionToggle(conn.id)}
+                      onCheckedChange={(checked) => {
+                        console.log("[v0] Toggle connection:", conn.id, "to:", checked)
+                        onConnectionToggle(conn.id)
+                      }}
                     />
                   </div>
                   

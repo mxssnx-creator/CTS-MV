@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, AlertCircle } from "lucide-react"
 import { toast } from "@/lib/simple-toast"
@@ -64,7 +64,7 @@ export function AddActiveConnectionDialog({
       try {
         const activeConns = await loadActiveConnections()
         setActiveConnections(activeConns)
-        console.log("[v0] [AddDialog] Found", activeConns.length, "connections already on dashboard")
+        console.log("[v0] [AddDialog] Found", activeConns.length, "connections already on active list")
       } catch (e) {
         console.log("[v0] Could not load active connections:", e)
       }
@@ -99,9 +99,9 @@ export function AddActiveConnectionDialog({
       // Add to active connections via Redis - disabled by default
       await addActiveConnection(selectedConnection, connection.exchange)
       
-      console.log("[v0] New connection added to dashboard disabled by default:", selectedConnection)
+      console.log("[v0] New connection added to active list disabled by default:", selectedConnection)
       
-      toast.success("Connection added to dashboard", {
+      toast.success("Connection added to active list", {
         description: `${connection.name} (${connection.exchange}) added with toggle off. Enable the toggle to start trading.`
       })
 
@@ -124,16 +124,17 @@ export function AddActiveConnectionDialog({
 
   const selectedConn = enabledConnections.find(c => c.id === selectedConnection)
   const isAlreadyActive = selectedConnection && activeConnections.some(ac => ac.connectionId === selectedConnection)
+  const availableConnections = enabledConnections.filter(c => !activeConnections.some(ac => ac.connectionId === c.id))
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
-      <DialogHeader>
-        <DialogTitle>Add Connection to Active List</DialogTitle>
-        <DialogDescription>
-          Select an enabled connection from Settings to add to your actively using connections. New connections are inactive by default.
-        </DialogDescription>
-      </DialogHeader>
+        <DialogHeader>
+          <DialogTitle>Add Connection to Active List</DialogTitle>
+          <DialogDescription>
+            Select an enabled connection from Settings to add to your actively using connections. New connections are inactive by default.
+          </DialogDescription>
+        </DialogHeader>
 
         <div className="space-y-4">
           {loading ? (
@@ -143,18 +144,18 @@ export function AddActiveConnectionDialog({
             </div>
           ) : (
             <>
-              {/* Show Inserted Connections on Active List */}
-              {insertedConnectionsList.length > 0 && (
+              {/* Show Already Active Connections */}
+              {activeConnections.length > 0 && (
                 <div className="space-y-2">
                   <Label className="font-medium text-sm">Already Active</Label>
                   <Card className="bg-blue-50 border-blue-200">
                     <CardContent className="pt-4">
                       <div className="grid grid-cols-1 gap-2">
-                        {insertedConnectionsList.map((ac) => (
+                        {activeConnections.map((ac) => (
                           <div key={ac.id} className="flex items-center justify-between p-2 bg-white border border-blue-100 rounded">
                             <div className="flex-1 text-sm">
                               <div className="font-medium">{ac.exchangeName}</div>
-                              <div className="text-xs text-muted-foreground">Connection ID: {ac.connectionId}</div>
+                              <div className="text-xs text-muted-foreground">ID: {ac.connectionId}</div>
                             </div>
                             <div className="flex gap-2">
                               <Badge 
@@ -163,126 +164,90 @@ export function AddActiveConnectionDialog({
                               >
                                 Active
                               </Badge>
-                              <Badge 
-                                variant={ac.isActive ? "default" : "secondary"}
-                                className="text-xs"
-                              >
-                                {ac.isActive ? "Toggle: On" : "Toggle: Off"}
-                              </Badge>
                             </div>
                           </div>
                         ))}
                       </div>
-                      <p className="text-xs text-blue-700 mt-3">These connections are actively using. The toggle button controls whether each connection's trade engine is active (completely independent from Settings).</p>
                     </CardContent>
                   </Card>
                 </div>
               )}
 
-              {enabledConnections.length === 0 ? (
-                <Card className="border-amber-200 bg-amber-50/50">
-                  <CardContent className="pt-6 flex gap-3">
-                    <AlertCircle className="h-5 w-5 text-amber-600 shrink-0" />
-                    <div className="text-sm text-amber-800">
-                      <p className="font-semibold mb-1">No Enabled Connections</p>
-                      <p className="text-xs">You need to enable connections in Settings first (is_enabled = true).</p>
+              {/* Show Available Enabled Connections */}
+              {availableConnections.length > 0 ? (
+                <div className="space-y-2">
+                  <Label htmlFor="connection-select" className="font-medium text-sm">
+                    Available Enabled Connections
+                  </Label>
+                  <Select value={selectedConnection} onValueChange={setSelectedConnection}>
+                    <SelectTrigger id="connection-select">
+                      <SelectValue placeholder="Select a connection..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableConnections.map((conn) => (
+                        <SelectItem key={conn.id} value={conn.id || ""}>
+                          {conn.name} ({conn.exchange}) - {conn.is_enabled ? "Enabled" : "Disabled"}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : (
+                <Card className="border-yellow-200 bg-yellow-50">
+                  <CardContent className="pt-4">
+                    <div className="flex gap-2">
+                      <AlertCircle className="h-4 w-4 text-yellow-600 flex-shrink-0 mt-0.5" />
+                      <div className="text-sm text-yellow-800">
+                        <p className="font-medium mb-1">No Available Connections</p>
+                        <p className="text-xs">All enabled connections from Settings are already on the active list, or there are no enabled connections. Go to Settings to enable more connections.</p>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
-              ) : (
-                <>
-                  <div className="space-y-2">
-                    <Label htmlFor="connection-select" className="font-medium">
-                      Select Enabled Connection
-                    </Label>
-                    <Select value={selectedConnection} onValueChange={setSelectedConnection} disabled={adding}>
-                      <SelectTrigger id="connection-select" className="bg-white">
-                        <SelectValue placeholder="Choose a connection..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {enabledConnections.map((conn) => (
-                          <SelectItem key={conn.id} value={conn.id || ""}>
-                            <div className="flex items-center gap-2">
-                              <span>{conn.name}</span>
-                              <Badge variant="secondary" className="text-xs">
-                                {conn.exchange}
-                              </Badge>
-                              {isAlreadyActive && selectedConnection === conn.id && (
-                                <Badge variant="outline" className="text-xs bg-green-50">
-                                  Already Added
-                                </Badge>
-                              )}
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {selectedConn && (
-                    <Card className="bg-slate-50 border-slate-200">
-                      <CardHeader className="pb-3">
-                        <CardTitle className="text-sm">{selectedConn.name}</CardTitle>
-                        <CardDescription className="text-xs">{selectedConn.exchange}</CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-2">
-                        <div className="grid grid-cols-2 gap-2 text-xs">
-                          <div>
-                            <div className="text-muted-foreground">API Type</div>
-                            <div className="font-medium capitalize">{selectedConn.api_type?.replace(/_/g, " ")}</div>
-                          </div>
-                          <div>
-                            <div className="text-muted-foreground">Connection</div>
-                            <div className="font-medium capitalize">{selectedConn.connection_method}</div>
-                          </div>
-                          <div>
-                            <div className="text-muted-foreground">Mode</div>
-                            <Badge variant={selectedConn.is_testnet ? "secondary" : "default"} className="text-xs">
-                              {selectedConn.is_testnet ? "Testnet" : "Live"}
-                            </Badge>
-                          </div>
-                          <div>
-                            <div className="text-muted-foreground">Status</div>
-                            {isAlreadyActive ? (
-                              <Badge className="text-xs bg-green-600">Already Added</Badge>
-                            ) : (
-                              <Badge variant="secondary" className="text-xs">
-                                Not on Dashboard
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  <Card className="border-blue-200 bg-blue-50/50">
-                    <CardContent className="pt-4 text-xs">
-                      <p className="text-blue-900 font-semibold mb-2">Adding to Active List:</p>
-                      <ul className="text-blue-800 space-y-1">
-                        <li>• Must be enabled (is_enabled = true) in Settings</li>
-                        <li>• Will be added in <strong>inactive</strong> state</li>
-                        <li>• Toggle button controls trade engine independently from Settings</li>
-                      </ul>
-                    </CardContent>
-                  </Card>
-                </>
               )}
+
+              {/* Show Selected Connection Details */}
+              {selectedConn && !isAlreadyActive && (
+                <Card className="border-green-200 bg-green-50/50">
+                  <CardHeader>
+                    <CardTitle className="text-sm">Connection Details</CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-xs space-y-1">
+                    <div>
+                      <strong>Name:</strong> {selectedConn.name}
+                    </div>
+                    <div>
+                      <strong>Exchange:</strong> {selectedConn.exchange}
+                    </div>
+                    <div>
+                      <strong>Status:</strong> {selectedConn.is_enabled ? "✓ Enabled in Settings" : "✗ Disabled"}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Info Card */}
+              <Card className="border-blue-200 bg-blue-50/50">
+                <CardContent className="pt-4 text-xs">
+                  <p className="text-blue-900 font-semibold mb-2">About Active List:</p>
+                  <ul className="text-blue-800 space-y-1">
+                    <li>• Must be enabled in Settings (is_enabled = true)</li>
+                    <li>• Added in inactive state (toggle off)</li>
+                    <li>• Toggle controls trade engine independently from Settings</li>
+                  </ul>
+                </CardContent>
+              </Card>
             </>
           )}
         </div>
 
-        <div className="flex gap-2 justify-end">
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={adding || loading}
-          >
+        <div className="flex gap-2 justify-end pt-2">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button
+          <Button 
             onClick={handleAdd}
-            disabled={!selectedConnection || isAlreadyActive || adding || loading}
+            disabled={!selectedConnection || adding || isAlreadyActive}
           >
             {adding ? (
               <>
@@ -290,7 +255,7 @@ export function AddActiveConnectionDialog({
                 Adding...
               </>
             ) : (
-              "Add Connection"
+              "Add to Active List"
             )}
           </Button>
         </div>
