@@ -8,7 +8,7 @@ async function getRedisHelpers() {
   const mod = await import("@/lib/redis-db")
   return {
     initRedis: mod.initRedis,
-    getMarketData: mod.getMarketData ?? (async (_s: string, _l?: number) => []),
+    getMarketData: mod.getMarketData ?? (async (_s: string) => null),
     saveIndication: mod.saveIndication ?? (async (_d: any) => ""),
     getSettings: mod.getSettings,
   }
@@ -31,12 +31,19 @@ export class IndicationProcessor {
     try {
       console.log(`[v0] Processing historical indications for ${symbol} from ${startDate.toISOString()} to ${endDate.toISOString()}`)
 
-      // Fetch historical market data for the date range
+      // Fetch historical market data for the symbol
       const redis = await getRedisHelpers()
       await redis.initRedis()
-      const historicalData = await redis.getMarketData(symbol, 100) // Get last 100 data points
+      const rawData = await redis.getMarketData(symbol)
 
-      if (!historicalData || historicalData.length === 0) {
+      // getMarketData returns a single object or null, normalize to array
+      const historicalData: any[] = Array.isArray(rawData)
+        ? rawData
+        : rawData
+          ? [rawData]
+          : []
+
+      if (historicalData.length === 0) {
         console.log(`[v0] No historical market data available for ${symbol}`)
         return
       }
@@ -223,12 +230,20 @@ export class IndicationProcessor {
     }
   }
 
-  private async getRecentPrices(symbol: string, count: number): Promise<number[]> {
+  private async getRecentPrices(symbol: string, _count: number): Promise<number[]> {
     try {
       const redis = await getRedisHelpers()
       await redis.initRedis()
-      const marketDataList = await redis.getMarketData(symbol, count)
-      return marketDataList.map((d: any) => d.close || d.price || 0).reverse()
+      const rawData = await redis.getMarketData(symbol)
+
+      // getMarketData returns a single object or null, normalize to array
+      const dataList: any[] = Array.isArray(rawData)
+        ? rawData
+        : rawData
+          ? [rawData]
+          : []
+
+      return dataList.map((d: any) => d.close || d.price || 0).reverse()
     } catch {
       return []
     }
@@ -245,9 +260,11 @@ export class IndicationProcessor {
     try {
       const redis = await getRedisHelpers()
       await redis.initRedis()
-      const data = await redis.getMarketData(symbol, 1)
-      const latest = data[0]
-      
+      const rawData = await redis.getMarketData(symbol)
+
+      // getMarketData returns a single object or null
+      const latest = Array.isArray(rawData) ? rawData[0] : rawData
+
       if (latest) {
         this.marketDataCache.set(symbol, { data: latest, timestamp: now })
         return latest
