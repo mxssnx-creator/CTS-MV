@@ -75,6 +75,7 @@ export function ConnectionCard({
   const [showLogs, setShowLogs] = useState(false)
   const [showInfo, setShowInfo] = useState(false)
   const [showPresetConfig, setShowPresetConfig] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const [showPresetDialog, setShowPresetDialog] = useState(false)
   const [showStrategyDialog, setShowStrategyDialog] = useState(false)
   const [showActivateTradeDialog, setShowActivateTradeDialog] = useState(false)
@@ -747,12 +748,49 @@ export function ConnectionCard({
           </div>
 
           <div className="flex gap-1 shrink-0">
-            <Dialog open={showInfo} onOpenChange={setShowInfo}>
+            <Dialog open={showSettings} onOpenChange={setShowSettings}>
               <DialogTrigger asChild>
                 <Button variant="outline" size="sm" className="h-8 w-8 p-0 bg-transparent">
-                  <Info className="h-3.5 w-3.5" />
+                  <Settings className="h-3.5 w-3.5 text-blue-600" />
                 </Button>
               </DialogTrigger>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="text-base">Settings - {connection.name}</DialogTitle>
+                  <DialogDescription>Configure connection parameters and trading settings.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium">Connection ID</div>
+                    <div className="text-sm text-mono bg-muted p-2 rounded">{connection.id}</div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium">Exchange</div>
+                    <div className="text-sm capitalize">{connection.exchange}</div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium">Connection Method</div>
+                    <div className="text-sm capitalize">{connection.connection_method || 'REST'}</div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium">Status</div>
+                    <div className="text-sm">
+                      {connection.is_enabled ? (
+                        <Badge variant="default">Enabled</Badge>
+                      ) : (
+                        <Badge variant="secondary">Disabled</Badge>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-4">
+                  <Button variant="outline" onClick={() => setShowSettings(false)}>
+                    Close
+                  </Button>
+                  <Button onClick={() => setShowSettings(false)}>Done</Button>
+                </div>
+              </DialogContent>
+            </Dialog>
               <DialogContent className="max-w-md">
                 <DialogHeader>
                   <DialogTitle className="text-base">Connection Information - {connection.name}</DialogTitle>
