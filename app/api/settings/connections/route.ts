@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getAllConnections, initRedis } from "@/lib/redis-db"
+import { getAllConnections, initRedis, createConnection, isApiKeyInUse } from "@/lib/redis-db"
+import { generateConnectionIdFromApiKey } from "@/lib/connection-id-manager"
 
 export const runtime = "nodejs"
 
@@ -31,16 +32,78 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
     
-    if (!body.name || !body.exchange) {
-      return NextResponse.json({ error: "Missing required fields: name, exchange" }, { status: 400 })
+    // Validate required fields
+    if (!body.name || !body.exchange || !body.api_key || !body.api_secret) {
+      return NextResponse.json(
+        { error: "Missing required fields: name, exchange, api_key, api_secret" },
+        { status: 400 }
+      )
     }
 
     await initRedis()
-    console.log("[v0] Created connection:", body.name)
 
-    return NextResponse.json({ success: true, message: "Connection created", id: body.id || `${body.exchange}-${Date.now()}` }, { status: 201 })
+    // Check if API key is already in use
+    const exists = await isApiKeyInUse(body.exchange, body.api_key)
+    if (exists) {
+      return NextResponse.json(
+        { 
+          error: "This API key is already connected",
+          details: "Please remove the existing connection first or use a different API key"
+        },
+        { status: 409 }
+      )
+    }
+
+    // Generate unique connection ID based on exchange + API key
+    const connectionId = generateConnectionIdFromApiKey(body.exchange, body.api_key)
+
+    // Create connection object with all required fields
+    const connection = {
+      id: connectionId,
+      name: body.name,
+      exchange: body.exchange,
+      api_key: body.api_key,
+      api_secret: body.api_secret,
+      api_passphrase: body.api_passphrase || "",
+      api_type: body.api_type || "perpetual_futures",
+      api_subtype: body.api_subtype || "perpetual",
+      connection_method: body.connection_method || "rest",
+      connection_library: body.connection_library || "native",
+      margin_type: body.margin_type || "cross",
+      position_mode: body.position_mode || "hedge",
+      is_testnet: body.is_testnet || false,
+      is_enabled: body.is_enabled !== false, // Default to true
+      is_active: false, // New connections start inactive in dashboard
+      is_predefined: false,
+      is_live_trade: false,
+      is_preset_trade: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+
+    // Save to Redis database
+    await createConnection(connection)
+
+    console.log("[v0] [API] Connection created successfully:", {
+      id: connectionId,
+      name: body.name,
+      exchange: body.exchange,
+    })
+
+    return NextResponse.json(
+      {
+        success: true,
+        message: "Connection created successfully",
+        id: connectionId,
+        connectionId: connectionId,
+      },
+      { status: 201 }
+    )
   } catch (error) {
     console.error("[v0] Error creating connection:", error instanceof Error ? error.message : String(error))
-    return NextResponse.json({ error: "Failed to create connection" }, { status: 500 })
+    return NextResponse.json(
+      { error: "Failed to create connection", details: error instanceof Error ? error.message : String(error) },
+      { status: 500 }
+    )
   }
 }
