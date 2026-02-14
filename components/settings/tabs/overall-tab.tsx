@@ -493,6 +493,124 @@ export function OverallTab({
           {/* Exchange Connection Manager */}
           <ExchangeConnectionManager />
 
+          {/* API Rate Limiting Settings */}
+          <Card className="settings-card border-2">
+            <CardHeader className="settings-card-header">
+              <CardTitle>API Rate Limiting</CardTitle>
+              <CardDescription>Configure request delays to respect exchange rate limits</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded p-3 text-sm">
+                <p className="text-blue-900 dark:text-blue-200">
+                  Rate limiting ensures all API requests to exchanges comply with their rate limits. Set minimum delays between requests to avoid getting blocked.
+                </p>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>REST API Request Delay</Label>
+                    <span className="text-sm font-medium">{settings.restApiDelayMs || 50}ms</span>
+                  </div>
+                  <Slider
+                    min={10}
+                    max={500}
+                    step={10}
+                    value={[settings.restApiDelayMs || 50]}
+                    onValueChange={([value]) => handleSettingChange("restApiDelayMs", value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Minimum delay between REST API requests (10-500ms). Higher values reduce rate limit violations.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Public Request Delay</Label>
+                    <span className="text-sm font-medium">{settings.publicRequestDelayMs || 20}ms</span>
+                  </div>
+                  <Slider
+                    min={10}
+                    max={200}
+                    step={10}
+                    value={[settings.publicRequestDelayMs || 20]}
+                    onValueChange={([value]) => handleSettingChange("publicRequestDelayMs", value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Minimum delay for public/read-only requests (market data, ticker, etc.)
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Private Request Delay</Label>
+                    <span className="text-sm font-medium">{settings.privateRequestDelayMs || 100}ms</span>
+                  </div>
+                  <Slider
+                    min={50}
+                    max={1000}
+                    step={50}
+                    value={[settings.privateRequestDelayMs || 100]}
+                    onValueChange={([value]) => handleSettingChange("privateRequestDelayMs", value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Minimum delay for private/write requests (place orders, get balance, etc.)
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>WebSocket Connection Timeout</Label>
+                    <span className="text-sm font-medium">{settings.websocketTimeoutMs || 30000}ms</span>
+                  </div>
+                  <Slider
+                    min={5000}
+                    max={60000}
+                    step={5000}
+                    value={[settings.websocketTimeoutMs || 30000]}
+                    onValueChange={([value]) => handleSettingChange("websocketTimeoutMs", value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Timeout for WebSocket connections (5-60 seconds)
+                  </p>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="space-y-4">
+                <h4 className="text-sm font-semibold">Rate Limit Statistics</h4>
+                <div className="grid md:grid-cols-3 gap-4">
+                  <div className="p-3 border rounded-lg bg-muted/30">
+                    <p className="text-xs text-muted-foreground">Rest API Requests/Day</p>
+                    <p className="text-lg font-semibold">{Math.floor((86400000 / (settings.restApiDelayMs || 50))).toLocaleString()}</p>
+                    <p className="text-xs text-muted-foreground mt-1">at {settings.restApiDelayMs || 50}ms delay</p>
+                  </div>
+                  <div className="p-3 border rounded-lg bg-muted/30">
+                    <p className="text-xs text-muted-foreground">Public Requests/Day</p>
+                    <p className="text-lg font-semibold">{Math.floor((86400000 / (settings.publicRequestDelayMs || 20))).toLocaleString()}</p>
+                    <p className="text-xs text-muted-foreground mt-1">at {settings.publicRequestDelayMs || 20}ms delay</p>
+                  </div>
+                  <div className="p-3 border rounded-lg bg-muted/30">
+                    <p className="text-xs text-muted-foreground">Private Requests/Day</p>
+                    <p className="text-lg font-semibold">{Math.floor((86400000 / (settings.privateRequestDelayMs || 100))).toLocaleString()}</p>
+                    <p className="text-xs text-muted-foreground mt-1">at {settings.privateRequestDelayMs || 100}ms delay</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded p-3 text-sm">
+                <p className="text-amber-900 dark:text-amber-200 font-semibold mb-2">Exchange-Specific Rate Limits</p>
+                <ul className="text-amber-800 dark:text-amber-300 space-y-1 text-xs">
+                  <li>• <strong>Bybit:</strong> 100 req/sec for public, 50 req/sec for private</li>
+                  <li>• <strong>BingX:</strong> 1000 req/10sec for public, 200 req/10sec for private</li>
+                  <li>• <strong>Pionex:</strong> 100 req/sec for public, 50 req/sec for private</li>
+                  <li>• <strong>OKX:</strong> 40 req/sec for public, 40 req/sec for private</li>
+                </ul>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Settings Editor Dialog */}
           <SettingsEditorDialog
             isOpen={isSettingsDialogOpen}

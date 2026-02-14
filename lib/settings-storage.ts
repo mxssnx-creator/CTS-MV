@@ -25,6 +25,11 @@ function getDefaultSettings(): Record<string, any> {
     main_symbols: ["BTCUSDT", "ETHUSDT", "BNBUSDT"],
     forced_symbols: [],
     database_type: "redis",
+    // API Rate Limiting
+    restApiDelayMs: 50,
+    publicRequestDelayMs: 20,
+    privateRequestDelayMs: 100,
+    websocketTimeoutMs: 30000,
   }
 }
 
