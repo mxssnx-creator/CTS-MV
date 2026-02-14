@@ -229,10 +229,10 @@ export function Dashboard() {
         </div>
       </div>
 
-      {/* Exchange Connections */}
+      {/* Active Connections */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Exchange Connections</CardTitle>
+          <CardTitle>Active Connections</CardTitle>
           <Button size="sm" onClick={() => setAddDialogOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />
             Add Connection
