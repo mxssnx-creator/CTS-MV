@@ -72,7 +72,7 @@ export async function POST(request: Request) {
       margin_type: body.margin_type || "cross",
       position_mode: body.position_mode || "hedge",
       is_testnet: body.is_testnet || false,
-      is_enabled: body.is_enabled !== false, // Default to true
+      is_enabled: body.is_enabled === true, // Default to false (disabled on dashboard)
       is_active: false, // New connections start inactive in dashboard
       is_predefined: false,
       is_live_trade: false,

@@ -284,7 +284,7 @@ const migrations: Migration[] = [
     version: 11,
     up: async (client: any) => {
       await client.set("_schema_version", "11")
-      const enabledExchanges = ["bybit", "bingx", "pionex", "orangex"]
+      const enabledExchanges: string[] = []  // All connections disabled by default on dashboard
       const connections = [
         { id: "bybit-x03", name: "Bybit X03", exchange: "bybit", api_type: "unified" },
         { id: "bingx-x01", name: "BingX X01", exchange: "bingx", api_type: "perpetual_futures" },
