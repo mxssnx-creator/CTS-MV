@@ -27,33 +27,43 @@ export async function GET() {
           const state = await client.hgetall(stateKey)
 
           const tradesKey = `trades:${connection.id}`
-          const positionsKey = `positions:${connection.id}`
-          const trades = (await client.smembers(tradesKey)) || []
-          const positions = (await client.smembers(positionsKey)) || []
+        const tradesKey = `trades:${connection.id}`
+        const positionsKey = `positions:${connection.id}`
+        const trades = (await client.smembers(tradesKey)) || []
+        const positions = (await client.smembers(positionsKey)) || []
 
-          const manager = coordinator.getEngineManager(connection.id)
-          const isRunning = manager !== undefined
+        // Get progression state for this connection
+        const progression = await ProgressionStateManager.getProgressionState(connection.id)
 
-          if (isRunning) running++
-          totalTrades += trades.length
-          totalPositions += positions.length
+        const manager = coordinator.getEngineManager(connection.id)
+        const isRunning = manager !== undefined
 
-          return {
-            id: connection.id,
-            name: connection.name,
-            exchange: connection.exchange,
-            enabled: connection.is_enabled === true || connection.is_enabled === "true" || connection.is_enabled === "1",
-            activelyUsing: connection.is_enabled_dashboard === true || connection.is_enabled_dashboard === "true" || connection.is_enabled_dashboard === "1",
-            status: isRunning ? "running" : "stopped",
-            trades: trades.length,
-            positions: positions.length,
-            state: state || {},
-            progression: {
-              cycles_completed: state?.cycles_completed || "0",
-              successful_cycles: state?.successful_cycles || "0",
-              cycle_success_rate: state?.cycle_success_rate || "0%",
-            },
-          }
+        if (isRunning) running++
+        totalTrades += trades.length
+        totalPositions += positions.length
+
+        return {
+          id: connection.id,
+          name: connection.name,
+          exchange: connection.exchange,
+          enabled: connection.is_enabled === true || connection.is_enabled === "true" || connection.is_enabled === "1",
+          activelyUsing: connection.is_enabled_dashboard === true || connection.is_enabled_dashboard === "true" || connection.is_enabled_dashboard === "1",
+          status: isRunning ? "running" : "stopped",
+          trades: trades.length,
+          positions: positions.length,
+          state: state || {},
+          progression: {
+            cycles_completed: progression.cyclesCompleted,
+            successful_cycles: progression.successfulCycles,
+            failed_cycles: progression.failedCycles,
+            cycle_success_rate: progression.cycleSuccessRate.toFixed(1) + "%",
+            total_trades: progression.totalTrades,
+            successful_trades: progression.successfulTrades,
+            trade_success_rate: progression.tradeSuccessRate.toFixed(1) + "%",
+            total_profit: progression.totalProfit.toFixed(2),
+            last_cycle_time: progression.lastCycleTime?.toISOString() || null,
+          },
+        }
         } catch (error) {
           console.error(
             `[v0] [Trade Engine] Failed to get state for connection ${connection.id}:`,

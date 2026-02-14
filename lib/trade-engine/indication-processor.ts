@@ -14,6 +14,11 @@ async function getRedisHelpers() {
   }
 }
 
+async function getProgressionManager() {
+  const mod = await import("@/lib/progression-state-manager")
+  return mod.ProgressionStateManager
+}
+
 export class IndicationProcessor {
   private connectionId: string
   private marketDataCache: Map<string, { data: any; timestamp: number }> = new Map()
@@ -55,6 +60,7 @@ export class IndicationProcessor {
       const settings = await this.getIndicationSettingsCached()
 
       // Process each data point as a historical indication
+      let successCount = 0
       for (const marketData of historicalData) {
         const indication = await this.calculateIndication(symbol, marketData, settings)
 
@@ -71,7 +77,14 @@ export class IndicationProcessor {
             metadata: indication.metadata,
             calculated_at: marketData.timestamp || new Date().toISOString(),
           })
+          successCount++
         }
+      }
+
+      // Track progression for historical processing
+      if (successCount > 0) {
+        const ProgressionManager = await getProgressionManager()
+        await ProgressionManager.incrementCycle(this.connectionId, true, successCount)
       }
 
       console.log(`[v0] Processed ${historicalData.length} historical indications for ${symbol}`)

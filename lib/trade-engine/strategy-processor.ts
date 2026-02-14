@@ -4,6 +4,7 @@
  */
 
 import { initRedis, getIndications, getSettings } from "@/lib/redis-db"
+import { ProgressionStateManager } from "@/lib/progression-state-manager"
 
 export class StrategyProcessor {
   private connectionId: string
@@ -28,6 +29,7 @@ export class StrategyProcessor {
 
       const settings = await this.getStrategySettings()
       let processedCount = 0
+      let strategyProfit = 0
 
       const batchSize = 5
       for (let i = 0; i < indications.length; i += batchSize) {
@@ -40,16 +42,20 @@ export class StrategyProcessor {
             if (strategySignal && strategySignal.profit_factor >= settings.minProfitFactor) {
               await this.createPseudoPosition(symbol, indication, strategySignal)
               processedCount++
+              strategyProfit += strategySignal.profit_factor || 0
             }
           }),
         )
       }
       
-      // Only log when strategies are actually created
+      // Track progression: each successful strategy is a cycle
       if (processedCount > 0) {
-        console.log(`[v0] Created ${processedCount} strategies for ${symbol}`)
+        await ProgressionStateManager.incrementCycle(this.connectionId, true, strategyProfit)
+        console.log(`[v0] [Progression] Created ${processedCount} strategies for ${symbol} | Profit: ${strategyProfit.toFixed(2)}`)
       }
     } catch (error) {
+      // Track failed cycle on error
+      await ProgressionStateManager.incrementCycle(this.connectionId, false, 0)
       console.error(`[v0] Failed to process strategy for ${symbol}:`, error)
     }
   }
