@@ -292,6 +292,7 @@ class InlineLocalRedis {
 
 let redisInstance: InlineLocalRedis | null = null
 let isConnected = false
+let migrationsRun = false  // Flag to prevent re-running migrations
 
 function getClient(): InlineLocalRedis {
   if (!redisInstance) {
@@ -327,8 +328,12 @@ export async function initRedis(): Promise<void> {
   }
 }
 
-export function getRedisClient() {
-  return getClient()
+export function haveMigrationsRun(): boolean {
+  return migrationsRun
+}
+
+export function setMigrationsRun(value: boolean): void {
+  migrationsRun = value
 }
 
 // ========== Connection CRUD ==========

@@ -3,7 +3,7 @@
  * Handles schema initialization and data migrations for all system components
  */
 
-import { getRedisClient, initRedis } from "./redis-db"
+import { getRedisClient, initRedis, setMigrationsRun, haveMigrationsRun } from "./redis-db"
 
 interface Migration {
   name: string
@@ -347,6 +347,12 @@ const migrations: Migration[] = [
  */
 export async function runMigrations(): Promise<{ success: boolean; message: string; version: number }> {
   try {
+    // Check if migrations have already run in this process
+    if (haveMigrationsRun()) {
+      console.log("[v0] [Migrations] ✓ Already executed in this process, skipping")
+      return { success: true, message: "Already run in this process", version: 5 }
+    }
+
     await initRedis()
     const client = getRedisClient()
     const versionStr = await client.get("_schema_version")
@@ -355,27 +361,49 @@ export async function runMigrations(): Promise<{ success: boolean; message: stri
 
     console.log(`[v0] [Migrations] Current: v${currentVersion}, Target: v${finalVersion}`)
 
+    // Get migrations that need to run (version > currentVersion)
     const pendingMigrations = migrations.filter((m) => m.version > currentVersion)
+    
     if (pendingMigrations.length === 0) {
-      return { success: true, message: `Already at latest version ${currentVersion}`, version: currentVersion }
+      console.log(`[v0] [Migrations] Already at latest version ${finalVersion}`)
+      setMigrationsRun(true)
+      return { success: true, message: `Already at latest version ${finalVersion}`, version: finalVersion }
     }
 
     console.log(`[v0] [Migrations] Running ${pendingMigrations.length} pending migrations...`)
     for (const migration of pendingMigrations) {
-      console.log(`[v0] [Migrations] Running: ${migration.name} (v${migration.version})`)
-      await migration.up(client)
+      try {
+        console.log(`[v0] [Migrations] Running: ${migration.name} (v${migration.version})`)
+        await migration.up(client)
+        console.log(`[v0] [Migrations] ✓ Completed: ${migration.name}`)
+      } catch (error) {
+        console.error(`[v0] [Migrations] ✗ Failed during ${migration.name}:`, error)
+        throw error
+      }
     }
 
+    // Update schema version to final version
     await client.set("_schema_version", finalVersion.toString())
+    
+    // Track migration runs
     const runCount = await client.get("_migration_total_runs")
     const newRunCount = (parseInt((runCount as string) || "0") + 1).toString()
     await client.set("_migration_total_runs", newRunCount)
     await client.set("_migration_last_run", new Date().toISOString())
 
-    console.log(`[v0] [Migrations] Migrated v${currentVersion} -> v${finalVersion}`)
+    console.log(`[v0] [Migrations] ✓ Successfully migrated v${currentVersion} -> v${finalVersion}`)
+    console.log(`[v0] [Migrations] ${pendingMigrations.length} migrations executed`)
+    
+    // Verify final state
+    const finalVersionCheck = await client.get("_schema_version")
+    console.log(`[v0] [Migrations] ✓ Verification: Schema version is now ${finalVersionCheck}`)
+    
+    // Mark migrations as run in this process
+    setMigrationsRun(true)
+    
     return { success: true, message: `Migrated from v${currentVersion} to v${finalVersion}`, version: finalVersion }
   } catch (error) {
-    console.error("[v0] [Migrations] Failed:", error)
+    console.error("[v0] [Migrations] ✗ Migration failed:", error)
     throw error
   }
 }
