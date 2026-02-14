@@ -122,6 +122,65 @@ export class GlobalTradeEngineCoordinator {
   }
 
   /**
+   * Start all engines for enabled connections (modern Redis-based)
+   */
+  async startAll(): Promise<void> {
+    try {
+      console.log("[v0] [Coordinator] Starting all trade engines for enabled connections...")
+      
+      // Import Redis functions
+      const { initRedis, getAllConnections } = await import("@/lib/redis-db")
+      const { loadSettingsAsync } = await import("@/lib/settings-storage")
+      
+      // Initialize Redis and get connections
+      await initRedis()
+      const connections = await getAllConnections()
+      
+      if (!Array.isArray(connections)) {
+        console.error("[v0] [Coordinator] ERROR: connections is not an array")
+        return
+      }
+      
+      // Filter for enabled connections (independent from active list)
+      const enabledConnections = connections.filter((c) => {
+        const isEnabled = c.is_enabled === true || c.is_enabled === "true" || c.is_enabled === "1"
+        return isEnabled
+      })
+      
+      console.log(`[v0] [Coordinator] Found ${enabledConnections.length} enabled connections`)
+      
+      if (enabledConnections.length === 0) {
+        console.log("[v0] [Coordinator] No enabled connections to start")
+        return
+      }
+      
+      const settings = await loadSettingsAsync()
+      let successCount = 0
+      
+      for (const connection of enabledConnections) {
+        try {
+          const config: EngineConfig = {
+            connectionId: connection.id,
+            indicationInterval: settings.mainEngineIntervalMs ? settings.mainEngineIntervalMs / 1000 : 5,
+            strategyInterval: settings.strategyUpdateIntervalMs ? settings.strategyUpdateIntervalMs / 1000 : 10,
+            realtimeInterval: settings.realtimeIntervalMs ? settings.realtimeIntervalMs / 1000 : 3,
+          }
+          
+          await this.startEngine(connection.id, config)
+          successCount++
+          console.log(`[v0] [Coordinator] ✓ Started: ${connection.name}`)
+        } catch (error) {
+          console.error(`[v0] [Coordinator] ✗ Failed to start ${connection.name}:`, error)
+        }
+      }
+      
+      console.log(`[v0] [Coordinator] ✓ All engines started: ${successCount}/${enabledConnections.length}`)
+    } catch (error) {
+      console.error("[v0] [Coordinator] Failed to start all engines:", error)
+    }
+  }
+
+  /**
    * Start all engines (for all active connections)
    */
   async startAllEngines(): Promise<void> {

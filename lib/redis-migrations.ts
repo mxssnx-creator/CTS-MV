@@ -349,27 +349,34 @@ const migrations: Migration[] = [
     up: async (client: any) => {
       await client.set("_schema_version", "12")
       
-      // Ensure all connections have proper dashboard state
+      // Ensure all connections have proper active list state
+      // This runs AFTER migration 011 which seeds the connections
       const connections = await client.smembers("connections")
       let updated = 0
+      let total = connections.length
+      
+      console.log(`[v0] Migration 012: Processing ${total} connections for active list visibility`)
       
       for (const connId of connections) {
         const connData = await client.hgetall(`connection:${connId}`)
         if (connData && Object.keys(connData).length > 0) {
-          // Ensure is_enabled_dashboard field exists
-          if (!connData.is_enabled_dashboard) {
-            // For dashboard visibility: Bybit and BingX should be visible (1), others hidden (0)
-            const exchange = connData.exchange || ""
-            const shouldBeVisible = ["bybit", "bingx"].includes(exchange)
-            connData.is_enabled_dashboard = shouldBeVisible ? "1" : "0"
-            await client.hset(`connection:${connId}`, connData)
-            updated++
-            console.log(`[v0] Migration 012: Updated ${connId} dashboard visibility to ${connData.is_enabled_dashboard}`)
-          }
+          const exchange = (connData.exchange || "").toLowerCase()
+          
+          // Mark Bybit and BingX as actively using by default (is_enabled_dashboard = true)
+          // All others start as not actively using (is_enabled_dashboard = false)
+          const shouldBeActivelyUsing = ["bybit", "bingx"].includes(exchange)
+          const newDashboardValue = shouldBeActivelyUsing ? "1" : "0"
+          
+          // Always set/update the field to ensure it exists
+          connData.is_enabled_dashboard = newDashboardValue
+          await client.hset(`connection:${connId}`, connData)
+          updated++
+          
+          console.log(`[v0] Migration 012: Set ${connId} (${exchange}) active list = ${newDashboardValue}`)
         }
       }
       
-      console.log(`[v0] Migration 012: Finalized ${updated}/${connections.length} connections for dashboard`)
+      console.log(`[v0] Migration 012: Complete - Updated ${updated}/${total} connections for active list`)
     },
     down: async (client: any) => {
       await client.set("_schema_version", "11")

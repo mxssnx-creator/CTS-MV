@@ -1,6 +1,7 @@
 /**
  * Trade Engine Auto-Start Service
- * Automatically starts trade engines for enabled/active connections
+ * Automatically starts trade engines for enabled connections
+ * Independent from Active list - engines run if enabled in Settings
  */
 
 import { getGlobalTradeEngineCoordinator } from "./trade-engine"
@@ -38,20 +39,24 @@ export async function initializeTradeEngineAutoStart(): Promise<void> {
     }
 
     // Log connection details for debugging
+    console.log("[v0] [Auto-Start] Connection Status Summary:")
     connections.forEach(conn => {
-      console.log(`[v0] [Auto-Start] Connection: ${conn.name} - enabled:${conn.is_enabled}, active:${conn.is_active}`)
+      const enabled = conn.is_enabled === true || conn.is_enabled === "true" || conn.is_enabled === "1"
+      const activelyUsing = conn.is_enabled_dashboard === true || conn.is_enabled_dashboard === "1"
+      console.log(`  → ${conn.name}: enabled=${enabled}, activelyUsing=${activelyUsing}`)
     })
 
-    // Filter for enabled connections (no need to require is_active - engines can run without active trades)
+    // Filter for ENABLED connections (independent from Active list)
+    // Trade engines run based on Settings enabled status, not active list visibility
     const enabledConnections = connections.filter((c) => {
       const isEnabled = c.is_enabled === true || c.is_enabled === "true" || c.is_enabled === "1"
-      return isEnabled  // Only require enabled, not active
+      return isEnabled
     })
 
-    console.log(`[v0] [Auto-Start] Found ${enabledConnections.length} enabled connections out of ${connections.length} total`)
+    console.log(`[v0] [Auto-Start] Found ${enabledConnections.length} ENABLED connections (ready for trade engines)`)
 
     if (enabledConnections.length === 0) {
-      console.log("[v0] Auto-start: No enabled connections to start, monitoring for changes...")
+      console.log("[v0] [Auto-Start] No enabled connections - monitoring for changes...")
       autoStartInitialized = true
       startConnectionMonitoring()
       return
@@ -73,17 +78,17 @@ export async function initializeTradeEngineAutoStart(): Promise<void> {
           realtimeInterval,
         })
         successCount++
-        console.log(`[v0] [Auto-Start] Successfully started engine for ${connection.name}`)
+        console.log(`[v0] [Auto-Start] ✓ Started trade engine for ${connection.name}`)
       } catch (error) {
-        console.error(`[v0] [Auto-Start] Failed to start ${connection.name}:`, error)
+        console.error(`[v0] [Auto-Start] ✗ Failed to start ${connection.name}:`, error)
       }
     }
 
-    console.log("[v0] Auto-start completed: started", successCount, "of", enabledConnections.length, "engines")
+    console.log(`[v0] [Auto-Start] ✓ Trade engines started: ${successCount}/${enabledConnections.length}`)
     autoStartInitialized = true
     startConnectionMonitoring()
   } catch (error) {
-    console.error("[v0] Auto-start initialization failed:", error)
+    console.error("[v0] [Auto-Start] Initialization failed:", error)
     autoStartInitialized = true
   }
 }
@@ -92,7 +97,7 @@ export async function initializeTradeEngineAutoStart(): Promise<void> {
  * Monitor for connection changes and auto-start new engines
  */
 function startConnectionMonitoring(): void {
-  let lastConnectionCount = 0
+  let lastEnabledCount = 0
 
   autoStartTimer = setInterval(async () => {
     try {
@@ -100,19 +105,20 @@ function startConnectionMonitoring(): void {
 
       // Ensure connections is an array before filtering
       if (!Array.isArray(connections)) {
-        console.warn("[v0] Monitor: connections is not an array")
+        console.warn("[v0] [Monitor] Connections not array")
         return
       }
 
+      // Filter by ENABLED status (Settings) - independent from Active list
       const enabledConnections = connections.filter((c) => {
         const isEnabled = c.is_enabled === true || c.is_enabled === "true" || c.is_enabled === "1"
-        return isEnabled  // Only require enabled, not active
+        return isEnabled
       })
 
-      // If connection count changed, log it
-      if (enabledConnections.length !== lastConnectionCount) {
-        console.log("[v0] [Monitor] Enabled connections changed:", lastConnectionCount, "->", enabledConnections.length)
-        lastConnectionCount = enabledConnections.length
+      // If enabled connection count changed, log it
+      if (enabledConnections.length !== lastEnabledCount) {
+        console.log(`[v0] [Monitor] Enabled connections changed: ${lastEnabledCount} -> ${enabledConnections.length}`)
+        lastEnabledCount = enabledConnections.length
       }
 
       const coordinator = getGlobalTradeEngineCoordinator()
@@ -123,7 +129,7 @@ function startConnectionMonitoring(): void {
           const engineStatus = coordinator.getEngineStatus(connection.id)
 
           if (!engineStatus || engineStatus.status === "stopped") {
-            console.log("[v0] [Monitor] Auto-starting engine for enabled connection:", connection.name)
+            console.log(`[v0] [Monitor] Auto-starting trade engine for: ${connection.name}`)
 
             if (connection.api_key && connection.api_secret) {
               const settings = await loadSettingsAsync()
@@ -134,11 +140,11 @@ function startConnectionMonitoring(): void {
                 realtimeInterval: settings.realtimeIntervalMs ? settings.realtimeIntervalMs / 1000 : 3,
               })
 
-              console.log("[v0] [Monitor] Engine auto-started for:", connection.name)
+              console.log(`[v0] [Monitor] ✓ Trade engine auto-started: ${connection.name}`)
             }
           }
         } catch (error) {
-          console.warn("[v0] [Monitor] Failed to auto-start engine for", connection.name, ":", error)
+          console.warn(`[v0] [Monitor] Failed to auto-start ${connection.name}:`, error)
         }
       }
     } catch (error) {
