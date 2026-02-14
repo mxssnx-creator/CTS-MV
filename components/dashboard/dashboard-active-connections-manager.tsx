@@ -48,8 +48,8 @@ export function DashboardActiveConnectionsManager() {
 
   const loadConnections = async () => {
     try {
-      // Load active connections
-      const active = loadActiveConnections()
+      // Load active connections (now async from Redis)
+      const active = await loadActiveConnections()
       
       // Load settings connections
       const response = await fetch("/api/settings/connections")
@@ -87,9 +87,9 @@ export function DashboardActiveConnectionsManager() {
     }
   }
 
-  const handleToggle = (connectionId: string, currentState: boolean) => {
+  const handleToggle = async (connectionId: string, currentState: boolean) => {
     try {
-      toggleActiveConnection(connectionId, !currentState)
+      await toggleActiveConnection(connectionId, !currentState)
       
       const updatedConnections = activeConnections.map(ac =>
         ac.connectionId === connectionId
@@ -107,9 +107,9 @@ export function DashboardActiveConnectionsManager() {
     }
   }
 
-  const handleRemove = (connectionId: string, connectionName: string) => {
+  const handleRemove = async (connectionId: string, connectionName: string) => {
     try {
-      removeActiveConnection(connectionId)
+      await removeActiveConnection(connectionId)
       setActiveConnections(activeConnections.filter(ac => ac.connectionId !== connectionId))
       toast.success("Connection removed", {
         description: `${connectionName} has been removed from dashboard`
