@@ -55,7 +55,46 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   }
 }
 
-export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params
+    const body = await request.json()
+
+    console.log("[v0] Patching connection in Redis:", id, "with", Object.keys(body).length, "fields")
+    await SystemLogger.logConnection(`Patching connection`, id, "info", body)
+
+    await initRedis()
+    const connection = await getConnection(id)
+
+    if (!connection) {
+      return NextResponse.json({ error: "Connection not found" }, { status: 404 })
+    }
+
+    const updatedConnection = {
+      ...connection,
+      ...body,
+      id: connection.id,
+      created_at: connection.created_at,
+      updated_at: new Date().toISOString(),
+    }
+
+    await updateConnection(id, updatedConnection)
+
+    console.log("[v0] Connection patched successfully:", id)
+    await SystemLogger.logConnection(`Connection patched successfully`, id, "info")
+
+    return NextResponse.json({ success: true, connection: updatedConnection })
+  } catch (error) {
+    console.error("[v0] Failed to patch connection:", error)
+    await SystemLogger.logError(error, "api", `PATCH /api/settings/connections/${(await params).id}`)
+    return NextResponse.json(
+      { error: "Failed to patch connection", details: error instanceof Error ? error.message : "Unknown error" },
+      { status: 500 },
+    )
+  }
+}
+
+
   try {
     const { id } = await params
     const body = await request.json()

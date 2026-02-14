@@ -1,9 +1,10 @@
 /**
  * Connection Coordinator v3
  * Comprehensive connection management with API type support, rate limiting, and batch operations
+ * Uses Redis for persistent storage
  */
 
-import { loadConnections, saveConnections, type Connection } from "@/lib/file-storage"
+import { initRedis, getAllConnections, getConnection as getConnectionFromRedis } from "@/lib/redis-db"
 import { SystemLogger } from "@/lib/system-logger"
 import { createExchangeConnector } from "@/lib/exchange-connectors"
 import { BatchProcessor } from "@/lib/batch-processor"
@@ -11,6 +12,25 @@ import { getRateLimiter } from "@/lib/rate-limiter"
 
 export type ConnectionApiType = "rest" | "websocket" | "unified" | "perpetual_futures" | "spot" | "margin"
 export type ConnectionStatus = "active" | "inactive" | "error" | "testing" | "paused"
+
+export interface Connection {
+  id: string
+  name: string
+  exchange: string
+  api_key: string
+  api_secret: string
+  api_passphrase?: string
+  api_type: string
+  connection_method: string
+  connection_library: string
+  margin_type: string
+  position_mode: string
+  is_testnet: boolean
+  is_enabled: boolean
+  is_enabled_dashboard: boolean
+  is_active: boolean
+  is_predefined: boolean
+}
 
 export interface ConnectionHealth {
   connectionId: string
@@ -43,11 +63,10 @@ export class ConnectionCoordinator {
   private metrics: Map<string, ConnectionMetrics> = new Map()
   private batchProcessor: BatchProcessor
   private healthCheckInterval: NodeJS.Timeout | null = null
+  private initialized = false
 
   private constructor() {
     this.batchProcessor = BatchProcessor.getInstance()
-    this.initializeConnections()
-    this.startHealthChecks()
   }
 
   static getInstance(): ConnectionCoordinator {
@@ -58,11 +77,18 @@ export class ConnectionCoordinator {
   }
 
   /**
-   * Initialize all connections from storage
+   * Initialize all connections from Redis
    */
-  private initializeConnections(): void {
+  async initializeConnections(): Promise<void> {
+    if (this.initialized) {
+      console.log("[v0] ConnectionCoordinator already initialized")
+      return
+    }
+
     try {
-      const connections = loadConnections()
+      await initRedis()
+      const connections = await getAllConnections()
+      
       if (!Array.isArray(connections)) {
         console.error("[v0] Connections is not an array")
         return
@@ -75,9 +101,12 @@ export class ConnectionCoordinator {
         this.initializeHealth(conn.id, conn)
       }
 
-      console.log(`[v0] ConnectionCoordinator initialized with ${this.connections.size} connections`)
+      this.initialized = true
+      console.log(`[v0] ConnectionCoordinator initialized with ${this.connections.size} connections from Redis`)
+      this.startHealthChecks()
     } catch (error) {
       console.error("[v0] Failed to initialize connections:", error)
+
     }
   }
 
@@ -152,6 +181,23 @@ export class ConnectionCoordinator {
     error?: string
     logs?: string[]
   }> {
+    // Ensure coordinator is initialized
+    if (!this.initialized) {
+      await this.initializeConnections()
+    }
+
+    // Reload connection from Redis to get fresh credentials
+    try {
+      await initRedis()
+      const freshConnection = await getConnectionFromRedis(connectionId)
+      
+      if (freshConnection) {
+        this.connections.set(connectionId, freshConnection)
+      }
+    } catch (error) {
+      console.error("[v0] Failed to reload connection from Redis:", error)
+    }
+
     const connection = this.connections.get(connectionId)
     if (!connection) {
       return { success: false, error: "Connection not found" }
