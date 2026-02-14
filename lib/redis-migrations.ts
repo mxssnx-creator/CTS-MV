@@ -421,9 +421,32 @@ const migrations: Migration[] = [
     up: async (client: any) => {
       await client.set("_schema_version", "14")
       
-      // Note: BingX and other connections now use user-provided credentials
-      // This migration is a no-op but kept for schema version tracking
-      console.log(`[v0] Migration 014: Schema version updated to 14 (credentials now user-provided)`)
+      // Clear test/placeholder credentials from all predefined connections
+      // Users must now enter their own credentials
+      const exchanges = ["bingx-x01", "bybit-x03", "binance-x01", "okx-x01", "pionex-x01", "orangex-x01"]
+      
+      for (const connectionId of exchanges) {
+        try {
+          const data = await client.hgetall(`connection:${connectionId}`)
+          if (data && Object.keys(data).length > 0) {
+            // Clear credentials if they're test/placeholder values
+            const apiKey = data.api_key as string
+            if (apiKey && (apiKey.includes("00998877") || apiKey.startsWith("test") || apiKey.length < 20)) {
+              console.log(`[v0] Migration 014: Clearing test credentials from ${connectionId}`)
+              await client.hset(`connection:${connectionId}`, {
+                ...data,
+                api_key: "",
+                api_secret: "",
+                updated_at: new Date().toISOString(),
+              })
+            }
+          }
+        } catch (error) {
+          console.warn(`[v0] Migration 014: Could not update ${connectionId}:`, error)
+        }
+      }
+      
+      console.log(`[v0] Migration 014: Cleared test credentials, users must now enter their own`)
     },
     down: async (client: any) => {
       await client.set("_schema_version", "13")
