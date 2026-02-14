@@ -23,13 +23,28 @@ export function GlobalExchangeSelector() {
     )
   }
 
+  // Deduplicate by id and filter out entries with missing/empty ids
+  const uniqueConnections = activeConnections.reduce<any[]>((acc, conn) => {
+    const connId = conn.id || conn.name || ""
+    if (connId && !acc.some((c) => (c.id || c.name) === connId)) {
+      acc.push(conn)
+    }
+    return acc
+  }, [])
+
+  // Build a stable unique value for each connection
+  const getStableValue = (conn: any, index: number) => conn.id || `conn-${index}`
+
+  const selectedConn = uniqueConnections.find((c) => c.exchange === selectedExchange)
+  const selectedValue = selectedConn ? getStableValue(selectedConn, uniqueConnections.indexOf(selectedConn)) : ""
+
   return (
     <div className="flex items-center gap-2">
       <span className="text-sm text-muted-foreground">Exchange:</span>
       <Select
-        value={activeConnections.find((c) => c.exchange === selectedExchange)?.id || ""}
-        onValueChange={(id) => {
-          const conn = activeConnections.find((c) => c.id === id)
+        value={selectedValue}
+        onValueChange={(val) => {
+          const conn = uniqueConnections.find((c, i) => getStableValue(c, i) === val)
           setSelectedExchange(conn?.exchange || null)
         }}
       >
@@ -37,18 +52,21 @@ export function GlobalExchangeSelector() {
           <SelectValue placeholder="Select exchange" />
         </SelectTrigger>
         <SelectContent>
-          {activeConnections.map((conn) => (
-            <SelectItem key={conn.id} value={conn.id}>
-              <div className="flex items-center gap-2">
-                <span>{conn.name}</span>
-                {conn.is_testnet && (
-                  <Badge variant="outline" className="text-xs">
-                    Testnet
-                  </Badge>
-                )}
-              </div>
-            </SelectItem>
-          ))}
+          {uniqueConnections.map((conn, index) => {
+            const itemValue = getStableValue(conn, index)
+            return (
+              <SelectItem key={itemValue} value={itemValue}>
+                <div className="flex items-center gap-2">
+                  <span>{conn.name}</span>
+                  {conn.is_testnet && (
+                    <Badge variant="outline" className="text-xs">
+                      Testnet
+                    </Badge>
+                  )}
+                </div>
+              </SelectItem>
+            )
+          })}
         </SelectContent>
       </Select>
     </div>
