@@ -1,19 +1,15 @@
 import { NextResponse } from "next/server"
-import { getRedisClient, initRedis } from "@/lib/redis-db"
+import { getRedisClient, initRedis, getAllConnections } from "@/lib/redis-db"
 import { getGlobalTradeEngineCoordinator } from "@/lib/trade-engine"
-import { getAllConnections } from "@/lib/redis-db"
+import { ProgressionStateManager } from "@/lib/progression-state-manager"
 
 export async function GET() {
   try {
-    // Initialize Redis connection first
     await initRedis()
-    
+
     const client = getRedisClient()
     const coordinator = getGlobalTradeEngineCoordinator()
     const connections = await getAllConnections()
-
-    console.log("[v0] [Trade Engine] Fetching trade engine status with progression info...")
-    console.log(`[v0] [Trade Engine] Found ${connections.length} total connections`)
 
     let running = 0
     let totalTrades = 0
@@ -28,46 +24,41 @@ export async function GET() {
 
           const tradesKey = `trades:${connection.id}`
           const positionsKey = `positions:${connection.id}`
-        const trades = (await client.smembers(tradesKey)) || []
-        const positions = (await client.smembers(positionsKey)) || []
+          const trades = (await client.smembers(tradesKey)) || []
+          const positions = (await client.smembers(positionsKey)) || []
 
-        // Get progression state for this connection
-        const progression = await ProgressionStateManager.getProgressionState(connection.id)
+          const progression = await ProgressionStateManager.getProgressionState(connection.id)
 
-        const manager = coordinator.getEngineManager(connection.id)
-        const isRunning = manager !== undefined
+          const manager = coordinator.getEngineManager(connection.id)
+          const isRunning = manager !== undefined
 
-        if (isRunning) running++
-        totalTrades += trades.length
-        totalPositions += positions.length
+          if (isRunning) running++
+          totalTrades += trades.length
+          totalPositions += positions.length
 
-        return {
-          id: connection.id,
-          name: connection.name,
-          exchange: connection.exchange,
-          enabled: connection.is_enabled === true || connection.is_enabled === "true" || connection.is_enabled === "1",
-          activelyUsing: connection.is_enabled_dashboard === true || connection.is_enabled_dashboard === "true" || connection.is_enabled_dashboard === "1",
-          status: isRunning ? "running" : "stopped",
-          trades: trades.length,
-          positions: positions.length,
-          state: state || {},
-          progression: {
-            cycles_completed: progression.cyclesCompleted,
-            successful_cycles: progression.successfulCycles,
-            failed_cycles: progression.failedCycles,
-            cycle_success_rate: progression.cycleSuccessRate.toFixed(1) + "%",
-            total_trades: progression.totalTrades,
-            successful_trades: progression.successfulTrades,
-            trade_success_rate: progression.tradeSuccessRate.toFixed(1) + "%",
-            total_profit: progression.totalProfit.toFixed(2),
-            last_cycle_time: progression.lastCycleTime?.toISOString() || null,
-          },
-        }
+          return {
+            id: connection.id,
+            name: connection.name,
+            exchange: connection.exchange,
+            enabled: connection.is_enabled === true || connection.is_enabled === "true" || connection.is_enabled === "1",
+            activelyUsing: connection.is_enabled_dashboard === true || connection.is_enabled_dashboard === "true" || connection.is_enabled_dashboard === "1",
+            status: isRunning ? "running" : "stopped",
+            trades: trades.length,
+            positions: positions.length,
+            state: state || {},
+            progression: {
+              cycles_completed: progression.cyclesCompleted,
+              successful_cycles: progression.successfulCycles,
+              failed_cycles: progression.failedCycles,
+              cycle_success_rate: progression.cycleSuccessRate.toFixed(1) + "%",
+              total_trades: progression.totalTrades,
+              successful_trades: progression.successfulTrades,
+              trade_success_rate: progression.tradeSuccessRate.toFixed(1) + "%",
+              total_profit: progression.totalProfit.toFixed(2),
+              last_cycle_time: progression.lastCycleTime?.toISOString() || null,
+            },
+          }
         } catch (error) {
-          console.error(
-            `[v0] [Trade Engine] Failed to get state for connection ${connection.id}:`,
-            error,
-          )
           totalErrors++
           return {
             id: connection.id,
@@ -84,14 +75,12 @@ export async function GET() {
       }),
     )
 
-    console.log(`[v0] [Trade Engine] Status summary - running: ${running} trades: ${totalTrades} positions: ${totalPositions} errors: ${totalErrors}`)
-
     return NextResponse.json({
       success: true,
       timestamp: new Date().toISOString(),
       summary: {
         total_connections: connections.length,
-        running: running,
+        running,
         total_trades: totalTrades,
         total_positions: totalPositions,
         total_errors: totalErrors,
@@ -101,10 +90,7 @@ export async function GET() {
   } catch (error) {
     console.error("[v0] [Trade Engine] Error fetching status:", error)
     return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-      },
+      { success: false, error: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 },
     )
   }
