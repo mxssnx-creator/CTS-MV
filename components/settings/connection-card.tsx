@@ -385,27 +385,29 @@ export function ConnectionCard({
             </div>
           </div>
 
-          {/* Engine Status Hint */}
-          {connection.is_enabled && engineStatus === "idle" && (
-            <div className="text-xs p-3 bg-blue-50 text-blue-800 rounded border border-blue-200 flex items-start gap-2">
+          {/* Engine Status Hint - Always shown for enabled connections */}
+          {connection.is_enabled && (
+            <div className={`text-xs p-3 rounded border flex items-start gap-2 ${
+              engineStatus === "running" 
+                ? "bg-green-50 text-green-800 border-green-200" 
+                : engineStatus === "failed"
+                ? "bg-red-50 text-red-800 border-red-200"
+                : "bg-blue-50 text-blue-800 border-blue-200"
+            }`}>
               <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
-              <span>Trade engine starting... This connection will process trades once the engine is fully initialized.</span>
+              <span>
+                {engineStatus === "running" && "Trade engine active. This connection is processing trades and positions."}
+                {engineStatus === "failed" && "Trade engine failed to start. Check credentials and try again."}
+                {engineStatus !== "running" && engineStatus !== "failed" && "Trade engine initializing... This connection will process trades once the engine is ready."}
+              </span>
             </div>
           )}
 
-          {/* Engine Running Status */}
-          {connection.is_enabled && engineStatus === "running" && (
-            <div className="text-xs p-3 bg-green-50 text-green-800 rounded border border-green-200 flex items-start gap-2">
-              <CheckCircle2 className="h-4 w-4 flex-shrink-0 mt-0.5" />
-              <span>Trade engine active. This connection is processing trades and positions.</span>
-            </div>
-          )}
-
-          {/* Engine Failed Status */}
-          {connection.is_enabled && engineStatus === "failed" && (
-            <div className="text-xs p-3 bg-red-50 text-red-800 rounded border border-red-200 flex items-start gap-2">
+          {/* Disabled Connection Status */}
+          {!connection.is_enabled && (
+            <div className="text-xs p-3 bg-gray-50 text-gray-800 rounded border border-gray-200 flex items-start gap-2">
               <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
-              <span>Trade engine failed to start. Check credentials and try again.</span>
+              <span>This connection is disabled. Enable it to start processing trades.</span>
             </div>
           )}
 
