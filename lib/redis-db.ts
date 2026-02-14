@@ -328,6 +328,10 @@ export async function initRedis(): Promise<void> {
   }
 }
 
+export function getRedisClient() {
+  return getClient()
+}
+
 export function haveMigrationsRun(): boolean {
   return migrationsRun
 }
