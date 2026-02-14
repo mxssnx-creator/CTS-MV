@@ -60,37 +60,99 @@ export function ConnectionStateProvider({ children }: { children: ReactNode }) {
   
   // Trade Engine Status - independent from connections
   const [tradeEngineStatuses, setTradeEngineStatuses] = useState<Map<string, TradeEngineStatus>>(new Map())
+  
+  // Prevent concurrent loads and excessive queries
+  const loadingRef = useRef<{ base: boolean; active: boolean }>({ base: false, active: false })
+  const lastLoadRef = useRef<{ base: number; active: number }>({ base: 0, active: 0 })
+  const LOAD_COOLDOWN = 30000 // 30 seconds between same-type loads
 
-  // Load all connections for Settings
+  // Load all connections for Settings (single unified function)
   const loadBaseConnections = async () => {
+    // Prevent concurrent requests
+    if (loadingRef.current.base) return
+    
+    // Prevent excessive refreshes
+    if (Date.now() - lastLoadRef.current.base < LOAD_COOLDOWN) return
+
+    loadingRef.current.base = true
     setIsBaseLoading(true)
     try {
       console.log("[v0] [ConnectionState] Loading base connections (all)")
       const response = await fetch("/api/settings/connections")
       if (response.ok) {
         const data = await response.json()
-        console.log("[v0] [ConnectionState] Loaded", data.connections?.length || 0, "base connections")
-        setBaseConnections(data.connections || [])
+        const connections = data.connections || []
+        console.log("[v0] [ConnectionState] Loaded", connections.length, "base connections")
+        
+        // If we got 0 connections on first load, retry once
+        if (connections.length === 0 && lastLoadRef.current.base === 0) {
+          console.log("[v0] [ConnectionState] Got 0 connections on first load - retrying...")
+          await new Promise(resolve => setTimeout(resolve, 500))
+          const retryResponse = await fetch("/api/settings/connections")
+          if (retryResponse.ok) {
+            const retryData = await retryResponse.json()
+            const retryConnections = retryData.connections || []
+            console.log("[v0] [ConnectionState] Retry loaded", retryConnections.length, "connections")
+            if (retryConnections.length > 0) {
+              setBaseConnections(retryConnections)
+              const statusMap = new Map<string, { enabled: boolean; inserted: boolean }>()
+              retryConnections.forEach((conn: ExchangeConnection) => {
+                statusMap.set(conn.id, { 
+                  enabled: conn.is_enabled === true || conn.is_enabled === "true",
+                  inserted: false 
+                })
+              })
+              setBaseConnectionStatuses(statusMap)
+              return
+            }
+          }
+        }
+        
+        setBaseConnections(connections)
         
         // Initialize status map
         const statusMap = new Map<string, { enabled: boolean; inserted: boolean }>()
-        data.connections?.forEach((conn: ExchangeConnection) => {
+        connections.forEach((conn: ExchangeConnection) => {
           statusMap.set(conn.id, { 
             enabled: conn.is_enabled === true || conn.is_enabled === "true",
             inserted: false 
           })
         })
         setBaseConnectionStatuses(statusMap)
+        
+        // Also update Active connections if any are marked as actively using
+        const activeConns = connections.filter((c: ExchangeConnection) => 
+          c.is_enabled_dashboard === true || c.is_enabled_dashboard === "1"
+        ) || []
+        
+        if (activeConns.length > 0) {
+          setExchangeConnectionsActive(activeConns)
+          const activeStatusMap = new Map<string, boolean>()
+          activeConns.forEach((conn: ExchangeConnection) => {
+            activeStatusMap.set(conn.id, conn.is_enabled === true || conn.is_enabled === "1")
+          })
+          setExchangeConnectionsActiveStatus(activeStatusMap)
+          console.log("[v0] [ConnectionState] Updated Active Connections:", activeConns.length)
+        }
       }
     } catch (error) {
       console.error("[v0] [ConnectionState] Failed to load base connections:", error)
     } finally {
+      loadingRef.current.base = false
       setIsBaseLoading(false)
+      lastLoadRef.current.base = Date.now()
     }
   }
 
   // Load enabled connections for Active list with independent status tracking
   const loadExchangeConnectionsActive = async () => {
+    // Prevent concurrent requests
+    if (loadingRef.current.active) return
+    
+    // Prevent excessive refreshes
+    if (Date.now() - lastLoadRef.current.active < LOAD_COOLDOWN) return
+
+    loadingRef.current.active = true
     setIsExchangeConnectionsActiveLoading(true)
     try {
       console.log("[v0] [ConnectionState] Loading Active Connections (independent from Settings)")
@@ -98,8 +160,21 @@ export function ConnectionStateProvider({ children }: { children: ReactNode }) {
       const response = await fetch("/api/settings/connections?dashboard=true")
       if (response.ok) {
         const data = await response.json()
-        const connections = data.connections || []
+        let connections = data.connections || []
         console.log("[v0] [ConnectionState] Loaded", connections.length, "Active Connections")
+        
+        // If we got 0 connections on first load, retry once
+        if (connections.length === 0 && lastLoadRef.current.active === 0) {
+          console.log("[v0] [ConnectionState] Got 0 active connections on first load - retrying...")
+          await new Promise(resolve => setTimeout(resolve, 500))
+          const retryResponse = await fetch("/api/settings/connections?dashboard=true")
+          if (retryResponse.ok) {
+            const retryData = await retryResponse.json()
+            connections = retryData.connections || []
+            console.log("[v0] [ConnectionState] Retry loaded", connections.length, "active connections")
+          }
+        }
+        
         setExchangeConnectionsActive(connections)
         
         // Initialize status map - use is_enabled from connection as initial state (INDEPENDENT from Settings)
@@ -112,7 +187,9 @@ export function ConnectionStateProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error("[v0] [ConnectionState] Failed to load Active Connections:", error)
     } finally {
+      loadingRef.current.active = false
       setIsExchangeConnectionsActiveLoading(false)
+      lastLoadRef.current.active = Date.now()
     }
   }
 

@@ -407,15 +407,64 @@ export async function getAllConnections(): Promise<any[]> {
   const client = getClient()
   try {
     const ids = await client.smembers("connections")
-    if (!ids || ids.length === 0) return []
-    const connections = []
-    for (const id of ids) {
-      const c = await getConnection(id)
-      if (c) connections.push(c)
+    if (!ids || ids.length === 0) {
+      console.log("[v0] [DB] No connection IDs found in Redis")
+      return []
     }
+    
+    console.log("[v0] [DB] Found", ids.length, "connection IDs in Redis")
+    
+    // Use pipelining to avoid N+1 queries - fetch all connections in batch
+    const pipeline = client.pipeline()
+    for (const id of ids) {
+      pipeline.hgetall(`connection:${id}`)
+    }
+    
+    const results = await pipeline.exec()
+    if (!results) {
+      console.error("[v0] [DB] Pipeline execution returned null")
+      return []
+    }
+    
+    console.log("[v0] [DB] Pipeline returned", results.length, "results")
+    
+    // Convert results to connection objects with proper type conversion
+    const connections = results
+      .map((result: any, index: number) => {
+        if (!result || Object.keys(result).length === 0) {
+          console.warn("[v0] [DB] Result at index", index, "is empty")
+          return null
+        }
+        return {
+          id: result.id,
+          name: result.name,
+          exchange: result.exchange,
+          api_key: result.api_key || "",
+          api_secret: result.api_secret || "",
+          api_type: result.api_type || "spot",
+          api_subtype: result.api_subtype || "",
+          connection_method: result.connection_method || "rest",
+          connection_library: result.connection_library || "ccxt",
+          margin_type: result.margin_type || "isolated",
+          position_mode: result.position_mode || "one-way",
+          is_testnet: result.is_testnet === "1",
+          is_enabled: result.is_enabled === "1",
+          is_enabled_dashboard: result.is_enabled_dashboard === "1",
+          is_active: result.is_active === "1",
+          is_predefined: result.is_predefined === "1",
+          is_live_trade: result.is_live_trade === "1",
+          is_preset_trade: result.is_preset_trade === "1",
+          api_passphrase: result.api_passphrase || "",
+          created_at: result.created_at,
+          updated_at: result.updated_at,
+        }
+      })
+      .filter((c: any) => c !== null)
+    
+    console.log("[v0] [DB] Converted", connections.length, "valid connections")
     return connections
   } catch (error) {
-    console.error("[v0] [DB] Failed to get all connections:", error)
+    console.error("[v0] [DB] Failed to get all connections:", error instanceof Error ? error.message : String(error))
     return []
   }
 }
@@ -427,6 +476,7 @@ export async function deleteConnection(connectionId: string): Promise<void> {
 }
 
 export async function getEnabledConnections(): Promise<any[]> {
+  // Get all connections once and filter - avoid multiple DB calls
   const all = await getAllConnections()
   return all.filter(c => c.is_enabled === true)
 }
@@ -460,9 +510,22 @@ export async function getConnectionTrades(connectionId: string): Promise<any[]> 
   const client = getClient()
   const ids = await client.smembers(`trades:${connectionId}`)
   if (!ids || ids.length === 0) return []
-  const trades = []
-  for (const id of ids) { const t = await getTrade(id); if (t) trades.push(t) }
-  return trades
+  
+  // Use pipelining to fetch all trades in batch
+  const pipeline = client.pipeline()
+  for (const id of ids) {
+    pipeline.hgetall(`trade:${id}`)
+  }
+  
+  const results = await pipeline.exec()
+  if (!results) return []
+  
+  return results
+    .map((data: any) => {
+      if (!data || Object.keys(data).length === 0) return null
+      return data
+    })
+    .filter((t: any) => t !== null)
 }
 
 export async function updateTrade(tradeId: string, updates: any): Promise<any> {
@@ -502,9 +565,22 @@ export async function getConnectionPositions(connectionId: string): Promise<any[
   const client = getClient()
   const ids = await client.smembers(`positions:${connectionId}`)
   if (!ids || ids.length === 0) return []
-  const positions = []
-  for (const id of ids) { const p = await getPosition(id); if (p) positions.push(p) }
-  return positions
+  
+  // Use pipelining to fetch all positions in batch
+  const pipeline = client.pipeline()
+  for (const id of ids) {
+    pipeline.hgetall(`position:${id}`)
+  }
+  
+  const results = await pipeline.exec()
+  if (!results) return []
+  
+  return results
+    .map((data: any) => {
+      if (!data || Object.keys(data).length === 0) return null
+      return data
+    })
+    .filter((p: any) => p !== null)
 }
 
 export async function updatePosition(positionId: string, updates: any): Promise<any> {
