@@ -318,7 +318,8 @@ const migrations: Migration[] = [
               margin_type: "cross",
               position_mode: "hedge",
               is_testnet: "0",
-              is_enabled: isEnabled ? "1" : "0",
+              is_enabled: isEnabled ? "1" : "0", // Settings: trade engine enabled status
+              is_enabled_dashboard: "0", // Dashboard: always disabled by default
               is_active: isEnabled ? "1" : "0",
               is_predefined: "1",
               is_live_trade: "0",

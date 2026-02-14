@@ -638,6 +638,50 @@ export default function ExchangeConnectionManager() {
     }
   }
 
+  const toggleDashboard = async (id: string, enabled: boolean) => {
+    try {
+      // Find the connection to get current state
+      const connection = connections.find(c => c.id === id)
+      if (!connection) {
+        toast.error("Connection not found")
+        return
+      }
+
+      console.log("[v0] [Dashboard] Toggling dashboard visibility for:", id, "visible:", enabled)
+
+      const response = await fetch(`/api/settings/connections/${id}/toggle-dashboard`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_enabled_dashboard: enabled }),
+      })
+
+      const data = await response.json().catch(() => ({}))
+
+      if (!response.ok) {
+        const errorMsg = data.error || data.details || "Failed to toggle dashboard visibility"
+        console.error("[v0] Dashboard toggle failed:", errorMsg)
+        throw new Error(errorMsg)
+      }
+
+      // Update local state immediately
+      setConnections((prev) =>
+        prev.map((c) => 
+          c.id === id 
+            ? { ...c, is_enabled_dashboard: enabled } 
+            : c
+        )
+      )
+
+      toast.success(enabled ? "Connection now visible on dashboard" : "Connection hidden from dashboard")
+      
+      console.log("[v0] [Dashboard] Toggle successful for:", id, "is_enabled_dashboard:", enabled)
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Failed to toggle dashboard visibility"
+      console.error("[v0] [Dashboard] Toggle error:", errorMsg)
+      toast.error(errorMsg)
+    }
+  }
+
   if (loading) {
     return (
       <div className="space-y-4">

@@ -24,7 +24,8 @@ export interface ExchangeConnection {
     requests_per_second: number
     requests_per_minute: number
   }
-  is_enabled: boolean
+  is_enabled: boolean // Settings: enabled for trade engine (defaults to true for base, false for new)
+  is_enabled_dashboard: boolean // Dashboard: visibility/enabled state (always defaults to false)
   is_live_trade: boolean
   is_preset_trade?: boolean
   is_active?: boolean
