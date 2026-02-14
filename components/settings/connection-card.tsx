@@ -364,8 +364,9 @@ export function ConnectionCard({
                   size="sm"
                   variant={connection.is_enabled ? "default" : "outline"}
                   onClick={onToggle}
-                  className="w-14"
-                  title={connection.is_enabled ? "Disable" : "Enable"}
+                  disabled
+                  className="w-14 opacity-50 cursor-not-allowed"
+                  title="Enable/disable is currently disabled for predefined connections"
                 >
                   <Power className="h-4 w-4" />
                 </Button>
