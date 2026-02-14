@@ -7,7 +7,7 @@ import { useConnectionState } from "@/lib/connection-state"
 import { SystemOverview } from "./system-overview"
 import { GlobalTradeEngineControls } from "./global-trade-engine-controls"
 import { ConnectionCard } from "./connection-card"
-import { AddConnectionDialog } from "@/components/settings/add-connection-dialog"
+import { AddActiveConnectionDialog } from "@/components/dashboard/add-active-connection-dialog"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Plus, RefreshCw } from "lucide-react"
@@ -301,12 +301,11 @@ export function Dashboard() {
         </CardContent>
       </Card>
 
-      <AddConnectionDialog
+      <AddActiveConnectionDialog
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
-        showOnlyEnabled={true}
         onConnectionAdded={async (connectionId) => {
-          console.log("[v0] [Dashboard] New connection added:", connectionId)
+          console.log("[v0] [Dashboard] New connection added to active list:", connectionId)
           await loadExchangeConnectionsActive()
           if (connectionId) {
             markAsInserted(connectionId, "active")
