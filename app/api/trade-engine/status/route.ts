@@ -27,8 +27,7 @@ export async function GET() {
           const state = await client.hgetall(stateKey)
 
           const tradesKey = `trades:${connection.id}`
-        const tradesKey = `trades:${connection.id}`
-        const positionsKey = `positions:${connection.id}`
+          const positionsKey = `positions:${connection.id}`
         const trades = (await client.smembers(tradesKey)) || []
         const positions = (await client.smembers(positionsKey)) || []
 

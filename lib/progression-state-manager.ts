@@ -4,7 +4,7 @@
  * State is persisted to Redis for durability across restarts
  */
 
-import { getClient } from "@/lib/redis-helpers"
+import { getClient } from "@/lib/redis-db"
 
 export interface ProgressionState {
   connectionId: string
