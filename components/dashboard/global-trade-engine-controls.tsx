@@ -35,15 +35,19 @@ export function GlobalTradeEngineControls() {
 
   useEffect(() => {
     loadStatus()
-    const interval = setInterval(loadStatus, 3000)
+    const interval = setInterval(loadStatus, 2000) // Poll every 2 seconds for faster updates
     return () => clearInterval(interval)
   }, [])
 
   const loadStatus = async () => {
     try {
-      const response = await fetch("/api/trade-engine/status")
+      const response = await fetch("/api/trade-engine/status", {
+        cache: "no-store", // Don't cache - always get fresh data
+        headers: { "Cache-Control": "no-cache" },
+      })
       if (response.ok) {
         const data = await response.json()
+        console.log("[v0] [Engine Status] Loaded:", data)
         setStatus(data)
       }
     } catch (error) {
@@ -54,12 +58,16 @@ export function GlobalTradeEngineControls() {
   const handleStart = async () => {
     setIsStarting(true)
     try {
-      const response = await fetch("/api/trade-engine/start", { method: "POST" })
+      const response = await fetch("/api/trade-engine/start", { 
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      })
       const data = await response.json()
 
       if (response.ok) {
         toast.success("Global Trade Engine started successfully")
-        await loadStatus()
+        // Refresh status immediately after starting
+        setTimeout(loadStatus, 500)
       } else {
         toast.error(data.error || "Failed to start engine")
       }

@@ -69,9 +69,24 @@ export async function addActiveConnection(connectionId: string, exchangeName: st
   try {
     await initRedis()
 
-    const connection = await getConnection(connectionId)
+    // Retry mechanism - sometimes the connection set is empty momentarily
+    let connection = null
+    let retries = 0
+    const maxRetries = 3
+    
+    while (!connection && retries < maxRetries) {
+      connection = await getConnection(connectionId)
+      if (!connection) {
+        retries++
+        console.log(`[v0] [ActiveConnections] Connection ${connectionId} not found, retry ${retries}/${maxRetries}`)
+        if (retries < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 100))
+        }
+      }
+    }
+    
     if (!connection) {
-      throw new Error(`Connection ${connectionId} not found`)
+      throw new Error(`Connection ${connectionId} not found after ${maxRetries} retries`)
     }
 
     connection.is_enabled_dashboard = "1"

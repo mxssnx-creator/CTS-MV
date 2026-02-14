@@ -170,15 +170,28 @@ class InlineLocalRedis {
     const s = entry.value as Set<string>
     let count = 0
     for (const m of members) {
-      if (!s.has(m)) { s.add(m); count++ }
+      if (!s.has(m)) { 
+        s.add(m)
+        count++
+        console.log(`[v0] [Redis] Added ${m} to set ${key}, total now: ${s.size}`)
+      }
     }
     return count
   }
 
   async smembers(key: string): Promise<string[]> {
     const entry = this.getEntry(key)
-    if (entry?.type !== "set") return []
-    return Array.from(entry.value as Set<string>)
+    if (!entry) {
+      console.log(`[v0] [Redis] smembers(${key}): entry not found`)
+      return []
+    }
+    if (entry.type !== "set") {
+      console.log(`[v0] [Redis] smembers(${key}): entry is type ${entry.type}, not a set`)
+      return []
+    }
+    const members = Array.from(entry.value as Set<string>)
+    console.log(`[v0] [Redis] smembers(${key}): returning ${members.length} members`)
+    return members
   }
 
   async sismember(key: string, member: string): Promise<number> {
@@ -373,35 +386,48 @@ export async function saveConnection(connection: any): Promise<void> {
 
 export async function getConnection(connectionId: string): Promise<any> {
   const client = getClient()
-  const key = `connection:${connectionId}`
-  const data = await client.hgetall(key)
-  if (!data || Object.keys(data).length === 0) return null
-  
-  // Helper to convert string booleans to actual booleans
-  const toBool = (val: any): boolean => {
-    if (typeof val === 'boolean') return val
-    if (typeof val === 'string') return val === '1' || val === 'true'
-    return !!val
+  if (!client) {
+    console.warn("[v0] [DB] Redis client not available in getConnection")
+    return null
   }
   
-  return {
-    id: data.id, name: data.name, exchange: data.exchange,
-    api_key: data.api_key || "", api_secret: data.api_secret || "",
-    api_type: data.api_type || "spot", api_subtype: data.api_subtype || "",
-    connection_method: data.connection_method || "rest",
-    connection_library: data.connection_library || "ccxt",
-    margin_type: data.margin_type || "isolated",
-    position_mode: data.position_mode || "one-way",
-    is_testnet: toBool(data.is_testnet), 
-    is_enabled: toBool(data.is_enabled),
-    is_enabled_dashboard: toBool(data.is_enabled_dashboard), // Dashboard visibility
-    is_active: toBool(data.is_active), 
-    is_predefined: toBool(data.is_predefined),
-    is_live_trade: toBool(data.is_live_trade), 
-    is_preset_trade: toBool(data.is_preset_trade),
-    api_passphrase: data.api_passphrase || "",
-    created_at: data.created_at, 
-    updated_at: data.updated_at,
+  const key = `connection:${connectionId}`
+  try {
+    const data = await client.hgetall(key)
+    if (!data || Object.keys(data).length === 0) {
+      console.log(`[v0] [DB] Connection ${connectionId} not found in Redis (key: ${key})`)
+      return null
+    }
+    
+    // Helper to convert string booleans to actual booleans
+    const toBool = (val: any): boolean => {
+      if (typeof val === 'boolean') return val
+      if (typeof val === 'string') return val === '1' || val === 'true'
+      return !!val
+    }
+    
+    return {
+      id: data.id, name: data.name, exchange: data.exchange,
+      api_key: data.api_key || "", api_secret: data.api_secret || "",
+      api_type: data.api_type || "spot", api_subtype: data.api_subtype || "",
+      connection_method: data.connection_method || "rest",
+      connection_library: data.connection_library || "ccxt",
+      margin_type: data.margin_type || "isolated",
+      position_mode: data.position_mode || "one-way",
+      is_testnet: toBool(data.is_testnet), 
+      is_enabled: toBool(data.is_enabled),
+      is_enabled_dashboard: data.is_enabled_dashboard === "1" ? "1" : "0", // Keep as string for consistency
+      is_active: toBool(data.is_active), 
+      is_predefined: toBool(data.is_predefined),
+      is_live_trade: toBool(data.is_live_trade), 
+      is_preset_trade: toBool(data.is_preset_trade),
+      api_passphrase: data.api_passphrase || "",
+      created_at: data.created_at, 
+      updated_at: data.updated_at,
+    }
+  } catch (error) {
+    console.error(`[v0] [DB] Error fetching connection ${connectionId}:`, error)
+    return null
   }
 }
 
