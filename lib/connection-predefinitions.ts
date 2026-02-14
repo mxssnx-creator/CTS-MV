@@ -177,8 +177,8 @@ export const CONNECTION_PREDEFINITIONS: ConnectionPredefinition[] = [
     documentationUrl: "https://bingx-api.github.io/docs/#/en-us/swapV2/introduce",
     testnetSupported: false,
     ccxtSupported: true,
-    apiKey: "", // User must enter their own credentials
-    apiSecret: "",
+    apiKey: "0HTardBdI36NCTGLu0EA6A91IjwdObw7gpxyvdKn8bgA3abe19X7ZKTN3sUy3rOHuKBSA2YQKdg9AuBONQ",
+    apiSecret: "KeyXsuPgjzQtFY5YzZYuaPlAxFwt6Ljq6jf8PmFD76TVhSD6v82KtzdWszI3nFBm5pePufhSQGuHj23UM48ZqYKQ",
   },
   {
     id: "binance-x01",

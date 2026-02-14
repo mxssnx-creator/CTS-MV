@@ -421,17 +421,17 @@ const migrations: Migration[] = [
     up: async (client: any) => {
       await client.set("_schema_version", "14")
       
-      // Clear test/placeholder credentials from all predefined connections
-      // Users must now enter their own credentials
-      const exchanges = ["bingx-x01", "bybit-x03", "binance-x01", "okx-x01", "pionex-x01", "orangex-x01"]
+      // Only clear test/placeholder credentials (00998877 pattern, "test" prefix, too short)
+      // Keep real credentials like BingX which have long valid API keys
+      const exchanges = ["bybit-x03", "binance-x01", "okx-x01", "pionex-x01", "orangex-x01", "gateio-x01", "kucoin-x01", "mexc-x01", "bitget-x01", "huobi-x01"]
       
       for (const connectionId of exchanges) {
         try {
           const data = await client.hgetall(`connection:${connectionId}`)
           if (data && Object.keys(data).length > 0) {
-            // Clear credentials if they're test/placeholder values
+            // Clear credentials if they're test/placeholder values (00998877 pattern)
             const apiKey = data.api_key as string
-            if (apiKey && (apiKey.includes("00998877") || apiKey.startsWith("test") || apiKey.length < 20)) {
+            if (apiKey && apiKey.includes("00998877")) {
               console.log(`[v0] Migration 014: Clearing test credentials from ${connectionId}`)
               await client.hset(`connection:${connectionId}`, {
                 ...data,
@@ -446,7 +446,7 @@ const migrations: Migration[] = [
         }
       }
       
-      console.log(`[v0] Migration 014: Cleared test credentials, users must now enter their own`)
+      console.log(`[v0] Migration 014: Cleared test credentials, real credentials preserved`)
     },
     down: async (client: any) => {
       await client.set("_schema_version", "13")
