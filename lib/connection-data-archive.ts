@@ -22,7 +22,7 @@ export const ConnectionDataArchive = {
     const positions = await client.keys(positionsKey)
     const orders = await client.keys(ordersKey)
     
-    const archiveData = {
+    const archiveData: any = {
       connectionId,
       timestamp: Date.now(),
       trades: [],
@@ -33,30 +33,30 @@ export const ConnectionDataArchive = {
     
     // Archive trades
     for (const key of trades) {
-      const tradeData = await client.hGetAll(key)
-      if (tradeData) {
+      const tradeData = await client.hgetall(key)
+      if (tradeData && Object.keys(tradeData).length > 0) {
         archiveData.trades.push(tradeData)
       }
     }
     
     // Archive positions
     for (const key of positions) {
-      const posData = await client.hGetAll(key)
-      if (posData) {
+      const posData = await client.hgetall(key)
+      if (posData && Object.keys(posData).length > 0) {
         archiveData.positions.push(posData)
       }
     }
     
     // Archive orders
     for (const key of orders) {
-      const orderData = await client.hGetAll(key)
-      if (orderData) {
+      const orderData = await client.hgetall(key)
+      if (orderData && Object.keys(orderData).length > 0) {
         archiveData.orders.push(orderData)
       }
     }
     
     // Store archive with 30-day expiry
-    await client.setEx(archiveKey, 30 * 24 * 60 * 60, JSON.stringify(archiveData))
+    await client.set(archiveKey, JSON.stringify(archiveData), { ex: 30 * 24 * 60 * 60 })
     console.log(`[v0] Archived connection data for ${connectionId}:`, archiveData)
     
     return archiveKey
@@ -93,21 +93,21 @@ export const ConnectionDataArchive = {
     for (const trade of archiveData.trades) {
       const tradeId = trade.id || `trade_${Date.now()}`
       const tradeKey = `trades:connection:${connectionId}:${tradeId}`
-      await client.hSet(tradeKey, trade)
+      await client.hset(tradeKey, trade)
     }
     
     // Restore positions
     for (const position of archiveData.positions) {
       const posId = position.id || `pos_${Date.now()}`
       const posKey = `positions:connection:${connectionId}:${posId}`
-      await client.hSet(posKey, position)
+      await client.hset(posKey, position)
     }
     
     // Restore orders
     for (const order of archiveData.orders) {
       const orderId = order.id || `order_${Date.now()}`
       const orderKey = `orders:connection:${connectionId}:${orderId}`
-      await client.hSet(orderKey, order)
+      await client.hset(orderKey, order)
     }
     
     return archiveData
@@ -124,24 +124,24 @@ export const ConnectionDataArchive = {
     const trades = await client.keys(`trades:connection:${oldConnectionId}:*`)
     for (const oldKey of trades) {
       const newKey = oldKey.replace(`connection:${oldConnectionId}`, `connection:${newConnectionId}`)
-      const data = await client.hGetAll(oldKey)
-      await client.hSet(newKey, data)
+      const data = await client.hgetall(oldKey)
+      if (data && Object.keys(data).length > 0) await client.hset(newKey, data)
     }
     
     // Migrate all positions
     const positions = await client.keys(`positions:connection:${oldConnectionId}:*`)
     for (const oldKey of positions) {
       const newKey = oldKey.replace(`connection:${oldConnectionId}`, `connection:${newConnectionId}`)
-      const data = await client.hGetAll(oldKey)
-      await client.hSet(newKey, data)
+      const data = await client.hgetall(oldKey)
+      if (data && Object.keys(data).length > 0) await client.hset(newKey, data)
     }
     
     // Migrate all orders
     const orders = await client.keys(`orders:connection:${oldConnectionId}:*`)
     for (const oldKey of orders) {
       const newKey = oldKey.replace(`connection:${oldConnectionId}`, `connection:${newConnectionId}`)
-      const data = await client.hGetAll(oldKey)
-      await client.hSet(newKey, data)
+      const data = await client.hgetall(oldKey)
+      if (data && Object.keys(data).length > 0) await client.hset(newKey, data)
     }
     
     console.log(`[v0] Migrated data from ${oldConnectionId} to ${newConnectionId}`)
