@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getAllConnections, initRedis, createConnection } from "@/lib/redis-db"
 import { generateConnectionIdFromApiKey, isApiKeyInUse } from "@/lib/connection-id-manager"
+import { CONNECTION_PREDEFINITIONS } from "@/lib/connection-predefinitions"
 
 export const runtime = "nodejs"
 
@@ -13,6 +14,44 @@ export async function GET(request: NextRequest) {
 
     await initRedis()
     let connections = await getAllConnections()
+
+    // Auto-initialize predefined connections if none exist
+    if (connections.length === 0) {
+      console.log("[v0] [API] No connections found, auto-initializing predefined connections...")
+      
+      for (const predefined of CONNECTION_PREDEFINITIONS) {
+        try {
+          const connection = {
+            id: predefined.id,
+            name: predefined.name,
+            exchange: predefined.exchange,
+            api_type: predefined.apiType || "perpetual_futures",
+            connection_method: predefined.connectionMethod || "rest",
+            connection_library: predefined.connectionLibrary || "native",
+            margin_type: predefined.marginType || "cross",
+            position_mode: predefined.positionMode || "hedge",
+            is_testnet: false,
+            is_enabled: true,
+            is_enabled_dashboard: false,
+            is_predefined: true,
+            api_key: predefined.apiKey || "",
+            api_secret: predefined.apiSecret || "",
+            api_passphrase: "",
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }
+          
+          await createConnection(connection)
+          console.log(`[v0] [API] Auto-created predefined connection: ${predefined.name}`)
+        } catch (error) {
+          console.error(`[v0] [API] Failed to auto-create ${predefined.name}:`, error)
+        }
+      }
+      
+      // Reload connections after initialization
+      connections = await getAllConnections()
+      console.log("[v0] [API] Predefined connections initialized, total:", connections.length)
+    }
 
     if (exchange) {
       connections = connections.filter((c) => c.exchange?.toLowerCase() === exchange.toLowerCase())
