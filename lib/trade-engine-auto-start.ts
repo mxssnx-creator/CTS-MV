@@ -42,17 +42,16 @@ export async function initializeTradeEngineAutoStart(): Promise<void> {
       console.log(`[v0] [Auto-Start] Connection: ${conn.name} - enabled:${conn.is_enabled}, active:${conn.is_active}`)
     })
 
-    // Filter for enabled AND active connections (handle string boolean conversion from Redis)
-    const activeConnections = connections.filter((c) => {
+    // Filter for enabled connections (no need to require is_active - engines can run without active trades)
+    const enabledConnections = connections.filter((c) => {
       const isEnabled = c.is_enabled === true || c.is_enabled === "true" || c.is_enabled === "1"
-      const isActive = c.is_active === true || c.is_active === "true" || c.is_active === "1"
-      return isEnabled && isActive
+      return isEnabled  // Only require enabled, not active
     })
 
-    console.log(`[v0] [Auto-Start] Found ${activeConnections.length} active connections out of ${connections.length} total`)
+    console.log(`[v0] [Auto-Start] Found ${enabledConnections.length} enabled connections out of ${connections.length} total`)
 
-    if (activeConnections.length === 0) {
-      console.log("[v0] Auto-start: No active connections to start, monitoring for changes...")
+    if (enabledConnections.length === 0) {
+      console.log("[v0] Auto-start: No enabled connections to start, monitoring for changes...")
       autoStartInitialized = true
       startConnectionMonitoring()
       return
@@ -65,7 +64,7 @@ export async function initializeTradeEngineAutoStart(): Promise<void> {
 
     let successCount = 0
 
-    for (const connection of activeConnections) {
+    for (const connection of enabledConnections) {
       try {
         await coordinator.startEngine(connection.id, {
           connectionId: connection.id,
@@ -80,7 +79,7 @@ export async function initializeTradeEngineAutoStart(): Promise<void> {
       }
     }
 
-    console.log("[v0] Auto-start completed: started", successCount, "of", activeConnections.length, "engines")
+    console.log("[v0] Auto-start completed: started", successCount, "of", enabledConnections.length, "engines")
     autoStartInitialized = true
     startConnectionMonitoring()
   } catch (error) {
@@ -107,8 +106,7 @@ function startConnectionMonitoring(): void {
 
       const enabledConnections = connections.filter((c) => {
         const isEnabled = c.is_enabled === true || c.is_enabled === "true" || c.is_enabled === "1"
-        const isActive = c.is_active === true || c.is_active === "true" || c.is_active === "1"
-        return isEnabled && isActive
+        return isEnabled  // Only require enabled, not active
       })
 
       // If connection count changed, log it

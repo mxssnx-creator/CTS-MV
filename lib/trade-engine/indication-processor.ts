@@ -44,7 +44,11 @@ export class IndicationProcessor {
           : []
 
       if (historicalData.length === 0) {
-        console.log(`[v0] No historical market data available for ${symbol}`)
+        // No market data yet - this is expected on first startup
+        // Log at debug level only (not every symbol)
+        if (Math.random() < 0.1) {
+          console.log(`[v0] [Indication] Historical data not available yet - trade engine in startup phase`)
+        }
         return
       }
 
@@ -264,7 +268,8 @@ export class IndicationProcessor {
 
       // getMarketData returns a single object or null - EXPLICITLY GUARD
       if (!rawData) {
-        console.log(`[v0] No market data available for ${symbol}`)
+        // Silently return null - market data is not available yet
+        // This is expected behavior during startup phase
         return null
       }
 
