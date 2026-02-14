@@ -93,18 +93,19 @@ export function ConnectionStateProvider({ children }: { children: ReactNode }) {
   const loadExchangeConnectionsActive = async () => {
     setIsExchangeConnectionsActiveLoading(true)
     try {
-      console.log("[v0] [ConnectionState] Loading ExchangeConnectionsActive (enabled only)")
-      const response = await fetch("/api/settings/connections?enabled=true")
+      console.log("[v0] [ConnectionState] Loading ExchangeConnectionsActive (dashboard visible)")
+      // Load connections that are visible on dashboard (is_enabled_dashboard = true)
+      const response = await fetch("/api/settings/connections?dashboard=true")
       if (response.ok) {
         const data = await response.json()
         const connections = data.connections || []
         console.log("[v0] [ConnectionState] Loaded", connections.length, "ExchangeConnectionsActive")
         setExchangeConnectionsActive(connections)
         
-        // Initialize status map for each connection (default: inactive/disabled)
+        // Initialize status map - use is_enabled from connection as initial state
         const statusMap = new Map<string, boolean>()
         connections.forEach((conn: ExchangeConnection) => {
-          statusMap.set(conn.id, false) // default: not active in dashboard
+          statusMap.set(conn.id, conn.is_enabled === true || conn.is_enabled === "1")
         })
         setExchangeConnectionsActiveStatus(statusMap)
       }

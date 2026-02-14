@@ -9,6 +9,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const exchange = searchParams.get("exchange")
     const enabled = searchParams.get("enabled")
+    const dashboard = searchParams.get("dashboard")
 
     await initRedis()
     let connections = await getAllConnections()
@@ -17,8 +18,14 @@ export async function GET(request: NextRequest) {
       connections = connections.filter((c) => c.exchange?.toLowerCase() === exchange.toLowerCase())
     }
 
+    // Filter by is_enabled for trade engine status
     if (enabled === "true") {
-      connections = connections.filter((c) => c.is_enabled === true)
+      connections = connections.filter((c) => c.is_enabled === true || c.is_enabled === "1")
+    }
+
+    // Filter by is_enabled_dashboard for dashboard visibility
+    if (dashboard === "true") {
+      connections = connections.filter((c) => c.is_enabled_dashboard === true || c.is_enabled_dashboard === "1")
     }
 
     return NextResponse.json({ success: true, count: connections.length, connections })

@@ -384,11 +384,16 @@ export async function getConnection(connectionId: string): Promise<any> {
     connection_library: data.connection_library || "ccxt",
     margin_type: data.margin_type || "isolated",
     position_mode: data.position_mode || "one-way",
-    is_testnet: data.is_testnet === "1", is_enabled: data.is_enabled === "1",
-    is_active: data.is_active === "1", is_predefined: data.is_predefined === "1",
-    is_live_trade: data.is_live_trade === "1", is_preset_trade: data.is_preset_trade === "1",
+    is_testnet: data.is_testnet === "1", 
+    is_enabled: data.is_enabled === "1",
+    is_enabled_dashboard: data.is_enabled_dashboard === "1", // Dashboard visibility
+    is_active: data.is_active === "1", 
+    is_predefined: data.is_predefined === "1",
+    is_live_trade: data.is_live_trade === "1", 
+    is_preset_trade: data.is_preset_trade === "1",
     api_passphrase: data.api_passphrase || "",
-    created_at: data.created_at, updated_at: data.updated_at,
+    created_at: data.created_at, 
+    updated_at: data.updated_at,
   }
 }
 
