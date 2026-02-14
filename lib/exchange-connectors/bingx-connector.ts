@@ -48,17 +48,21 @@ export class BingXConnector extends BaseExchangeConnector {
       // Generate signature from the query string
       const signature = crypto.createHmac("sha256", this.credentials.apiSecret).update(queryString).digest("hex")
 
+      this.log(`[Debug] Query string: ${queryString}`)
+      this.log(`[Debug] Signature: ${signature}`)
+      this.log(`[Debug] API Key: ${this.credentials.apiKey?.substring(0, 10)}...`)
+
       this.log("Fetching account balance...")
 
-      const response = await this.rateLimitedFetch(
-        `${baseUrl}/openApi/swap/v3/user/balance?${queryString}&signature=${signature}`,
-        {
-          method: "GET",
-          headers: {
-            "X-BX-APIKEY": this.credentials.apiKey,
-          },
+      const url = `${baseUrl}/openApi/swap/v3/user/balance?${queryString}&signature=${signature}`
+      this.log(`[Debug] URL: ${url.substring(0, 100)}...`)
+
+      const response = await this.rateLimitedFetch(url, {
+        method: "GET",
+        headers: {
+          "X-BX-APIKEY": this.credentials.apiKey,
         },
-      )
+      })
 
       const data = await safeParseResponse(response)
 
@@ -66,6 +70,7 @@ export class BingXConnector extends BaseExchangeConnector {
       if (!response.ok || data.error || data.code !== 0) {
         const errorMsg = data.error || data.msg || `HTTP ${response.status}: ${response.statusText}`
         this.logError(`API Error: ${errorMsg}`)
+        this.logError(`[Debug] Response code: ${data.code}, Error: ${data.error}`)
         throw new Error(errorMsg)
       }
 
