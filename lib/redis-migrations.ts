@@ -375,6 +375,39 @@ const migrations: Migration[] = [
       await client.set("_schema_version", "11")
     },
   },
+  {
+    name: "013-risk-management-and-engines",
+    version: 13,
+    up: async (client: any) => {
+      await client.set("_schema_version", "13")
+      
+      // Risk Management Settings with defaults
+      await client.hset("settings:risk-management", {
+        enabled: "false", // Disabled for now
+        max_open_positions: "maximal",
+        daily_loss_limit_percent: "65",
+        max_drawdown_percent: "55",
+        position_size_limit: "100000",
+        stop_loss_enabled: "true",
+        take_profit_enabled: "true",
+      })
+      
+      // Trade Engine Controls
+      await client.hset("settings:engines", {
+        preset_trade_engine: "true", // Enabled
+        main_trade_engine: "true", // Enabled
+        realtime_positions_engine: "true", // Enabled
+        risk_management_engine: "false", // Disabled for now
+      })
+      
+      console.log("[v0] Migration 013: Risk management settings and engine controls added")
+    },
+    down: async (client: any) => {
+      await client.del("settings:risk-management")
+      await client.del("settings:engines")
+      await client.set("_schema_version", "12")
+    },
+  },
 ]
 
 /**
