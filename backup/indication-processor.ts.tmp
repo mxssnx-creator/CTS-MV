@@ -262,12 +262,7 @@ export class IndicationProcessor {
       await redis.initRedis()
       const rawData = await redis.getMarketData(symbol)
 
-      // getMarketData returns a single object or null - EXPLICITLY GUARD
-      if (!rawData) {
-        console.log(`[v0] No market data available for ${symbol}`)
-        return null
-      }
-
+      // getMarketData returns a single object or null
       const latest = Array.isArray(rawData) ? rawData[0] : rawData
 
       if (latest) {
