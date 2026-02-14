@@ -29,32 +29,62 @@ export class PionexConnector extends BaseExchangeConnector {
     }
   }
 
+  /**
+   * Generate Pionex API signature per official docs:
+   * 1. Sort query params by key in ASCII order (including timestamp)
+   * 2. Build: METHOD + PATH + ? + sorted_query_string
+   * 3. For POST/DELETE with body, append body JSON after step 2
+   * 4. HMAC-SHA256 with API Secret, send as PIONEX-SIGNATURE header
+   */
+  private generateSignature(method: string, path: string, params: Record<string, string>, body?: string): string {
+    // Sort params by key in ascending ASCII order
+    const sortedKeys = Object.keys(params).sort()
+    const queryString = sortedKeys.map((k) => `${k}=${params[k]}`).join("&")
+
+    // Build the string to sign: METHOD + PATH?sorted_query
+    let stringToSign = `${method}${path}?${queryString}`
+
+    // For POST/DELETE with body, append the body
+    if (body) {
+      stringToSign += body
+    }
+
+    return crypto.createHmac("sha256", this.credentials.apiSecret).update(stringToSign).digest("hex")
+  }
+
   async getBalance(): Promise<ExchangeConnectorResult> {
-    const timestamp = Date.now()
+    const timestamp = Date.now().toString()
     const baseUrl = this.getBaseUrl()
+    const method = "GET"
+    const path = "/api/v1/account/balances"
 
     this.log("Generating signature...")
 
     try {
-      const queryString = `timestamp=${timestamp}`
-      const signature = crypto.createHmac("sha256", this.credentials.apiSecret).update(queryString).digest("hex")
+      const params: Record<string, string> = { timestamp }
+      const signature = this.generateSignature(method, path, params)
+
+      // Build sorted query string for the URL
+      const sortedKeys = Object.keys(params).sort()
+      const queryString = sortedKeys.map((k) => `${k}=${params[k]}`).join("&")
 
       this.log("Fetching account balance...")
 
       const response = await this.rateLimitedFetch(
-        `${baseUrl}/api/v1/account/balances?${queryString}&signature=${signature}`,
+        `${baseUrl}${path}?${queryString}`,
         {
-          method: "GET",
+          method,
           headers: {
             "PIONEX-KEY": this.credentials.apiKey,
+            "PIONEX-SIGNATURE": signature,
           },
         },
       )
 
       const data = await safeParseResponse(response)
 
-      // Check for error responses or HTML error pages
-      if (!response.ok || data.error || !data.result) {
+      // Check for error responses
+      if (!response.ok || data.error || data.result === false) {
         const errorMsg = data.error || data.message || `HTTP ${response.status}: ${response.statusText}`
         this.logError(`API Error: ${errorMsg}`)
         throw new Error(errorMsg)
