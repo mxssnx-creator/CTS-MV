@@ -36,7 +36,6 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
     await initRedis()
     
-    // Archive connection data before deletion so it can be restored if re-added
     console.log(`[v0] Archiving data for connection ${id}...`)
     await ConnectionDataArchive.archiveConnectionData(id)
     
@@ -94,7 +93,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 }
 
-
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     const body = await request.json()

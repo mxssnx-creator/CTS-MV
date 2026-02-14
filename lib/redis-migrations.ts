@@ -421,30 +421,9 @@ const migrations: Migration[] = [
     up: async (client: any) => {
       await client.set("_schema_version", "14")
       
-      // Update BingX connection with new credentials
-      const bingxConnectionId = "bingx-x01"
-      const newApiKey = "0HTardBdI36NCTGLu0EA6A91IjwdObw7gpxyvdKn8bgA3abe19X7ZKTN3sUy3rOHuKBSA2YQKdg9AuBONQ"
-      const newApiSecret = "KeyXsuPgjzQtFY5YzZYuaPlAxFwt6Ljq6jf8PmFD76TVhSD6v82KtzdWszI3nFBm5pePufhSQGuHj23UM48ZqYKQ"
-      
-      try {
-        // Get the current BingX connection
-        const bingxData = await client.hgetall(`connection:${bingxConnectionId}`)
-        
-        if (bingxData && Object.keys(bingxData).length > 0) {
-          // Update the API credentials
-          await client.hset(`connection:${bingxConnectionId}`, {
-            ...bingxData,
-            api_key: newApiKey,
-            api_secret: newApiSecret,
-            updated_at: new Date().toISOString(),
-          })
-          console.log(`[v0] Migration 014: Updated BingX (${bingxConnectionId}) credentials`)
-        } else {
-          console.warn(`[v0] Migration 014: BingX connection (${bingxConnectionId}) not found in Redis`)
-        }
-      } catch (error) {
-        console.error(`[v0] Migration 014: Error updating BingX credentials:`, error)
-      }
+      // Note: BingX and other connections now use user-provided credentials
+      // This migration is a no-op but kept for schema version tracking
+      console.log(`[v0] Migration 014: Schema version updated to 14 (credentials now user-provided)`)
     },
     down: async (client: any) => {
       await client.set("_schema_version", "13")

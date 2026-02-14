@@ -156,8 +156,8 @@ export const CONNECTION_PREDEFINITIONS: ConnectionPredefinition[] = [
     documentationUrl: "https://bybit-exchange.github.io/docs/v5/intro",
     testnetSupported: true,
     ccxtSupported: true,
-    apiKey: "00998877009988770099887700998877",
-    apiSecret: "00998877009988770099887700998877",
+    apiKey: "", // User must enter their own credentials
+    apiSecret: "",
   },
   {
     id: "bingx-x01",
@@ -177,8 +177,8 @@ export const CONNECTION_PREDEFINITIONS: ConnectionPredefinition[] = [
     documentationUrl: "https://bingx-api.github.io/docs/#/en-us/swapV2/introduce",
     testnetSupported: false,
     ccxtSupported: true,
-    apiKey: "0HTardBdI36NCTGLu0EA6A91IjwdObw7gpxyvdKn8bgA3abe19X7ZKTN3sUy3rOHuKBSA2YQKdg9AuBONQ",
-    apiSecret: "KeyXsuPgjzQtFY5YzZYuaPlAxFwt6Ljq6jf8PmFD76TVhSD6v82KtzdWszI3nFBm5pePufhSQGuHj23UM48ZqYKQ",
+    apiKey: "", // User must enter their own credentials
+    apiSecret: "",
   },
   {
     id: "binance-x01",
@@ -198,8 +198,8 @@ export const CONNECTION_PREDEFINITIONS: ConnectionPredefinition[] = [
     documentationUrl: "https://binance-docs.github.io/apidocs/futures/en/",
     testnetSupported: true,
     ccxtSupported: true,
-    apiKey: "00998877009988770099887700998877",
-    apiSecret: "00998877009988770099887700998877",
+    apiKey: "", // User must enter their own credentials
+    apiSecret: "",
   },
   {
     id: "okx-x01",

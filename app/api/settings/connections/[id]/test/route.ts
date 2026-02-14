@@ -59,8 +59,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     testLog.push(`[${new Date().toISOString()}] Connection found: ${connection.name} (${connection.exchange})`)
 
-    if (!connection.api_key || connection.api_key === "" || connection.api_key.includes("PLACEHOLDER")) {
-      testLog.push(`[${new Date().toISOString()}] WARNING: API key appears to be empty or placeholder`)
+    // Validate credentials - check for placeholder/test values
+    const isPlaceholder = !connection.api_key || 
+      connection.api_key === "" || 
+      connection.api_key.includes("PLACEHOLDER") ||
+      connection.api_key.includes("00998877") ||
+      connection.api_key.startsWith("test") ||
+      connection.api_key.length < 20
+
+    if (isPlaceholder) {
+      testLog.push(`[${new Date().toISOString()}] WARNING: API key is placeholder or test credentials`)
+      testLog.push(`[${new Date().toISOString()}] Please configure valid API credentials for this exchange before testing`)
 
       await updateConnection(id, {
         ...connection,
@@ -71,12 +80,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       })
 
       const manager = getConnectionManager()
-      await manager.markTestFailed(id, "API credentials not configured")
+      await manager.markTestFailed(id, "API credentials not configured - using placeholder/test values")
 
       return NextResponse.json(
         {
-          error: "Invalid credentials",
-          details: "API key and secret must be configured. Please enter your valid exchange API credentials.",
+          error: "Credentials not configured",
+          details: `This connection is using placeholder credentials. Please enter your real ${connection.exchange.toUpperCase()} API credentials in the Settings page to test the connection.`,
           log: testLog,
           duration: Date.now() - startTime,
         },
