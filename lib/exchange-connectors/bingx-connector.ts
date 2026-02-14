@@ -89,6 +89,8 @@ export class BingXConnector extends BaseExchangeConnector {
       this.log("Successfully retrieved account data")
 
       // Parse balance data
+      this.log(`[Debug] Full response data: ${JSON.stringify(data).substring(0, 500)}`)
+      
       const balanceData = data.data?.balance || []
       if (!Array.isArray(balanceData)) {
         this.logError(`Invalid balance data format: ${JSON.stringify(balanceData).substring(0, 200)}`)
@@ -98,6 +100,8 @@ export class BingXConnector extends BaseExchangeConnector {
       this.log(`[Debug] Received ${balanceData.length} balance entries`)
       if (balanceData.length > 0) {
         this.log(`[Debug] First balance entry: ${JSON.stringify(balanceData[0]).substring(0, 300)}`)
+      } else {
+        this.log(`[Debug] balance array is empty! data.data: ${JSON.stringify(data.data).substring(0, 300)}`)
       }
 
       // Extract USDT balance - BingX returns balance as a number
