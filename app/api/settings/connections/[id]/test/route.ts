@@ -2,7 +2,6 @@ import { type NextRequest, NextResponse } from "next/server"
 import { SystemLogger } from "@/lib/system-logger"
 import { createExchangeConnector } from "@/lib/exchange-connectors"
 import { initRedis, getConnection, updateConnection, getSettings } from "@/lib/redis-db"
-import { getConnectionManager } from "@/lib/connection-manager"
 import { RateLimiter } from "@/lib/rate-limiter"
 
 const TEST_TIMEOUT_MS = 30000
@@ -143,9 +142,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       updated_at: new Date().toISOString(),
     })
 
-    const manager = getConnectionManager()
-    await manager.markTestPassed(id, result.balance)
-
     await SystemLogger.logConnection(`Connection test successful: ${connection.name}`, id, "info", {
       balance: result.balance,
       duration,
@@ -189,10 +185,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           last_test_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
-
-        const manager = getConnectionManager()
-        await manager.markTestFailed(id, userFriendlyError)
       }
+    } catch (updateError) {
+      console.error("[v0] Failed to update connection with error status:", updateError)
+    }
     } catch (updateError) {
       console.error("[v0] Failed to update connection with error status:", updateError)
     }
