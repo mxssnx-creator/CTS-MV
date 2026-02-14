@@ -12,14 +12,7 @@ export async function GET(request: NextRequest) {
     const dashboard = searchParams.get("dashboard")
 
     await initRedis()
-    
-    // Small retry delay if this is the first few calls (migrations might still be running)
     let connections = await getAllConnections()
-    if (connections.length === 0 && !exchange && !enabled && !dashboard) {
-      // First call returning 0 connections - wait a bit and retry
-      await new Promise(resolve => setTimeout(resolve, 100))
-      connections = await getAllConnections()
-    }
 
     if (exchange) {
       connections = connections.filter((c) => c.exchange?.toLowerCase() === exchange.toLowerCase())

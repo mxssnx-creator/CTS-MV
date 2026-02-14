@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
+import { createContext, useContext, useState, useEffect, useRef, type ReactNode } from "react"
 import type { ExchangeConnection } from "@/lib/types"
 
 interface TradeEngineStatus {
@@ -81,38 +81,12 @@ export function ConnectionStateProvider({ children }: { children: ReactNode }) {
       const response = await fetch("/api/settings/connections")
       if (response.ok) {
         const data = await response.json()
-        const connections = data.connections || []
-        console.log("[v0] [ConnectionState] Loaded", connections.length, "base connections")
-        
-        // If we got 0 connections on first load, retry once
-        if (connections.length === 0 && lastLoadRef.current.base === 0) {
-          console.log("[v0] [ConnectionState] Got 0 connections on first load - retrying...")
-          await new Promise(resolve => setTimeout(resolve, 500))
-          const retryResponse = await fetch("/api/settings/connections")
-          if (retryResponse.ok) {
-            const retryData = await retryResponse.json()
-            const retryConnections = retryData.connections || []
-            console.log("[v0] [ConnectionState] Retry loaded", retryConnections.length, "connections")
-            if (retryConnections.length > 0) {
-              setBaseConnections(retryConnections)
-              const statusMap = new Map<string, { enabled: boolean; inserted: boolean }>()
-              retryConnections.forEach((conn: ExchangeConnection) => {
-                statusMap.set(conn.id, { 
-                  enabled: conn.is_enabled === true || conn.is_enabled === "true",
-                  inserted: false 
-                })
-              })
-              setBaseConnectionStatuses(statusMap)
-              return
-            }
-          }
-        }
-        
-        setBaseConnections(connections)
+        console.log("[v0] [ConnectionState] Loaded", data.connections?.length || 0, "base connections")
+        setBaseConnections(data.connections || [])
         
         // Initialize status map
         const statusMap = new Map<string, { enabled: boolean; inserted: boolean }>()
-        connections.forEach((conn: ExchangeConnection) => {
+        data.connections?.forEach((conn: ExchangeConnection) => {
           statusMap.set(conn.id, { 
             enabled: conn.is_enabled === true || conn.is_enabled === "true",
             inserted: false 
@@ -121,7 +95,7 @@ export function ConnectionStateProvider({ children }: { children: ReactNode }) {
         setBaseConnectionStatuses(statusMap)
         
         // Also update Active connections if any are marked as actively using
-        const activeConns = connections.filter((c: ExchangeConnection) => 
+        const activeConns = data.connections?.filter((c: ExchangeConnection) => 
           c.is_enabled_dashboard === true || c.is_enabled_dashboard === "1"
         ) || []
         
@@ -160,21 +134,8 @@ export function ConnectionStateProvider({ children }: { children: ReactNode }) {
       const response = await fetch("/api/settings/connections?dashboard=true")
       if (response.ok) {
         const data = await response.json()
-        let connections = data.connections || []
+        const connections = data.connections || []
         console.log("[v0] [ConnectionState] Loaded", connections.length, "Active Connections")
-        
-        // If we got 0 connections on first load, retry once
-        if (connections.length === 0 && lastLoadRef.current.active === 0) {
-          console.log("[v0] [ConnectionState] Got 0 active connections on first load - retrying...")
-          await new Promise(resolve => setTimeout(resolve, 500))
-          const retryResponse = await fetch("/api/settings/connections?dashboard=true")
-          if (retryResponse.ok) {
-            const retryData = await retryResponse.json()
-            connections = retryData.connections || []
-            console.log("[v0] [ConnectionState] Retry loaded", connections.length, "active connections")
-          }
-        }
-        
         setExchangeConnectionsActive(connections)
         
         // Initialize status map - use is_enabled from connection as initial state (INDEPENDENT from Settings)

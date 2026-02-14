@@ -358,22 +358,21 @@ const migrations: Migration[] = [
       console.log(`[v0] Migration 012: Processing ${total} connections for active list visibility`)
       
       for (const connId of connections) {
-        try {
-          const connData = await client.hgetall(`connection:${connId}`)
-          if (connData && Object.keys(connData).length > 0) {
-            const exchange = (connData.exchange || "").toLowerCase()
-            
-            // Mark Bybit and BingX as actively using by default (is_enabled_dashboard = true)
-            // All others start as not actively using (is_enabled_dashboard = false)
-            const shouldBeActivelyUsing = ["bybit", "bingx"].includes(exchange)
-            const newDashboardValue = shouldBeActivelyUsing ? "1" : "0"
-            
-            // Proper Redis HSET format: key field value [field value ...]
-            await client.hset(`connection:${connId}`, "is_enabled_dashboard", newDashboardValue)
-            updated++
-          }
-        } catch (err) {
-          console.warn(`[v0] Migration 012: Error updating ${connId}:`, err)
+        const connData = await client.hgetall(`connection:${connId}`)
+        if (connData && Object.keys(connData).length > 0) {
+          const exchange = (connData.exchange || "").toLowerCase()
+          
+          // Mark Bybit and BingX as actively using by default (is_enabled_dashboard = true)
+          // All others start as not actively using (is_enabled_dashboard = false)
+          const shouldBeActivelyUsing = ["bybit", "bingx"].includes(exchange)
+          const newDashboardValue = shouldBeActivelyUsing ? "1" : "0"
+          
+          // Always set/update the field to ensure it exists
+          connData.is_enabled_dashboard = newDashboardValue
+          await client.hset(`connection:${connId}`, connData)
+          updated++
+          
+          console.log(`[v0] Migration 012: Set ${connId} (${exchange}) active list = ${newDashboardValue}`)
         }
       }
       
@@ -390,19 +389,23 @@ const migrations: Migration[] = [
       await client.set("_schema_version", "13")
       
       // Risk Management Settings with defaults
-      await client.hset("settings:risk-management", "enabled", "false")
-      await client.hset("settings:risk-management", "max_open_positions", "maximal")
-      await client.hset("settings:risk-management", "daily_loss_limit_percent", "65")
-      await client.hset("settings:risk-management", "max_drawdown_percent", "55")
-      await client.hset("settings:risk-management", "position_size_limit", "100000")
-      await client.hset("settings:risk-management", "stop_loss_enabled", "true")
-      await client.hset("settings:risk-management", "take_profit_enabled", "true")
+      await client.hset("settings:risk-management", {
+        enabled: "false", // Disabled for now
+        max_open_positions: "maximal",
+        daily_loss_limit_percent: "65",
+        max_drawdown_percent: "55",
+        position_size_limit: "100000",
+        stop_loss_enabled: "true",
+        take_profit_enabled: "true",
+      })
       
       // Trade Engine Controls
-      await client.hset("settings:engines", "preset_trade_engine", "true")
-      await client.hset("settings:engines", "main_trade_engine", "true")
-      await client.hset("settings:engines", "realtime_positions_engine", "true")
-      await client.hset("settings:engines", "risk_management_engine", "false")
+      await client.hset("settings:engines", {
+        preset_trade_engine: "true", // Enabled
+        main_trade_engine: "true", // Enabled
+        realtime_positions_engine: "true", // Enabled
+        risk_management_engine: "false", // Disabled for now
+      })
       
       console.log("[v0] Migration 013: Risk management settings and engine controls added")
     },

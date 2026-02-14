@@ -98,6 +98,9 @@ export async function initializeTradeEngineAutoStart(): Promise<void> {
  */
 function startConnectionMonitoring(): void {
   let lastEnabledCount = 0
+  let cachedSettings: any = null
+  let settingsCacheTime = 0
+  const SETTINGS_CACHE_TTL = 60000 // 60 seconds
 
   autoStartTimer = setInterval(async () => {
     try {
@@ -121,6 +124,14 @@ function startConnectionMonitoring(): void {
         lastEnabledCount = enabledConnections.length
       }
 
+      // Load settings ONCE per interval, not per connection
+      let settings = cachedSettings
+      if (!settings || Date.now() - settingsCacheTime > SETTINGS_CACHE_TTL) {
+        settings = await loadSettingsAsync()
+        cachedSettings = settings
+        settingsCacheTime = Date.now()
+      }
+
       const coordinator = getGlobalTradeEngineCoordinator()
 
       for (const connection of enabledConnections) {
@@ -132,7 +143,6 @@ function startConnectionMonitoring(): void {
             console.log(`[v0] [Monitor] Auto-starting trade engine for: ${connection.name}`)
 
             if (connection.api_key && connection.api_secret) {
-              const settings = await loadSettingsAsync()
               await coordinator.startEngine(connection.id, {
                 connectionId: connection.id,
                 indicationInterval: settings.mainEngineIntervalMs ? settings.mainEngineIntervalMs / 1000 : 5,
