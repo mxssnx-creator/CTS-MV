@@ -550,7 +550,13 @@ export async function getRedisStats(): Promise<any> {
   try {
     const client = getClient()
     const dbSize = await client.dbsize()
-    return { connected: true, dbSize, timestamp: new Date().toISOString() }
+    return { 
+      connected: true, 
+      dbSize,
+      keyCount: dbSize,  // Add keyCount for compatibility
+      total_keys: dbSize,  // Add total_keys for compatibility
+      timestamp: new Date().toISOString() 
+    }
   } catch (error) {
     return { connected: false, error: String(error) }
   }

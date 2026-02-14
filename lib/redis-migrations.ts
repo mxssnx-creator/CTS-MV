@@ -18,30 +18,21 @@ const migrations: Migration[] = [
     version: 1,
     up: async (client: any) => {
       await client.set("_schema_version", "1")
-      await client.sadd("connections:all", "")
-      await client.sadd("connections:bybit", "")
-      await client.sadd("connections:bingx", "")
-      await client.sadd("connections:pionex", "")
-      await client.sadd("connections:orangex", "")
-      await client.sadd("connections:active", "")
-      await client.sadd("connections:inactive", "")
-      await client.sadd("trades:all", "")
-      await client.sadd("trades:open", "")
-      await client.sadd("trades:closed", "")
-      await client.sadd("trades:pending", "")
-      await client.sadd("positions:all", "")
-      await client.sadd("positions:open", "")
-      await client.sadd("positions:closed", "")
-      await client.sadd("users:all", "")
-      await client.sadd("sessions:all", "")
-      await client.sadd("presets:all", "")
-      await client.sadd("preset_types:all", "")
-      await client.sadd("strategies:all", "")
-      await client.sadd("strategies:active", "")
-      await client.sadd("monitoring:events", "")
-      await client.sadd("logs:system", "")
-      await client.sadd("logs:trades", "")
-      await client.sadd("logs:errors", "")
+      // Initialize set keys without empty strings - sets are created empty on first use
+      const keys = [
+        "connections:all", "connections:bybit", "connections:bingx", "connections:pionex", "connections:orangex",
+        "connections:active", "connections:inactive",
+        "trades:all", "trades:open", "trades:closed", "trades:pending",
+        "positions:all", "positions:open", "positions:closed",
+        "users:all", "sessions:all", "presets:all", "preset_types:all",
+        "strategies:all", "strategies:active",
+        "monitoring:events", "logs:system", "logs:trades", "logs:errors"
+      ]
+      // Initialize each set as empty (don't add empty strings)
+      for (const key of keys) {
+        // Just create the key structure by setting a marker
+        await client.set(`_index:${key}`, "initialized")
+      }
       console.log("[v0] Migration 001: Initial schema created")
     },
     down: async (client: any) => {
