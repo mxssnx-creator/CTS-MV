@@ -102,16 +102,16 @@ function getDefaultActiveConnections(): ActiveConnection[] {
   return [
     {
       id: "active-bybit",
-      connectionId: "bybit-main-perpetual",
+      connectionId: "bybit-x03",
       exchangeName: "Bybit",
-      isActive: true,
+      isActive: false, // Not enabled by default (button shows disabled state)
       addedAt: new Date().toISOString(),
     },
     {
       id: "active-bingx",
-      connectionId: "bingx-main-perpetual",
+      connectionId: "bingx-x01",
       exchangeName: "BingX",
-      isActive: true,
+      isActive: false, // Not enabled by default (button shows disabled state)
       addedAt: new Date().toISOString(),
     },
   ]

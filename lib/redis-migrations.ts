@@ -284,7 +284,8 @@ const migrations: Migration[] = [
     version: 11,
     up: async (client: any) => {
       await client.set("_schema_version", "11")
-      const enabledExchanges: string[] = []  // All connections disabled by default on dashboard
+      const enabledExchangesSettings: string[] = ["bybit", "bingx", "pionex", "orangex"] // Settings: enabled for trade engine
+      const insertedExchangesDashboard: string[] = ["bybit", "bingx"] // Dashboard: visible/inserted by default
       const connections = [
         { id: "bybit-x03", name: "Bybit X03", exchange: "bybit", api_type: "unified" },
         { id: "bingx-x01", name: "BingX X01", exchange: "bingx", api_type: "perpetual_futures" },
@@ -305,7 +306,8 @@ const migrations: Migration[] = [
           const key = `connection:${conn.id}`
           const existing = await client.hgetall(key)
           if (!existing || Object.keys(existing).length === 0) {
-            const isEnabled = enabledExchanges.includes(conn.exchange)
+            const isEnabledSettings = enabledExchangesSettings.includes(conn.exchange)
+            const isEnabledDashboard = insertedExchangesDashboard.includes(conn.exchange)
             const storageData = {
               id: conn.id,
               name: conn.name,
@@ -318,9 +320,9 @@ const migrations: Migration[] = [
               margin_type: "cross",
               position_mode: "hedge",
               is_testnet: "0",
-              is_enabled: isEnabled ? "1" : "0", // Settings: trade engine enabled status
-              is_enabled_dashboard: "0", // Dashboard: always disabled by default
-              is_active: isEnabled ? "1" : "0",
+              is_enabled: isEnabledSettings ? "1" : "0", // Settings: trade engine enabled by default for all predefined
+              is_enabled_dashboard: isEnabledDashboard ? "1" : "0", // Dashboard: visible for bybit/bingx only
+              is_active: isEnabledSettings ? "1" : "0",
               is_predefined: "1",
               is_live_trade: "0",
               is_preset_trade: "0",
