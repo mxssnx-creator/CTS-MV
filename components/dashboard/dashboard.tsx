@@ -19,6 +19,7 @@ export function Dashboard() {
   const { selectedExchange } = useExchange()
   const { 
     exchangeConnectionsActive, 
+    setExchangeConnectionsActive,
     loadExchangeConnectionsActive, 
     isExchangeConnectionsActiveLoading,
     exchangeConnectionsActiveStatus,
@@ -126,6 +127,20 @@ export function Dashboard() {
         return
       }
 
+      // IMMEDIATE UI UPDATE: Optimistically update the connection state before API call completes
+      const updatedConnection = {
+        ...connection,
+        is_enabled: enabled,
+        is_live_trade: enabled ? connection.is_live_trade : false,
+        is_preset_trade: enabled ? connection.is_preset_trade : false,
+        updated_at: new Date().toISOString(),
+      }
+      
+      // Update the local state immediately for instant UI feedback
+      setExchangeConnectionsActive(prev => 
+        prev.map(c => c.id === id ? updatedConnection : c)
+      )
+
       const response = await fetch(`/api/settings/connections/${id}/toggle`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -137,15 +152,33 @@ export function Dashboard() {
       })
 
       if (response.ok) {
-        toast.success(`Connection ${enabled ? "enabled" : "disabled"}`)
-        await loadExchangeConnectionsActive()
+        const result = await response.json()
+        console.log("[v0] [Dashboard] Toggle successful - engine status:", result.engineStatus)
+        
+        // Update state with the confirmed response from server
+        if (result.connection) {
+          setExchangeConnectionsActive(prev => 
+            prev.map(c => c.id === id ? result.connection : c)
+          )
+        }
+        
+        toast.success(`Connection ${enabled ? "enabled - trade engine starting..." : "disabled - trade engine stopped"}`)
+        
+        // Refresh in background to ensure state is synchronized
+        setTimeout(() => loadExchangeConnectionsActive(), 2000)
       } else {
         const error = await response.json()
+        // Revert optimistic update on error
+        setExchangeConnectionsActive(prev => 
+          prev.map(c => c.id === id ? connection : c)
+        )
         toast.error(error.details || "Failed to toggle connection")
       }
     } catch (error) {
       console.error("[v0] Failed to toggle connection:", error)
       toast.error("Failed to toggle connection")
+      // Revert optimistic update on error - reload to ensure consistency
+      await loadExchangeConnectionsActive()
     }
   }
 
