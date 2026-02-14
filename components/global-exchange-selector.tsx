@@ -26,13 +26,19 @@ export function GlobalExchangeSelector() {
   return (
     <div className="flex items-center gap-2">
       <span className="text-sm text-muted-foreground">Exchange:</span>
-      <Select value={selectedExchange || ""} onValueChange={(value) => setSelectedExchange(value || null)}>
+      <Select
+        value={activeConnections.find((c) => c.exchange === selectedExchange)?.id || ""}
+        onValueChange={(id) => {
+          const conn = activeConnections.find((c) => c.id === id)
+          setSelectedExchange(conn?.exchange || null)
+        }}
+      >
         <SelectTrigger className="w-[180px] h-9">
           <SelectValue placeholder="Select exchange" />
         </SelectTrigger>
         <SelectContent>
           {activeConnections.map((conn) => (
-            <SelectItem key={conn.id} value={conn.exchange}>
+            <SelectItem key={conn.id} value={conn.id}>
               <div className="flex items-center gap-2">
                 <span>{conn.name}</span>
                 {conn.is_testnet && (
