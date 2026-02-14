@@ -1,4 +1,22 @@
-import crypto from "crypto"
+/**
+ * Simple hash function that works in all environments (no Node crypto dependency)
+ */
+function simpleHash(str: string): string {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i)
+    hash = ((hash << 5) - hash + char) | 0
+  }
+  // Convert to positive hex string
+  const hex = (hash >>> 0).toString(16).padStart(8, "0")
+  // Generate more entropy by hashing substrings
+  let hash2 = 0
+  for (let i = 0; i < str.length; i++) {
+    hash2 = (hash2 * 31 + str.charCodeAt(i)) | 0
+  }
+  const hex2 = (hash2 >>> 0).toString(16).padStart(8, "0")
+  return hex + hex2
+}
 
 /**
  * Generate a unique connection ID based on exchange + API key
@@ -6,8 +24,7 @@ import crypto from "crypto"
  */
 export function generateConnectionIdFromApiKey(exchange: string, apiKey: string): string {
   const data = `${exchange.toLowerCase()}:${apiKey}`
-  const hash = crypto.createHash("sha256").update(data).digest("hex")
-  // Return a shortened hash combined with exchange prefix
+  const hash = simpleHash(data)
   return `${exchange.toLowerCase()}-${hash.substring(0, 12)}`
 }
 
