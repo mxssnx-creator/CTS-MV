@@ -2,6 +2,15 @@
  * Connection Predefinitions
  * Pre-configured exchange connection templates for quick setup
  * Includes API types, library names, and exchange-specific options
+ * 
+ * PRIMARY EXCHANGES (auto-created and enabled on initialization):
+ * - Bybit (bybit-x03)
+ * - BingX (bingx-x01)
+ * - Pionex (pionex-x01)
+ * - OrangeX (orangex-x01)
+ * 
+ * SECONDARY EXCHANGES (available as templates for manual setup):
+ * - Binance, OKX, GateIO, KuCoin, MEXC, Bitget, Huobi
  */
 
 export interface ConnectionPredefinition {

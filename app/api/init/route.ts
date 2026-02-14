@@ -28,15 +28,20 @@ export async function GET() {
     const connections = await getAllConnections()
     console.log("[v0] [Init] Found", connections.length, "existing connections")
     
+    // Define which predefined exchanges should be auto-created and enabled by default
+    const AUTO_CREATE_EXCHANGES = ["bybit", "bingx", "pionex", "orangex"]
+    
     // Seed all predefined connections if they don't exist
     const createdConnections = []
     
     for (const predefined of CONNECTION_PREDEFINITIONS) {
       const exists = connections.some(c => c.id === predefined.id)
+      const shouldAutoCreate = AUTO_CREATE_EXCHANGES.includes(predefined.exchange)
       
-      if (!exists) {
+      // Only auto-create the 4 primary exchanges; others are informational templates
+      if (!exists && shouldAutoCreate) {
         try {
-          console.log(`[v0] [Init] Creating predefined connection: ${predefined.name} (${predefined.id})`)
+          console.log(`[v0] [Init] Auto-creating enabled connection: ${predefined.name} (${predefined.id})`)
           
           const connectionId = await createConnection({
             id: predefined.id,
@@ -48,7 +53,8 @@ export async function GET() {
             margin_type: predefined.marginType,
             position_mode: predefined.positionMode,
             is_testnet: false,
-            is_enabled: true,
+            is_enabled: true, // These 4 are enabled by default
+            is_enabled_dashboard: "0", // But not active until user adds them
             is_predefined: true,
             api_key: predefined.apiKey || "",
             api_secret: predefined.apiSecret || "",
@@ -57,13 +63,16 @@ export async function GET() {
           createdConnections.push({
             id: connectionId,
             name: predefined.name,
-            exchange: predefined.exchange
+            exchange: predefined.exchange,
+            autoCreated: true
           })
           
-          console.log(`[v0] [Init] Created: ${predefined.name}`)
+          console.log(`[v0] [Init] Auto-created and enabled: ${predefined.name}`)
         } catch (error) {
           console.error(`[v0] [Init] Failed to create predefined connection ${predefined.id}:`, error)
         }
+      } else if (!exists && !shouldAutoCreate) {
+        console.log(`[v0] [Init] Skipping non-primary exchange: ${predefined.name} (available as template only)`)
       }
     }
     
