@@ -3,6 +3,7 @@ import { initializeTradeEngineAutoStart } from "@/lib/trade-engine-auto-start"
 import { getGlobalTradeEngineCoordinator } from "@/lib/trade-engine"
 import { seedDefaultPresetTypes } from "@/lib/preset-types-seed"
 import { initRedis, getAllConnections, createConnection } from "@/lib/redis-db"
+import { CONNECTION_PREDEFINITIONS } from "@/lib/connection-predefinitions"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -23,88 +24,73 @@ export async function GET() {
     await seedDefaultPresetTypes()
     console.log("[v0] [Init] Preset types seeded")
     
-    // Create default connections if they don't exist
+    // Get existing connections
     const connections = await getAllConnections()
     console.log("[v0] [Init] Found", connections.length, "existing connections")
     
-    const bybitExists = connections.some(c => c.exchange === "bybit")
-    const bingxExists = connections.some(c => c.exchange === "bingx")
-    
+    // Seed all predefined connections if they don't exist
     const createdConnections = []
     
-    if (!bybitExists) {
-      console.log("[v0] [Init] Creating default Bybit connection...")
-      try {
-        const bybitId = await createConnection({
-          name: "Bybit (Default)",
-          exchange: "bybit",
-          api_type: "public_private",
-          connection_method: "rest",
-          connection_library: "native",
-          margin_type: "cross",
-          position_mode: "hedge",
-          is_testnet: false,
-          is_enabled: false,
-          is_active: false,
-          volume_factor: 1.0,
-        })
-        createdConnections.push({ id: bybitId, exchange: "bybit", name: "Bybit (Default)" })
-        console.log("[v0] [Init] Created Bybit connection:", bybitId)
-      } catch (error) {
-        console.warn("[v0] [Init] Failed to create Bybit connection:", error)
+    for (const predefined of CONNECTION_PREDEFINITIONS) {
+      const exists = connections.some(c => c.id === predefined.id)
+      
+      if (!exists) {
+        try {
+          console.log(`[v0] [Init] Creating predefined connection: ${predefined.name} (${predefined.id})`)
+          
+          const connectionId = await createConnection({
+            id: predefined.id,
+            name: predefined.name,
+            exchange: predefined.exchange,
+            api_type: predefined.apiType,
+            connection_method: predefined.connectionMethod,
+            connection_library: predefined.connectionLibrary,
+            margin_type: predefined.marginType,
+            position_mode: predefined.positionMode,
+            is_testnet: false,
+            is_enabled: true,
+            is_predefined: true,
+            api_key: predefined.apiKey || "",
+            api_secret: predefined.apiSecret || "",
+          })
+          
+          createdConnections.push({
+            id: connectionId,
+            name: predefined.name,
+            exchange: predefined.exchange
+          })
+          
+          console.log(`[v0] [Init] Created: ${predefined.name}`)
+        } catch (error) {
+          console.error(`[v0] [Init] Failed to create predefined connection ${predefined.id}:`, error)
+        }
       }
     }
     
-    if (!bingxExists) {
-      console.log("[v0] [Init] Creating default BingX connection...")
-      try {
-        const bingxId = await createConnection({
-          name: "BingX (Default)",
-          exchange: "bingx",
-          api_type: "public_private",
-          connection_method: "rest",
-          connection_library: "native",
-          margin_type: "cross",
-          position_mode: "one-way",
-          is_testnet: false,
-          is_enabled: false,
-          is_active: false,
-          volume_factor: 1.0,
-        })
-        createdConnections.push({ id: bingxId, exchange: "bingx", name: "BingX (Default)" })
-        console.log("[v0] [Init] Created BingX connection:", bingxId)
-      } catch (error) {
-        console.warn("[v0] [Init] Failed to create BingX connection:", error)
-      }
+    console.log(`[v0] [Init] Created ${createdConnections.length} new predefined connections`)
+    
+    // Initialize trade engine auto-start
+    try {
+      await initializeTradeEngineAutoStart()
+      console.log("[v0] [Init] Trade engine auto-start initialized")
+    } catch (error) {
+      console.warn("[v0] [Init] Failed to initialize trade engine auto-start:", error)
     }
     
-    // Ensure global coordinator is initialized
-    const coordinator = getGlobalTradeEngineCoordinator()
-    console.log("[v0] [Init] Global trade engine coordinator ensured")
-    
-    // Start auto-initialization of trade engines
-    await initializeTradeEngineAutoStart()
-    console.log("[v0] [Init] Trade engine auto-start initialized")
-    
-    const finalConnections = await getAllConnections()
-    
-    console.log("[v0] [Init] All systems initialized successfully - Total connections:", finalConnections.length)
-    
-    return NextResponse.json({ 
-      success: true, 
-      message: "System initialization complete",
-      coordinator: "ready",
-      presets: "seeded",
-      defaultConnectionsCreated: createdConnections.length,
-      totalConnections: finalConnections.length,
-      createdConnections: createdConnections,
+    return NextResponse.json({
+      success: true,
+      message: "System initialized",
+      connectionsCreated: createdConnections.length,
+      totalConnections: connections.length + createdConnections.length,
     })
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : "Unknown error"
-    console.error("[v0] [Init] Failed to initialize:", errorMsg)
-    
+    console.error("[v0] [Init] Initialization error:", error)
     return NextResponse.json(
-      { success: false, error: errorMsg },
+      {
+        success: false,
+        error: "Initialization failed",
+        details: error instanceof Error ? error.message : "Unknown error",
+      },
       { status: 500 }
     )
   }
