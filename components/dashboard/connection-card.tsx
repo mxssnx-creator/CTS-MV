@@ -754,49 +754,40 @@ export function ConnectionCard({
                   <Settings className="h-3.5 w-3.5 text-blue-600" />
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-md">
+              <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle className="text-base">Settings - {connection.name}</DialogTitle>
-                  <DialogDescription>Configure connection parameters and trading settings.</DialogDescription>
+                  <DialogDescription>View and configure connection parameters and trading settings.</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
-                  <div className="space-y-2">
-                    <div className="text-sm font-medium">Connection ID</div>
-                    <div className="text-sm text-mono bg-muted p-2 rounded">{connection.id}</div>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="text-sm font-medium">Exchange</div>
-                    <div className="text-sm capitalize">{connection.exchange}</div>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="text-sm font-medium">Connection Method</div>
-                    <div className="text-sm capitalize">{connection.connection_method || 'REST'}</div>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="text-sm font-medium">Status</div>
-                    <div className="text-sm">
-                      {connection.is_enabled ? (
-                        <Badge variant="default">Enabled</Badge>
-                      ) : (
-                        <Badge variant="secondary">Disabled</Badge>
-                      )}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-0.5">
+                      <div className="text-xs font-medium text-muted-foreground">Connection ID</div>
+                      <div className="text-sm font-mono bg-muted p-1.5 rounded truncate">{connection.id}</div>
+                    </div>
+                    <div className="space-y-0.5">
+                      <div className="text-xs font-medium text-muted-foreground">Exchange</div>
+                      <div className="text-sm font-semibold capitalize">{connection.exchange}</div>
                     </div>
                   </div>
-                </div>
-                <div className="flex gap-2 mt-4">
-                  <Button variant="outline" onClick={() => setShowSettings(false)}>
-                    Close
-                  </Button>
-                  <Button onClick={() => setShowSettings(false)}>Done</Button>
-                </div>
-              </DialogContent>
-            </Dialog>
-              <DialogContent className="max-w-md">
-                <DialogHeader>
-                  <DialogTitle className="text-base">Connection Information - {connection.name}</DialogTitle>
-                  <DialogDescription>View connection details, margin settings, and trading configuration.</DialogDescription>
-                </DialogHeader>
-                <div className="space-y-3">
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-0.5">
+                      <div className="text-xs font-medium text-muted-foreground">Connection Method</div>
+                      <div className="text-sm capitalize">{connection.connection_method || 'REST'}</div>
+                    </div>
+                    <div className="space-y-0.5">
+                      <div className="text-xs font-medium text-muted-foreground">Status</div>
+                      <div className="text-sm">
+                        {connection.is_enabled ? (
+                          <Badge variant="default">Enabled</Badge>
+                        ) : (
+                          <Badge variant="secondary">Disabled</Badge>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-0.5">
                       <div className="text-xs font-medium text-muted-foreground">Margin Mode</div>
@@ -819,23 +810,21 @@ export function ConnectionCard({
 
                   <div className="space-y-1.5">
                     <div className="text-xs font-medium text-muted-foreground">Volume Factors</div>
-                    <div className="space-y-1">
+                    <div className="grid grid-cols-2 gap-2">
                       <div className="flex items-center justify-between p-1.5 bg-muted rounded">
                         <span className="text-xs">Live Trade</span>
                         <span className="text-xs font-semibold">{connectionInfo.liveTradeVolumeFactor.toFixed(1)}</span>
                       </div>
                       <div className="flex items-center justify-between p-1.5 bg-muted rounded">
                         <span className="text-xs">Preset Trade</span>
-                        <span className="text-xs font-semibold">
-                          {connectionInfo.presetTradeVolumeFactor.toFixed(1)}
-                        </span>
+                        <span className="text-xs font-semibold">{connectionInfo.presetTradeVolumeFactor.toFixed(1)}</span>
                       </div>
                     </div>
                   </div>
 
                   <div className="space-y-1.5">
                     <div className="text-xs font-medium text-muted-foreground">Profit Factor Minimums</div>
-                    <div className="space-y-1">
+                    <div className="grid grid-cols-3 gap-2">
                       <div className="flex items-center justify-between p-1.5 bg-muted rounded">
                         <span className="text-xs">Base</span>
                         <span className="text-xs font-semibold">{connectionInfo.profitFactorBase.toFixed(2)}</span>
@@ -858,36 +847,32 @@ export function ConnectionCard({
 
                   <div className="space-y-1.5">
                     <div className="text-xs font-medium text-muted-foreground">Strategy States</div>
-                    <div className="space-y-1.5">
+                    <div className="grid grid-cols-3 gap-2">
                       <div className="flex items-center justify-between p-1.5 bg-muted rounded">
                         <span className="text-xs">Trailing</span>
-                        <Badge
-                          variant={connectionInfo.strategyStates.trailing ? "default" : "secondary"}
-                          className="text-xs px-1.5 py-0"
-                        >
+                        <Badge variant={connectionInfo.strategyStates.trailing ? "default" : "secondary"} className="text-xs px-1.5 py-0">
                           {connectionInfo.strategyStates.trailing ? "On" : "Off"}
                         </Badge>
                       </div>
                       <div className="flex items-center justify-between p-1.5 bg-muted rounded">
                         <span className="text-xs">Block</span>
-                        <Badge
-                          variant={connectionInfo.strategyStates.block ? "default" : "secondary"}
-                          className="text-xs px-1.5 py-0"
-                        >
+                        <Badge variant={connectionInfo.strategyStates.block ? "default" : "secondary"} className="text-xs px-1.5 py-0">
                           {connectionInfo.strategyStates.block ? "On" : "Off"}
                         </Badge>
                       </div>
                       <div className="flex items-center justify-between p-1.5 bg-muted rounded">
                         <span className="text-xs">DCA</span>
-                        <Badge
-                          variant={connectionInfo.strategyStates.dca ? "default" : "secondary"}
-                          className="text-xs px-1.5 py-0"
-                        >
+                        <Badge variant={connectionInfo.strategyStates.dca ? "default" : "secondary"} className="text-xs px-1.5 py-0">
                           {connectionInfo.strategyStates.dca ? "On" : "Off"}
                         </Badge>
                       </div>
                     </div>
                   </div>
+                </div>
+                <div className="flex gap-2 mt-4">
+                  <Button variant="outline" className="flex-1" onClick={() => setShowSettings(false)}>
+                    Close
+                  </Button>
                 </div>
               </DialogContent>
             </Dialog>
