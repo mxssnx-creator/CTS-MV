@@ -88,10 +88,12 @@ export class BingXConnector extends BaseExchangeConnector {
 
       this.log("Successfully retrieved account data")
 
-      // Parse balance data
+      // Parse balance data - BingX returns data.data as the array directly
       this.log(`[Debug] Full response data: ${JSON.stringify(data).substring(0, 500)}`)
       
-      const balanceData = data.data?.balance || []
+      // data.data IS the balance array, not data.data.balance
+      const balanceData = Array.isArray(data.data) ? data.data : []
+      
       if (!Array.isArray(balanceData)) {
         this.logError(`Invalid balance data format: ${JSON.stringify(balanceData).substring(0, 200)}`)
         throw new Error("Invalid balance data format from API")
@@ -100,16 +102,28 @@ export class BingXConnector extends BaseExchangeConnector {
       this.log(`[Debug] Received ${balanceData.length} balance entries`)
       if (balanceData.length > 0) {
         this.log(`[Debug] First balance entry: ${JSON.stringify(balanceData[0]).substring(0, 300)}`)
-      } else {
-        this.log(`[Debug] balance array is empty! data.data: ${JSON.stringify(data.data).substring(0, 300)}`)
       }
 
-      // Extract USDT balance - BingX returns balance as a number
+      // Extract USDT balance - BingX returns balance as a string number
       const usdtEntry = balanceData.find((b: any) => b.asset === "USDT")
-      const usdtBalance = usdtEntry ? Number.parseFloat(usdtEntry.balance || usdtEntry.total || "0") : 0
+      const usdtBalance = usdtEntry ? Number.parseFloat(usdtEntry.balance || "0") : 0
       
-      this.log(`[Debug] USDT entry: ${JSON.stringify(usdtEntry)}`)
+      this.log(`[Debug] USDT entry found: ${!!usdtEntry}`)
       this.log(`[Debug] USDT balance value: ${usdtBalance}`)
+
+      // Get BTC price from market data or estimate
+      let btcPrice = 0
+      try {
+        // Try to fetch current BTC/USDT price
+        const priceResponse = await fetch("https://open-api.bingx.com/openApi/spot/v1/ticker/price?symbol=BTC-USDT")
+        if (priceResponse.ok) {
+          const priceData = await priceResponse.json()
+          btcPrice = Number.parseFloat(priceData.data?.price || "0")
+          this.log(`[Debug] BTC/USDT price fetched: $${btcPrice.toFixed(2)}`)
+        }
+      } catch (e) {
+        this.log(`[Debug] Could not fetch BTC price: ${e}`)
+      }
 
       // Map all balances with proper field extraction
       const balances = balanceData.map((b: any) => ({
@@ -119,12 +133,14 @@ export class BingXConnector extends BaseExchangeConnector {
         total: Number.parseFloat(b.balance || b.total || "0"),
       }))
 
-      this.log(`✓ Account Balance: ${usdtBalance.toFixed(2)} USDT`)
+      this.log(`✓ Account Balance: ${usdtBalance.toFixed(4)} USDT`)
       this.log(`✓ Total assets: ${balances.length}`)
+      this.log(`✓ BTC Price: $${btcPrice.toFixed(2)}`)
 
       return {
         success: true,
         balance: usdtBalance,
+        btcPrice: btcPrice,
         balances,
         capabilities: this.getCapabilities(),
         logs: this.logs,

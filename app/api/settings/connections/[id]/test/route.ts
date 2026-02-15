@@ -131,7 +131,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const duration = Date.now() - startTime
     testLog.push(`[${new Date().toISOString()}] Connection successful!`)
-    testLog.push(`[${new Date().toISOString()}] Account Balance: ${result.balance.toFixed(2)} USDT`)
+    testLog.push(`[${new Date().toISOString()}] Account Balance: ${result.balance.toFixed(4)} USDT`)
+    if (result.btcPrice) {
+      testLog.push(`[${new Date().toISOString()}] BTC Price: $${result.btcPrice.toFixed(2)}`)
+    }
 
     await updateConnection(id, {
       ...connection,
@@ -143,17 +146,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       updated_at: new Date().toISOString(),
     })
 
-    const manager = getConnectionManager()
-    await manager.markTestPassed(id, result.balance)
-
     await SystemLogger.logConnection(`Connection test successful: ${connection.name}`, id, "info", {
       balance: result.balance,
+      btcPrice: result.btcPrice,
       duration,
     })
 
     return NextResponse.json({
       success: true,
       balance: result.balance,
+      btcPrice: result.btcPrice || 0,
       balances: result.balances || [],
       capabilities: result.capabilities || [],
       log: testLog,

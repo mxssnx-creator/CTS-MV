@@ -427,7 +427,10 @@ export function ConnectionCard({
                   {connection.last_test_status === "success" ? "Connection Active" : "Connection Failed"}
                 </div>
                 {connection.last_test_balance !== undefined && (
-                  <div className="text-xs mt-1">Balance: ${Number(connection.last_test_balance).toFixed(2)} USDT</div>
+                  <div className="text-xs mt-1">Balance: ${Number(connection.last_test_balance).toFixed(4)} USDT</div>
+                )}
+                {connection.last_test_btc_price !== undefined && Number(connection.last_test_btc_price) > 0 && (
+                  <div className="text-xs mt-1">BTC Price: ${Number(connection.last_test_btc_price).toFixed(2)}</div>
                 )}
                 {connection.last_test_at && (
                   <div className="text-xs mt-1">
