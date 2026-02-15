@@ -127,7 +127,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: "Rate limit exceeded: max 10 orders per minute",
+          error: "Rate limit exceeded: max 500 orders per minute",
           category: API_CATEGORY,
           timestamp: new Date().toISOString(),
         },
@@ -235,92 +235,5 @@ export async function POST(request: NextRequest) {
       },
       { status: 500 }
     )
-  }
-}
-
-    // Rate limit: max 10 orders per minute per user
-    const isAllowed = await orderRateLimiter.isAllowed(`user:${user.id}`)
-    if (!isAllowed) {
-      return NextResponse.json(
-        { success: false, error: "Rate limit exceeded: max 10 orders per minute" },
-        { status: 429 }
-      )
-    }
-
-    let bodyData
-    try {
-      bodyData = await request.json()
-    } catch (e) {
-      return NextResponse.json({ success: false, error: "Invalid JSON in request body" }, { status: 400 })
-    }
-
-    const { connection_id, symbol, order_type, side, price, quantity, time_in_force } = bodyData
-
-    // Required field validation
-    if (!connection_id || !symbol || !order_type || !side || !quantity) {
-      return NextResponse.json(
-        { success: false, error: "Missing required fields: connection_id, symbol, order_type, side, quantity" },
-        { status: 400 }
-      )
-    }
-
-    // Order validation
-    const validation = validateOrder({ quantity, price, order_type, side })
-    if (!validation.valid) {
-      console.warn(`[v0] Order validation failed for user ${user.id}: ${validation.error}`)
-      return NextResponse.json({ success: false, error: validation.error }, { status: 400 })
-    }
-
-    // Symbol validation (basic format check)
-    if (typeof symbol !== "string" || symbol.length < 2 || symbol.length > 20) {
-      return NextResponse.json({ success: false, error: "Invalid symbol format" }, { status: 400 })
-    }
-
-    const existing = (await getSettings("orders")) || []
-    const newOrder = {
-      id: `order:${Date.now()}:${Math.random().toString(36).substr(2, 9)}`,
-      user_id: user.id,
-      connection_id,
-      symbol: symbol.toUpperCase(),
-      order_type: order_type.toLowerCase(),
-      side: side.toUpperCase(),
-      price: price || null,
-      quantity,
-      remaining_quantity: quantity,
-      time_in_force: time_in_force || "GTC",
-      status: "pending",
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }
-
-    // Log order creation for audit
-    await auditLogger.log({
-      user_id: user.id,
-      action: "order_create",
-      entity_type: "order",
-      entity_id: newOrder.id,
-      details: {
-        symbol: newOrder.symbol,
-        side: newOrder.side,
-        quantity: newOrder.quantity,
-        price: newOrder.price,
-        order_type: newOrder.order_type,
-      },
-      status: "success",
-      connection_id,
-    })
-
-    console.log(`[v0] [Audit] Order created by ${user.id}: ${symbol} ${side} ${quantity}@${price || "market"}`)
-
-    existing.push(newOrder)
-    await setSettings("orders", existing)
-
-    return NextResponse.json({
-      success: true,
-      data: newOrder,
-    })
-  } catch (error) {
-    console.error("[v0] Create order error:", error)
-    return NextResponse.json({ success: false, error: "Internal server error" }, { status: 500 })
   }
 }
