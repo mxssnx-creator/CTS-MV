@@ -85,6 +85,18 @@ export function AddConnectionDialog({ open, onOpenChange, onConnectionAdded, sho
   }, [formData.exchange])
 
   useEffect(() => {
+    // When switching to Advanced tab, show test instructions if credentials are filled
+    if (activeTab === "advanced" && formData.api_key && formData.api_secret && !showTestLog) {
+      // Auto-show test log UI to guide user
+      setShowTestLog(true)
+    }
+    // Hide test log when leaving advanced tab
+    if (activeTab !== "advanced" && showTestLog) {
+      setShowTestLog(false)
+    }
+  }, [activeTab, formData.api_key, formData.api_secret, showTestLog])
+
+  useEffect(() => {
     // Update connection method and library based on API type and exchange
     const exchange = formData.exchange
     const availableMethods = EXCHANGE_CONNECTION_METHODS[exchange] || ["rest"]
@@ -170,10 +182,120 @@ export function AddConnectionDialog({ open, onOpenChange, onConnectionAdded, sho
   }
 
   const handleTestConnection = async () => {
+    // Validate required credentials before testing
     if (!formData.api_key || !formData.api_secret) {
-      toast.error("Please enter API Key and API Secret")
+      toast.error("Please fill in API Key and Secret before testing")
+      setTestLog([`✗ Error: Missing API credentials. Please enter your API Key and Secret in the "API Credentials" tab.`])
+      setShowTestLog(true)
       return
     }
+
+    if (!formData.name) {
+      toast.error("Please enter a connection name")
+      setTestLog([`✗ Error: Missing connection name. Please enter a name for this connection.`])
+      setShowTestLog(true)
+      return
+    }
+
+    setTesting(true)
+    setShowTestLog(true)
+    const logs: string[] = []
+
+    try {
+      logs.push(`[${new Date().toLocaleTimeString()}] Testing connection...`)
+      logs.push(`Exchange: ${formData.exchange.toUpperCase()}`)
+      logs.push(`API Type: ${formData.api_type} | Subtype: ${formData.api_subtype}`)
+      logs.push(`Connection: ${formData.connection_method.toUpperCase()} | Library: ${formData.connection_library}`)
+      logs.push(`---`)
+
+      const response = await fetch("/api/settings/connections/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          exchange: formData.exchange,
+          api_key: formData.api_key,
+          api_secret: formData.api_secret,
+          api_passphrase: formData.api_passphrase || "",
+          is_testnet: formData.is_testnet,
+          connection_method: formData.connection_method,
+          connection_library: formData.connection_library,
+        }),
+      })
+
+      let data
+      try {
+        data = await response.json()
+      } catch (parseError) {
+        console.error("[v0] JSON parse error:", parseError)
+        throw new Error("Invalid response format from server")
+      }
+      
+      // Check for errors in response data
+      if (data.error) {
+        const errorMsg = data.error
+        setTestLog(data.log || [`Error: ${errorMsg}`])
+        toast.error(errorMsg)
+        return
+      }
+      
+      if (!data.success) {
+        const errorMsg = data.error || "Connection test failed"
+        setTestLog(data.log || [`Error: ${errorMsg}`])
+        toast.error(errorMsg)
+        return
+      }
+      
+      // Extract and format log
+      let formattedLogs = [`[${new Date().toLocaleTimeString()}] Starting connection test...\n`]
+      
+      // Add API connection info
+      formattedLogs.push(`Exchange: ${formData.exchange.toUpperCase()}\n`)
+      formattedLogs.push(`API Type: ${formData.api_type} | Subtype: ${formData.api_subtype}\n`)
+      formattedLogs.push(`Connection: ${formData.connection_method.toUpperCase()} | Library: ${formData.connection_library}\n`)
+      formattedLogs.push(`---\n`)
+      
+      // Add response logs
+      let responseLogs = data.log || []
+      if (!Array.isArray(responseLogs)) {
+        responseLogs = [responseLogs.toString()]
+      }
+      formattedLogs.push(...responseLogs)
+
+      // Add balance and price info if available
+      if (data.balance !== undefined) {
+        const balanceUSD = parseFloat(data.balance).toFixed(2)
+        formattedLogs.push(`\n✓ Account Balance: $${balanceUSD}`)
+      }
+
+      // Fetch BTC price for context
+      try {
+        const priceResponse = await fetch("https://api.coinbase.com/v2/prices/BTC-USD/spot")
+        if (priceResponse.ok) {
+          const priceData = await priceResponse.json()
+          const btcPrice = priceData.data?.amount || "N/A"
+          formattedLogs.push(`✓ BTC Price: $${btcPrice}`)
+
+        }
+      } catch (e) {
+        console.log("[v0] Could not fetch BTC price")
+      }
+
+      if (response.ok) {
+        formattedLogs.push(`\n✓ Connection test PASSED - Ready to trade!`)
+        toast.success("Connection test passed!")
+      } else {
+        formattedLogs.push(`\n✗ Connection test FAILED: ${data.error || "Unknown error"}`)
+        toast.error(data.error || "Connection test failed")
+      }
+      setTestLog(formattedLogs)
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Test connection error"
+      setTestLog([`✗ Error: ${errorMsg}`])
+      toast.error(errorMsg)
+    } finally {
+      setTesting(false)
+    }
+  }
 
     setTesting(true)
     setTestLog([])
@@ -782,6 +904,17 @@ export function AddConnectionDialog({ open, onOpenChange, onConnectionAdded, sho
                   <CardDescription>Verify your credentials before saving</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
+                  {/* Validation warning if credentials are missing */}
+                  {(!formData.api_key || !formData.api_secret) && (
+                    <div className="flex items-start gap-2 p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-900">
+                      <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="font-medium">Please fill in API credentials first</p>
+                        <p className="text-amber-800">Switch to the "API Credentials" tab to enter your API Key and Secret</p>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex gap-2">
                     <Button
                       type="button"
@@ -827,7 +960,7 @@ export function AddConnectionDialog({ open, onOpenChange, onConnectionAdded, sho
                       <Button
                         type="button"
                         onClick={handleTestConnection}
-                        disabled={testing || loading}
+                        disabled={testing || loading || !formData.api_key || !formData.api_secret}
                         variant="outline"
                         size="sm"
                         className="w-full"
