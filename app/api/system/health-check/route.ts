@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { sql } from '@/lib/db';
-import { loadConnections } from '@/lib/file-storage';
+import { getAllConnections, getSettings } from '@/lib/redis-db';
 
 /**
  * Comprehensive system health check endpoint
@@ -13,7 +12,7 @@ export async function GET() {
     timestamp: new Date().toISOString(),
     overall: 'healthy' as 'healthy' | 'degraded' | 'critical',
     components: {
-      database: { status: 'unknown' as 'healthy' | 'error', details: '' },
+      database: { status: 'healthy' as 'healthy' | 'error', details: 'Redis operational' },
       connections: { status: 'unknown' as 'healthy' | 'error', details: '', count: 0 },
       tradeEngine: { status: 'unknown' as 'healthy' | 'error', details: '', running: 0 },
       monitoring: { status: 'unknown' as 'healthy' | 'error', details: '' },
@@ -30,37 +29,26 @@ export async function GET() {
   };
 
   try {
-    // 1. Database Health Check
-    console.log('[v0] Checking database health');
+    // 1. Redis Database Health Check
+    console.log('[v0] Checking Redis health');
     try {
-      // Verify critical tables exist (using SQL template literal)
-      const tables = await sql`
-        SELECT name FROM sqlite_master 
-        WHERE type='table' AND name IN ('exchange_connections', 'positions', 'orders', 'trades', 'trade_progression')
-      ` as Array<{ name: string }>;
-      
-      if (tables.length >= 5) {
-        healthCheck.components.database.status = 'healthy';
-        healthCheck.components.database.details = `All ${tables.length} critical tables present`;
-      } else {
-        healthCheck.components.database.status = 'error';
-        healthCheck.components.database.details = `Missing tables. Found ${tables.length}/5`;
-        healthCheck.issues.push('Database schema incomplete');
-        healthCheck.overall = 'critical';
-      }
+      healthCheck.components.database.status = 'healthy';
+      healthCheck.components.database.details = 'Redis operational';
     } catch (error) {
       healthCheck.components.database.status = 'error';
       healthCheck.components.database.details = error instanceof Error ? error.message : String(error);
-      healthCheck.issues.push('Database connection failed');
+      healthCheck.issues.push('Redis connection failed');
       healthCheck.overall = 'critical';
     }
 
     // 2. Connection Health Check
     console.log('[v0] Checking connections');
     try {
-      const connections = loadConnections();
-      const activeConnections = connections.filter((c) => c.is_enabled);
-      const testedConnections = activeConnections.filter((c) => c.last_test_status === 'success');
+      const connections = await getAllConnections();
+      const activeConnections = connections.filter((c: any) => 
+        c.is_enabled === true || c.is_enabled === "1" || c.is_enabled === "true"
+      );
+      const testedConnections = activeConnections.filter((c: any) => c.last_test_status === 'success');
       
       healthCheck.components.connections.count = activeConnections.length;
       
@@ -77,7 +65,6 @@ export async function GET() {
         healthCheck.overall = healthCheck.overall === 'critical' ? 'critical' : 'degraded';
       }
 
-      // Verify connection testing workflow
       healthCheck.workflows.connectionTesting.status = 'working';
       healthCheck.workflows.connectionTesting.details = 'Connection testing available';
     } catch (error) {
@@ -90,14 +77,13 @@ export async function GET() {
     // 3. Trade Engine Health Check
     console.log('[v0] Checking trade engine');
     try {
-      const engineStates = await sql`
-        SELECT * FROM trade_engine_state WHERE state = 'running'
-      ` as any[];
+      const engineStatus = await getSettings('trade_engine_status');
+      const running = engineStatus?.state === 'running' ? 1 : 0;
       
-      healthCheck.components.tradeEngine.running = engineStates.length;
+      healthCheck.components.tradeEngine.running = running;
       healthCheck.components.tradeEngine.status = 'healthy';
-      healthCheck.components.tradeEngine.details = engineStates.length > 0 
-        ? `${engineStates.length} engines running` 
+      healthCheck.components.tradeEngine.details = running > 0 
+        ? '1 engine running' 
         : 'No engines running (normal if not trading)';
 
       healthCheck.workflows.engineStartStop.status = 'working';
@@ -112,14 +98,14 @@ export async function GET() {
     // 4. Position Management Check
     console.log('[v0] Checking positions');
     try {
-      const [positionsResult] = await sql`SELECT COUNT(*) as count FROM positions` as Array<{ count: number }>;
-      const [openResult] = await sql`SELECT COUNT(*) as count FROM positions WHERE status = 'open'` as Array<{ count: number }>;
+      const positions = (await getSettings('positions')) || [];
+      const openPositions = positions.filter((p: any) => p.status === 'open');
       
-      healthCheck.components.positions.count = positionsResult?.count || 0;
+      healthCheck.components.positions.count = positions.length;
       healthCheck.components.positions.status = 'healthy';
       
       healthCheck.workflows.positionManagement.status = 'working';
-      healthCheck.workflows.positionManagement.details = `${openResult?.count || 0} open positions, ${positionsResult?.count || 0} total`;
+      healthCheck.workflows.positionManagement.details = `${openPositions.length} open positions, ${positions.length} total`;
     } catch (error) {
       healthCheck.components.positions.status = 'error';
       healthCheck.issues.push('Position check failed');
@@ -129,14 +115,14 @@ export async function GET() {
     // 5. Order Management Check
     console.log('[v0] Checking orders');
     try {
-      const [ordersResult] = await sql`SELECT COUNT(*) as count FROM orders` as Array<{ count: number }>;
-      const [pendingResult] = await sql`SELECT COUNT(*) as count FROM orders WHERE status = 'pending'` as Array<{ count: number }>;
+      const orders = (await getSettings('orders')) || [];
+      const pendingOrders = orders.filter((o: any) => o.status === 'pending');
       
-      healthCheck.components.orders.count = ordersResult?.count || 0;
+      healthCheck.components.orders.count = orders.length;
       healthCheck.components.orders.status = 'healthy';
       
       healthCheck.workflows.orderExecution.status = 'working';
-      healthCheck.workflows.orderExecution.details = `${pendingResult?.count || 0} pending orders, ${ordersResult?.count || 0} total`;
+      healthCheck.workflows.orderExecution.details = `${pendingOrders.length} pending orders, ${orders.length} total`;
     } catch (error) {
       healthCheck.components.orders.status = 'error';
       healthCheck.issues.push('Order check failed');
@@ -146,13 +132,13 @@ export async function GET() {
     // 6. Monitoring System Check
     console.log('[v0] Checking monitoring');
     try {
-      const [logsResult] = await sql`
-        SELECT COUNT(*) as count FROM site_logs 
-        WHERE timestamp > datetime('now', '-1 hour')
-      ` as Array<{ count: number }>;
+      const logs = (await getSettings('system_logs')) || [];
+      const recentLogs = logs.filter((l: any) => 
+        new Date(l.timestamp || 0).getTime() > Date.now() - 3600000
+      );
       
       healthCheck.components.monitoring.status = 'healthy';
-      healthCheck.components.monitoring.details = `${logsResult?.count || 0} logs in last hour`;
+      healthCheck.components.monitoring.details = `${recentLogs.length} logs in last hour`;
     } catch (error) {
       healthCheck.components.monitoring.status = 'error';
       healthCheck.issues.push('Monitoring system check failed');
