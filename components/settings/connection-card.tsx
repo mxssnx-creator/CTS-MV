@@ -354,28 +354,12 @@ export function ConnectionCard({
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => {
-                  setEditDialogOpen(true)
-                  setEditDialogTab("api")
-                }}
-                className="flex items-center gap-2 w-full"
+                onClick={() => setEditDialogOpen(true)}
+                className="flex items-center gap-2"
               >
                 <Settings className="h-4 w-4" />
-                <span>API Settings</span>
+                <span>Settings</span>
               </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setEditDialogOpen(true)
-                  setEditDialogTab("trade")
-                }}
-                className="flex items-center gap-2 w-full"
-              >
-                <Settings className="h-4 w-4" />
-                <span>Trade Settings</span>
-              </Button>
-            </div>
               <div className="flex items-center justify-end gap-3">
                 <span className="text-sm text-muted-foreground">
                   {connection.is_enabled ? "Enabled" : "Disabled"}
