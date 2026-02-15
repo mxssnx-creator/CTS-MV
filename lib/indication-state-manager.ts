@@ -169,12 +169,9 @@ export class IndicationStateManager {
       return this.cachedRanges
     }
 
-    const [rangeSettings] = await sql`
-      SELECT value FROM system_settings
-      WHERE key = 'indicationRangeMin'
-    `
-
-    const minRange = rangeSettings ? Number.parseInt(rangeSettings.value) : 3
+    // Get from Redis settings
+    const minRangeSetting = await getSettings("indicationRangeMin")
+    const minRange = minRangeSetting ? Number.parseInt(String(minRangeSetting)) : 3
     const maxRange = 30
 
     this.cachedRanges = { minRange, maxRange, timestamp: now }
@@ -187,14 +184,12 @@ export class IndicationStateManager {
    */
   private async canCreateIndication(stateKey: string): Promise<boolean> {
     try {
-      const [state] = await sql`
-        SELECT validated_at FROM indication_states
-        WHERE state_key = ${stateKey}
-      `
+      // Get state from Redis
+      const stateData = await getSettings(`indication_state:${stateKey}`)
 
-      if (!state) return true
+      if (!stateData?.validated_at) return true
 
-      const validatedAt = new Date(state.validated_at).getTime()
+      const validatedAt = new Date(stateData.validated_at).getTime()
       const now = Date.now()
       const elapsedSeconds = (now - validatedAt) / 1000
 
@@ -217,20 +212,21 @@ export class IndicationStateManager {
     lastPartRatio: number | null,
   ): Promise<boolean> {
     try {
-      // Check active positions count for this specific config
-      const [countResult] = await sql`
-        SELECT COUNT(*) as count FROM pseudo_positions
-        WHERE connection_id = ${this.connectionId}
-          AND symbol = ${symbol}
-          AND indication_type = ${type}
-          AND status = 'active'
-          ${range ? sql`AND indication_range = ${range}` : sql``}
-          ${threshold ? sql`AND activity_ratio = ${threshold}` : sql``}
-          ${timeWindow ? sql`AND time_window = ${timeWindow}` : sql``}
-      `
+      // Get active positions from Redis
+      const positionsKey = `positions:${this.connectionId}:${symbol}:${type}`
+      const positions = (await getSettings(positionsKey)) as any[] || []
 
-      const count = Number(countResult?.count || 0)
-      return count < this.maxPositionsPerConfig
+      // Filter active positions by criteria
+      let activeCount = 0
+      for (const pos of positions) {
+        if (pos.status !== 'active') continue
+        if (range !== null && pos.indication_range !== range) continue
+        if (threshold !== null && pos.activity_ratio !== threshold) continue
+        if (timeWindow !== null && pos.time_window !== timeWindow) continue
+        activeCount++
+      }
+
+      return activeCount < this.maxPositionsPerConfig
     } catch (error) {
       console.error(`[v0] Error checking position limits for ${symbol}:`, error)
       return false // Fail safe
@@ -247,16 +243,9 @@ export class IndicationStateManager {
     minRange: number,
     maxRange: number,
   ): Promise<void> {
-    const timeWindowMinutes = DataCleanupManager.getOptimalQueryWindow("direction")
-
-    const historicalPrices = await sql`
-      SELECT price FROM market_data
-      WHERE connection_id = ${this.connectionId}
-        AND symbol = ${symbol}
-        AND timestamp > NOW() - INTERVAL '${timeWindowMinutes} minutes'
-      ORDER BY timestamp DESC
-      LIMIT ${maxRange + 1}
-    `
+    // Get historical prices from Redis market data cache
+    const pricesKey = `market_prices:${this.connectionId}:${symbol}`
+    const historicalPrices = (await getSettings(pricesKey)) as any[] || []
 
     if (historicalPrices.length < minRange + 1) return
 
@@ -299,16 +288,9 @@ export class IndicationStateManager {
     minRange: number,
     maxRange: number,
   ): Promise<void> {
-    const timeWindowMinutes = DataCleanupManager.getOptimalQueryWindow("move")
-
-    const historicalPrices = await sql`
-      SELECT price FROM market_data
-      WHERE connection_id = ${this.connectionId}
-        AND symbol = ${symbol}
-        AND timestamp > NOW() - INTERVAL '${timeWindowMinutes} minutes'
-      ORDER BY timestamp DESC
-      LIMIT ${maxRange + 1}
-    `
+    // Get historical prices from Redis market data cache
+    const pricesKey = `market_prices:${this.connectionId}:${symbol}`
+    const historicalPrices = (await getSettings(pricesKey)) as any[] || []
 
     if (historicalPrices.length < minRange + 1) return
 
@@ -347,6 +329,12 @@ export class IndicationStateManager {
   private async processActiveIndications(symbol: string, currentPrice: number): Promise<void> {
     const thresholds = [0.5, 1.0, 1.5, 2.0, 2.5]
 
+    // Get recent prices from Redis
+    const pricesKey = `market_prices_recent:${this.connectionId}:${symbol}`
+    const recentPrices = (await getSettings(pricesKey)) as any[] || []
+
+    if (recentPrices.length === 0) return
+
     await Promise.allSettled(
       thresholds.map(async (threshold) => {
         const stateKey = `${symbol}-active-${threshold}`
@@ -354,19 +342,12 @@ export class IndicationStateManager {
         if (!(await this.canCreateIndication(stateKey))) return
         if (!(await this.canCreatePosition(symbol, "active", null, threshold, null, null))) return
 
-        const [recentPrice] = await sql`
-          SELECT price FROM market_data
-          WHERE connection_id = ${this.connectionId}
-            AND symbol = ${symbol}
-            AND timestamp > NOW() - INTERVAL '1 minute'
-          ORDER BY timestamp ASC
-          LIMIT 1
-        `
-
-        if (!recentPrice) return
+        // Get oldest price in recent window
+        const oldestPrice = recentPrices[recentPrices.length - 1]
+        if (!oldestPrice) return
 
         const priceChange =
-          ((currentPrice - Number.parseFloat(recentPrice.price)) / Number.parseFloat(recentPrice.price)) * 100
+          ((currentPrice - Number.parseFloat(oldestPrice.price)) / Number.parseFloat(oldestPrice.price)) * 100
 
         if (Math.abs(priceChange) >= threshold) {
           const direction = priceChange > 0 ? "long" : "short"
@@ -387,16 +368,9 @@ export class IndicationStateManager {
     minRange: number,
     maxRange: number,
   ): Promise<void> {
-    const timeWindowMinutes = DataCleanupManager.getOptimalQueryWindow("optimal")
-
-    const historicalPrices = await sql`
-      SELECT price, timestamp FROM market_data
-      WHERE connection_id = ${this.connectionId}
-        AND symbol = ${symbol}
-        AND timestamp > NOW() - INTERVAL '${timeWindowMinutes} minutes'
-      ORDER BY timestamp DESC
-      LIMIT ${maxRange + 1}
-    `
+    // Get historical prices from Redis market data cache
+    const pricesKey = `market_prices:${this.connectionId}:${symbol}`
+    const historicalPrices = (await getSettings(pricesKey)) as any[] || []
 
     if (historicalPrices.length < minRange + 1) return
 
@@ -442,22 +416,16 @@ export class IndicationStateManager {
    * Ratios for activity percentage change
    */
   private async processActiveAdvancedIndications(symbol: string, currentPrice: number): Promise<void> {
-    const timeWindowMinutes = DataCleanupManager.getOptimalQueryWindow("active_advanced")
     const maxDataPoints = 500 // Limit data points for performance
 
-    const historicalPrices = await sql`
-      SELECT price, timestamp FROM market_data
-      WHERE connection_id = ${this.connectionId}
-        AND symbol = ${symbol}
-        AND timestamp > NOW() - INTERVAL '${timeWindowMinutes} minutes'
-      ORDER BY timestamp DESC
-      LIMIT ${maxDataPoints}
-    `
+    // Get historical prices from Redis
+    const pricesKey = `market_prices:${this.connectionId}:${symbol}`
+    const historicalPrices = (await getSettings(pricesKey)) as any[] || []
 
     if (historicalPrices.length < 10) return // Need minimum data points
 
-    const prices = historicalPrices.map((p: any) => Number.parseFloat(p.price))
-    const timestamps = historicalPrices.map((p: any) => new Date(p.timestamp).getTime())
+    const prices = historicalPrices.slice(0, maxDataPoints).map((p: any) => Number.parseFloat(p.price))
+    const timestamps = historicalPrices.slice(0, maxDataPoints).map((p: any) => new Date(p.timestamp).getTime())
 
     // Activity ratios: 0.5%, 1.0%, 1.5%, 2.0%, 2.5%, 3.0%
     const activityRatios = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0]
@@ -660,25 +628,38 @@ export class IndicationStateManager {
               continue
             }
 
-            await sql`
-              INSERT INTO pseudo_positions (
-                connection_id, symbol, indication_type, indication_range,
-                takeprofit_factor, stoploss_ratio, trailing_enabled,
-                trail_start, trail_stop, entry_price, current_price,
-                direction, status, base_position_id, position_level,
-                activity_ratio, time_window, overall_change, last_part_change,
-                volatility, momentum, drawdown_ratio, continuation_ratio,
-                created_at
-              )
-              VALUES (
-                ${this.connectionId}, ${symbol}, 'active_advanced', ${activityRatio},
-                ${tpFactor}, ${slRatio}, ${trailingConfig.enabled},
-                ${trailingConfig.start}, ${trailingConfig.stop}, ${entryPrice}, ${entryPrice},
-                ${direction}, 'base_active', ${basePositionId}, 'base',
-                ${activityRatio}, ${timeWindow}, ${metrics.overallChange}, ${metrics.lastPartChange},
-                ${metrics.volatility}, ${metrics.momentum}, ${metrics.drawdown / 100}, ${metrics.continuationRatio},
-                CURRENT_TIMESTAMP
-              )
+            // Record active advanced position in Redis
+            const advancedPositionData = {
+              connection_id: this.connectionId,
+              symbol,
+              indication_type: "active_advanced",
+              activity_ratio: activityRatio,
+              takeprofit_factor: tpFactor,
+              stoploss_ratio: slRatio,
+              trailing_enabled: trailingConfig.enabled,
+              trail_start: trailingConfig.start,
+              trail_stop: trailingConfig.stop,
+              entry_price: entryPrice,
+              current_price: entryPrice,
+              direction,
+              status: "base_active",
+              base_position_id: basePositionId,
+              position_level: "base",
+              time_window: timeWindow,
+              overall_change: metrics.overallChange,
+              last_part_change: metrics.lastPartChange,
+              volatility: metrics.volatility,
+              momentum: metrics.momentum,
+              drawdown_ratio: metrics.drawdown / 100,
+              continuation_ratio: metrics.continuationRatio,
+              created_at: new Date().toISOString(),
+            }
+
+            // Store in Redis
+            const advancedKey = `positions_advanced:${this.connectionId}:${symbol}`
+            const advancedPositions = (await getSettings(advancedKey)) as any[] || []
+            advancedPositions.push(advancedPositionData)
+            await setSettings(advancedKey, advancedPositions)
             `
 
             createdCount++
@@ -752,20 +733,31 @@ export class IndicationStateManager {
               continue
             }
 
-            await sql`
-              INSERT INTO pseudo_positions (
-                connection_id, symbol, indication_type, indication_range,
-                takeprofit_factor, stoploss_ratio, trailing_enabled,
-                trail_start, trail_stop, entry_price, current_price,
-                direction, status, base_position_id, position_level, created_at
-              )
-              VALUES (
-                ${this.connectionId}, ${symbol}, ${indicationType}, ${range},
-                ${tpFactor}, ${slRatio}, ${trailingConfig.enabled},
-                ${trailingConfig.start}, ${trailingConfig.stop}, ${entryPrice}, ${entryPrice},
-                ${direction}, 'base_active', ${basePositionId}, 'base', CURRENT_TIMESTAMP
-              )
-            `
+            // Record position creation in Redis
+            const positionData = {
+              connection_id: this.connectionId,
+              symbol,
+              indication_type: indicationType,
+              indication_range: range || 0,
+              takeprofit_factor: tpFactor,
+              stoploss_ratio: slRatio,
+              trailing_enabled: trailingConfig.enabled,
+              trail_start: trailingConfig.start,
+              trail_stop: trailingConfig.stop,
+              entry_price: entryPrice,
+              current_price: entryPrice,
+              direction,
+              status: "active",
+              base_position_id: basePositionId,
+              position_level: 1,
+              created_at: new Date().toISOString(),
+            }
+
+            // Store in Redis
+            const positionsKey = `positions:${this.connectionId}:${symbol}:${indicationType}`
+            const positions = (await getSettings(positionsKey)) as any[] || []
+            positions.push(positionData)
+            await setSettings(positionsKey, positions)
 
             createdCount++
           }
@@ -784,12 +776,16 @@ export class IndicationStateManager {
    * Update indication state after validation
    */
   private async updateIndicationState(stateKey: string): Promise<void> {
-    await sql`
-      INSERT INTO indication_states (state_key, validated_at)
-      VALUES (${stateKey}, CURRENT_TIMESTAMP)
-      ON CONFLICT (state_key)
-      DO UPDATE SET validated_at = CURRENT_TIMESTAMP
-    `
+    try {
+      // Update indication state in Redis
+      const stateData = await getSettings(`indication_state:${stateKey}`) || {}
+      await setSettings(`indication_state:${stateKey}`, {
+        ...stateData,
+        validated_at: new Date().toISOString(),
+      })
+    } catch (error) {
+      console.error(`[v0] Failed to update indication state ${stateKey}:`, error)
+    }
   }
 
   /**
