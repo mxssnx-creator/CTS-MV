@@ -40,6 +40,8 @@ export async function POST(request: NextRequest) {
 
     try {
       testLog.push(`[${new Date().toISOString()}] Creating exchange connector with configured settings...`)
+      testLog.push(`[${new Date().toISOString()}] API Type: ${effectiveApiType}${hasSubtype ? ` | Subtype: ${api_subtype}` : ""}`)
+      
       const connector = await createExchangeConnector(exchange, {
         apiKey: api_key,
         apiSecret: api_secret,
@@ -53,7 +55,7 @@ export async function POST(request: NextRequest) {
         ...(position_mode && { positionMode: position_mode }),
       })
 
-      testLog.push(`[${new Date().toISOString()}] Testing connection using ${connection_method || "rest"} method with ${connection_library || "native"} library...`)
+      testLog.push(`[${new Date().toISOString()}] Testing connection using ${connection_method || "rest"} method...`)
       const result = await connector.testConnection()
 
       if (result.success) {

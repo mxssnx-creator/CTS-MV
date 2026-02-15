@@ -10,6 +10,12 @@ export interface ExchangeCredentials {
   apiSecret: string
   apiPassphrase?: string
   isTestnet: boolean
+  apiType?: string
+  apiSubtype?: string
+  marginType?: string
+  positionMode?: string
+  connectionMethod?: string
+  connectionLibrary?: string
 }
 
 export interface ExchangeBalance {
@@ -51,6 +57,28 @@ export abstract class BaseExchangeConnector {
     const logMessage = `[${timestamp}] ERROR: ${message}`
     this.logs.push(logMessage)
     console.error(`[v0] ${logMessage}`)
+  }
+
+  protected getEffectiveAccountType(): string {
+    // Map API/contract types to account type (exchange-specific implementation)
+    if (this.credentials.apiType === "unified") {
+      return "UNIFIED"
+    }
+    if (this.credentials.apiType === "perpetual_futures") {
+      return "CONTRACT"
+    }
+    if (this.credentials.apiType === "spot") {
+      return "SPOT"
+    }
+    return "UNIFIED" // Default fallback
+  }
+
+  protected getEffectiveSubType(): string | undefined {
+    // Map subtype for unified accounts
+    if (this.credentials.apiType === "unified" && this.credentials.apiSubtype) {
+      return this.credentials.apiSubtype
+    }
+    return undefined
   }
 
   protected async rateLimitedFetch(url: string, options?: RequestInit): Promise<Response> {

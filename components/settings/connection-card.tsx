@@ -72,6 +72,7 @@ export function ConnectionCard({
     api_secret: connection.api_secret,
     name: connection.name,
     api_type: connection.api_type,
+    api_subtype: connection.api_subtype,
     connection_method: connection.connection_method,
     connection_library: connection.connection_library || "native",
     margin_type: connection.margin_type,
@@ -265,6 +266,7 @@ export function ConnectionCard({
           api_passphrase: editFormData.api_passphrase,
           name: editFormData.name,
           api_type: editFormData.api_type,
+          ...(editFormData.api_type === "unified" && { api_subtype: editFormData.api_subtype }),
           connection_method: editFormData.connection_method,
           connection_library: editFormData.connection_library,
           margin_type: editFormData.margin_type,
@@ -342,7 +344,10 @@ export function ConnectionCard({
               </div>
               <div className="space-y-1">
                 <div className="text-sm text-muted-foreground">
-                  API Type: <span className="text-foreground font-medium">{connection.api_type}</span>
+                  API Type: <span className="text-foreground font-medium">
+                    {connection.api_type}
+                    {connection.api_type === "unified" && connection.api_subtype && ` (${connection.api_subtype})`}
+                  </span>
                 </div>
                 <div className="text-sm text-muted-foreground">
                   Margin: <span className="text-foreground font-medium">{connection.margin_type}</span>
@@ -562,6 +567,22 @@ export function ConnectionCard({
                     </SelectContent>
                   </Select>
                 </div>
+
+                {editFormData.api_type === "unified" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-api-subtype" className="font-medium text-xs">Trading Type (Unified Account)</Label>
+                    <Select value={editFormData.api_subtype || "perpetual"} onValueChange={(value) => setEditFormData(prev => ({ ...prev, api_subtype: value }))}>
+                      <SelectTrigger id="edit-api-subtype" className="bg-white h-8 text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="spot">Spot</SelectItem>
+                        <SelectItem value="perpetual">Perpetual</SelectItem>
+                        <SelectItem value="derivatives">Derivatives</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <Label htmlFor="edit-connection-method" className="font-medium text-xs">Connection Method</Label>

@@ -51,8 +51,10 @@ export class BybitConnector extends BaseExchangeConnector {
       const signature = crypto.createHmac("sha256", this.credentials.apiSecret).update(queryString).digest("hex")
 
       this.log("Fetching account balance...")
+      const accountType = this.getEffectiveAccountType()
+      this.log(`Using account type: ${accountType}`)
 
-      const response = await this.rateLimitedFetch(`${baseUrl}/v5/account/wallet-balance?accountType=UNIFIED`, {
+      const response = await this.rateLimitedFetch(`${baseUrl}/v5/account/wallet-balance?accountType=${accountType}`, {
         method: "GET",
         headers: {
           "X-BAPI-API-KEY": this.credentials.apiKey,
