@@ -1,6 +1,62 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import { getSettings, setSettings } from "@/lib/redis-db"
+import { RateLimiter } from "@/lib/rate-limiter"
+import { auditLogger } from "@/lib/audit-logger"
+
+// Order validation constants
+const ORDER_LIMITS = {
+  MAX_AMOUNT_USDT: 100000, // Max $100k per order
+  MAX_QUANTITY: 1000000, // Max 1M units per order
+  MIN_AMOUNT_USDT: 10, // Min $10 per order
+  MAX_ORDERS_PER_MINUTE: 10,
+}
+
+const orderRateLimiter = new RateLimiter(ORDER_LIMITS.MAX_ORDERS_PER_MINUTE, 60000)
+
+function validateOrder(order: any): { valid: boolean; error?: string } {
+  if (!order.quantity || typeof order.quantity !== "number") {
+    return { valid: false, error: "Invalid quantity" }
+  }
+
+  if (order.quantity <= 0) {
+    return { valid: false, error: "Quantity must be positive" }
+  }
+
+  if (order.quantity > ORDER_LIMITS.MAX_QUANTITY) {
+    return { valid: false, error: `Quantity exceeds limit of ${ORDER_LIMITS.MAX_QUANTITY}` }
+  }
+
+  // For limit orders, validate price
+  if (order.order_type === "limit" && (!order.price || typeof order.price !== "number")) {
+    return { valid: false, error: "Limit orders require a price" }
+  }
+
+  if (order.price && order.price <= 0) {
+    return { valid: false, error: "Price must be positive" }
+  }
+
+  // Estimate order value for limit orders
+  if (order.price && order.quantity) {
+    const orderValue = order.price * order.quantity
+    if (orderValue > ORDER_LIMITS.MAX_AMOUNT_USDT) {
+      return { valid: false, error: `Order value exceeds limit of $${ORDER_LIMITS.MAX_AMOUNT_USDT}` }
+    }
+    if (orderValue < ORDER_LIMITS.MIN_AMOUNT_USDT) {
+      return { valid: false, error: `Order value below minimum of $${ORDER_LIMITS.MIN_AMOUNT_USDT}` }
+    }
+  }
+
+  if (!["BUY", "SELL"].includes(order.side?.toUpperCase() || "")) {
+    return { valid: false, error: "Side must be BUY or SELL" }
+  }
+
+  if (!["limit", "market"].includes(order.order_type?.toLowerCase() || "")) {
+    return { valid: false, error: "Order type must be limit or market" }
+  }
+
+  return { valid: true }
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -11,12 +67,15 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status")
-    const limit = Number.parseInt(searchParams.get("limit") || "50")
+    const limit = Math.min(Number.parseInt(searchParams.get("limit") || "50"), 500) // Cap at 500
 
     const allOrders = (await getSettings("orders")) || []
     let filtered = allOrders.filter((o: any) => o.user_id === user.id)
 
     if (status) {
+      if (!["pending", "filled", "partially_filled", "cancelled", "rejected"].includes(status)) {
+        return NextResponse.json({ success: false, error: "Invalid status filter" }, { status: 400 })
+      }
       filtered = filtered.filter((o: any) => o.status === status)
     }
 
@@ -25,6 +84,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: filtered,
+      count: filtered.length,
     })
   } catch (error) {
     console.error("[v0] Get orders error:", error)
@@ -39,10 +99,42 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 })
     }
 
-    const { connection_id, symbol, order_type, side, price, quantity, time_in_force } = await request.json()
+    // Rate limit: max 10 orders per minute per user
+    const isAllowed = await orderRateLimiter.isAllowed(`user:${user.id}`)
+    if (!isAllowed) {
+      return NextResponse.json(
+        { success: false, error: "Rate limit exceeded: max 10 orders per minute" },
+        { status: 429 }
+      )
+    }
 
+    let bodyData
+    try {
+      bodyData = await request.json()
+    } catch (e) {
+      return NextResponse.json({ success: false, error: "Invalid JSON in request body" }, { status: 400 })
+    }
+
+    const { connection_id, symbol, order_type, side, price, quantity, time_in_force } = bodyData
+
+    // Required field validation
     if (!connection_id || !symbol || !order_type || !side || !quantity) {
-      return NextResponse.json({ success: false, error: "Missing required fields" }, { status: 400 })
+      return NextResponse.json(
+        { success: false, error: "Missing required fields: connection_id, symbol, order_type, side, quantity" },
+        { status: 400 }
+      )
+    }
+
+    // Order validation
+    const validation = validateOrder({ quantity, price, order_type, side })
+    if (!validation.valid) {
+      console.warn(`[v0] Order validation failed for user ${user.id}: ${validation.error}`)
+      return NextResponse.json({ success: false, error: validation.error }, { status: 400 })
+    }
+
+    // Symbol validation (basic format check)
+    if (typeof symbol !== "string" || symbol.length < 2 || symbol.length > 20) {
+      return NextResponse.json({ success: false, error: "Invalid symbol format" }, { status: 400 })
     }
 
     const existing = (await getSettings("orders")) || []
@@ -50,9 +142,9 @@ export async function POST(request: NextRequest) {
       id: `order:${Date.now()}:${Math.random().toString(36).substr(2, 9)}`,
       user_id: user.id,
       connection_id,
-      symbol,
-      order_type,
-      side,
+      symbol: symbol.toUpperCase(),
+      order_type: order_type.toLowerCase(),
+      side: side.toUpperCase(),
       price: price || null,
       quantity,
       remaining_quantity: quantity,
@@ -61,6 +153,25 @@ export async function POST(request: NextRequest) {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
+
+    // Log order creation for audit
+    await auditLogger.log({
+      user_id: user.id,
+      action: "order_create",
+      entity_type: "order",
+      entity_id: newOrder.id,
+      details: {
+        symbol: newOrder.symbol,
+        side: newOrder.side,
+        quantity: newOrder.quantity,
+        price: newOrder.price,
+        order_type: newOrder.order_type,
+      },
+      status: "success",
+      connection_id,
+    })
+
+    console.log(`[v0] [Audit] Order created by ${user.id}: ${symbol} ${side} ${quantity}@${price || "market"}`)
 
     existing.push(newOrder)
     await setSettings("orders", existing)

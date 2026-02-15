@@ -1,4 +1,3 @@
-import { sql } from "@/lib/db"
 import { TradeEngineManager, type EngineConfig } from "./trade-engine/engine-manager"
 
 // Re-export TradeEngine class and config from subdirectory for convenient imports
