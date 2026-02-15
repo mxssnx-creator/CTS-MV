@@ -43,7 +43,7 @@ export interface PseudoPosition {
   id: string
   connection_id: string
   symbol: string
-  indication_type: "direction" | "move" | "active" | "optimal" | "auto" // Renamed active_advanced to auto
+  indication_type: "direction" | "move" | "active" | "optimal" | "auto" // auto is new advanced type
   takeprofit_factor: number
   stoploss_ratio: number
   trailing_enabled: boolean
