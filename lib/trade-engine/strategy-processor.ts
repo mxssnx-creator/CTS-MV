@@ -3,7 +3,7 @@
  * Processes strategies asynchronously for symbols
  */
 
-import { initRedis, getIndications, getSettings } from "@/lib/redis-db"
+import { initRedis, getSettings } from "@/lib/redis-db"
 import { ProgressionStateManager } from "@/lib/progression-state-manager"
 
 export class StrategyProcessor {
@@ -206,18 +206,30 @@ export class StrategyProcessor {
    */
   private async getActiveIndications(symbol: string): Promise<any[]> {
     try {
-      const allIndications = await getIndications(this.connectionId, symbol)
-      
-      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
-      
-      return allIndications
-        .filter((ind) => ind.calculated_at > oneHourAgo && parseFloat(ind.profit_factor) >= 0.5)
-        .sort((a, b) => b.calculated_at.localeCompare(a.calculated_at))
-        .slice(0, 10)
+      // For now, indications are not fully implemented in Redis
+      // Return empty array to prevent spam queries
+      console.log(`[v0] No indications configured for ${symbol}`)
+      return []
     } catch (error) {
       console.error(`[v0] Failed to get active indications for ${symbol}:`, error)
       return []
     }
+  }
+
+  /**
+   * Get historical indications from Redis
+   */
+  private async getHistoricalIndications(symbol: string, start: Date, end: Date): Promise<any[]> {
+    try {
+      // For now, indications are not fully implemented in Redis
+      // Return empty array to prevent spam queries
+      console.log(`[v0] No historical indications for ${symbol}`)
+      return []
+    } catch (error) {
+      console.error(`[v0] Failed to get historical indications for ${symbol}:`, error)
+      return []
+    }
+  }
   }
 
   /**
