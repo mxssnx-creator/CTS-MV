@@ -11,7 +11,7 @@
  * - Volume calculations ONLY at Main level, not Base/Real
  */
 
-import { sql } from "@/lib/db"
+import { getSettings, setSettings } from "@/lib/redis-db"
 
 export interface AdjustStrategyStatistics {
   strategy_type: "block" | "dca"

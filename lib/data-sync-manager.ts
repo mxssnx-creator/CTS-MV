@@ -1,9 +1,10 @@
 /**
  * Data Sync Manager
  * Manages data synchronization to avoid recalculating existing data
+ * NOW: Redis-based, no SQL
  */
 
-import { sql } from "@/lib/db"
+import { getSettings, setSettings } from "@/lib/redis-db"
 
 interface SyncRange {
   start: Date
@@ -28,6 +29,66 @@ export class DataSyncManager {
     requestedEnd: Date,
   ): Promise<SyncStatus> {
     try {
+      // Get sync status from Redis
+      const syncKey = `sync_status:${connectionId}:${symbol}:${dataType}`
+      const syncData = (await getSettings(syncKey)) || { lastSyncEnd: null }
+
+      // If no previous sync, all data is missing
+      if (!syncData.lastSyncEnd) {
+        return {
+          needsSync: true,
+          missingRanges: [{ start: requestedStart, end: requestedEnd }],
+        }
+      }
+
+      const lastSyncDate = new Date(syncData.lastSyncEnd)
+
+      // If requested data is after last sync, need to sync new range
+      if (requestedEnd > lastSyncDate) {
+        return {
+          needsSync: true,
+          missingRanges: [{ start: lastSyncDate, end: requestedEnd }],
+          lastSyncEnd: lastSyncDate,
+        }
+      }
+
+      // All requested data already synced
+      return {
+        needsSync: false,
+        missingRanges: [],
+        lastSyncEnd: lastSyncDate,
+      }
+    } catch (error) {
+      console.error("[v0] Error checking sync status:", error)
+      // Default to syncing if there's an error
+      return {
+        needsSync: true,
+        missingRanges: [{ start: requestedStart, end: requestedEnd }],
+      }
+    }
+  }
+
+  /**
+   * Mark data as synced
+   */
+  static async markSynced(
+    connectionId: string,
+    symbol: string,
+    dataType: "market_data" | "indication" | "position",
+    syncEnd: Date,
+  ): Promise<void> {
+    try {
+      const syncKey = `sync_status:${connectionId}:${symbol}:${dataType}`
+      await setSettings(syncKey, {
+        lastSyncEnd: syncEnd.toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
+      console.log(`[v0] Marked ${dataType} as synced for ${symbol} until ${syncEnd.toISOString()}`)
+    } catch (error) {
+      console.error("[v0] Error marking data as synced:", error)
+    }
+  }
+}
       // Get last successful sync
       const [lastSync] = await sql`
         SELECT sync_start, sync_end, status

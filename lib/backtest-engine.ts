@@ -3,7 +3,7 @@
  * Evaluates preset strategies using historical data with profit factor and drawdown metrics
  */
 
-import { sql } from "@/lib/db"
+import { getSettings, setSettings } from "@/lib/redis-db"
 
 interface BacktestTrade {
   symbol: string
@@ -44,10 +44,25 @@ export class BacktestEngine {
    */
   async runBacktest(): Promise<string> {
     try {
-      // Create backtest result record
-      const [result] = await sql`
-        INSERT INTO backtest_results (
-          preset_id, connection_id, start_date, end_date, symbols, status
+      // Create backtest result record in Redis
+      const resultId = `backtest:${this.presetId}:${Date.now()}`
+      
+      const backtestResult = {
+        id: resultId,
+        preset_id: this.presetId,
+        connection_id: this.connectionId,
+        start_date: this.startDate.toISOString(),
+        end_date: this.endDate.toISOString(),
+        symbols: this.symbols,
+        status: "in_progress",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+
+      // Store in Redis
+      const backtests = (await getSettings("backtest_results")) || []
+      backtests.push(backtestResult)
+      await setSettings("backtest_results", backtests)
         )
         VALUES (
           ${this.presetId}, ${this.connectionId}, 

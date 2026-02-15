@@ -8,7 +8,7 @@
  * - Short-time trades (1-20 minutes optimal)
  */
 
-import { sql } from "@/lib/db"
+import { getSettings, setSettings } from "@/lib/redis-db"
 import { BasePseudoPositionManager } from "./base-pseudo-position-manager"
 
 export interface AutoIndicationMetrics {
