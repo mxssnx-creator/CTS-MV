@@ -204,7 +204,11 @@ export function AddConnectionDialog({ open, onOpenChange, onConnectionAdded, sho
     try {
       logs.push(`[${new Date().toLocaleTimeString()}] Testing connection...`)
       logs.push(`Exchange: ${formData.exchange.toUpperCase()}`)
-      logs.push(`API Type: ${formData.api_type} | Subtype: ${formData.api_subtype}`)
+      const apiInfoParts = [formData.api_type]
+      if (formData.api_subtype && formData.api_subtype !== "unified") {
+        apiInfoParts.push(formData.api_subtype)
+      }
+      logs.push(`API Type: ${apiInfoParts.join(" | ")}`)
       logs.push(`Connection: ${formData.connection_method.toUpperCase()} | Library: ${formData.connection_library}`)
       logs.push(`---`)
 
@@ -214,7 +218,7 @@ export function AddConnectionDialog({ open, onOpenChange, onConnectionAdded, sho
         body: JSON.stringify({
           exchange: formData.exchange,
           api_type: formData.api_type,
-          api_subtype: formData.api_subtype,
+          ...(formData.api_subtype && formData.api_subtype !== "unified" && { api_subtype: formData.api_subtype }),
           connection_method: formData.connection_method,
           connection_library: formData.connection_library,
           api_key: formData.api_key,
@@ -254,7 +258,11 @@ export function AddConnectionDialog({ open, onOpenChange, onConnectionAdded, sho
       
       // Add API connection info
       formattedLogs.push(`Exchange: ${formData.exchange.toUpperCase()}\n`)
-      formattedLogs.push(`API Type: ${formData.api_type} | Subtype: ${formData.api_subtype}\n`)
+      const apiInfoParts = [formData.api_type]
+      if (formData.api_subtype && formData.api_subtype !== "unified") {
+        apiInfoParts.push(formData.api_subtype)
+      }
+      formattedLogs.push(`API Type: ${apiInfoParts.join(" | ")}\n`)
       formattedLogs.push(`Connection: ${formData.connection_method.toUpperCase()} | Library: ${formData.connection_library}\n`)
       formattedLogs.push(`---\n`)
       
@@ -266,13 +274,11 @@ export function AddConnectionDialog({ open, onOpenChange, onConnectionAdded, sho
       formattedLogs.push(...responseLogs)
 
       // Add balance and price info if available
+      let balanceDisplay = ""
       if (data.balance !== undefined) {
         const balanceUSD = parseFloat(data.balance).toFixed(2)
         formattedLogs.push(`\n✓ Account Balance: $${balanceUSD}`)
-        // Show balance in toast message
-        toast.success(`Connection successful! Balance: $${balanceUSD}`)
-      } else {
-        toast.success("Connection successful!")
+        balanceDisplay = ` Balance: $${balanceUSD}`
       }
 
       // Fetch BTC price for context
@@ -290,7 +296,7 @@ export function AddConnectionDialog({ open, onOpenChange, onConnectionAdded, sho
 
       if (response.ok) {
         formattedLogs.push(`\n✓ Connection test PASSED - Ready to trade!`)
-        toast.success("Connection test passed!")
+        toast.success(`Connection successful!${balanceDisplay}`)
       } else {
         formattedLogs.push(`\n✗ Connection test FAILED: ${data.error || "Unknown error"}`)
         toast.error(data.error || "Connection test failed")
