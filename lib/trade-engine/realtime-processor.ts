@@ -3,7 +3,7 @@
  * Processes real-time updates for active positions with market data stream
  */
 
-import { sql } from "@/lib/db"
+import { getSettings, setSettings } from "@/lib/redis-db"
 import { PseudoPositionManager } from "./pseudo-position-manager"
 import { MarketDataStream } from "@/lib/realtime/market-data-stream"
 
@@ -56,14 +56,13 @@ export class RealtimeProcessor {
       // Process each position
       await Promise.all(activePositions.map((position) => this.processPosition(position)))
 
-      // Update engine state
-      await sql`
-        UPDATE trade_engine_state
-        SET 
-          active_positions_count = ${activePositions.length},
-          updated_at = CURRENT_TIMESTAMP
-        WHERE connection_id = ${this.connectionId}
-      `
+      // Update engine state in Redis
+      const engineState = await getSettings(`trade_engine_state:${this.connectionId}`)
+      await setSettings(`trade_engine_state:${this.connectionId}`, {
+        ...engineState,
+        active_positions_count: activePositions.length,
+        updated_at: new Date().toISOString(),
+      })
     } catch (error) {
       console.error("[v0] Failed to process realtime updates:", error)
     }

@@ -3,7 +3,7 @@
  * Manages asynchronous processing for symbols, indications, pseudo positions, and strategies
  */
 
-import { sql } from "@/lib/db"
+import { getSettings, setSettings, getAllConnections } from "@/lib/redis-db"
 import { DataSyncManager } from "@/lib/data-sync-manager"
 import { IndicationProcessor } from "./indication-processor"
 import { StrategyProcessor } from "./strategy-processor"
@@ -124,13 +124,9 @@ export class TradeEngineManager {
     console.log("[v0] Loading prehistoric data...")
 
     try {
-      // Check if prehistoric data already loaded
-      const [engineState] = await sql`
-        SELECT prehistoric_data_loaded, prehistoric_data_end
-        FROM trade_engine_state
-        WHERE connection_id = ${this.connectionId}
-      `
-
+      // Check if prehistoric data already loaded from Redis
+      const engineState = await getSettings(`trade_engine_state:${this.connectionId}`)
+      
       if (engineState?.prehistoric_data_loaded) {
         console.log("[v0] Prehistoric data already loaded, skipping...")
         return
@@ -145,7 +141,7 @@ export class TradeEngineManager {
 
       // Process each symbol
       for (const symbol of symbols) {
-        // Check what data already exists
+        // Check what data already exists in Redis
         const syncStatus = await DataSyncManager.checkSyncStatus(
           this.connectionId,
           symbol,
@@ -168,15 +164,14 @@ export class TradeEngineManager {
         await this.strategyProcessor.processHistoricalStrategies(symbol, prehistoricStart, prehistoricEnd)
       }
 
-      // Mark prehistoric data as loaded
-      await sql`
-        UPDATE trade_engine_state
-        SET 
-          prehistoric_data_loaded = true,
-          prehistoric_data_start = ${prehistoricStart.toISOString()},
-          prehistoric_data_end = ${prehistoricEnd.toISOString()}
-        WHERE connection_id = ${this.connectionId}
-      `
+      // Mark prehistoric data as loaded in Redis
+      await setSettings(`trade_engine_state:${this.connectionId}`, {
+        ...engineState,
+        prehistoric_data_loaded: true,
+        prehistoric_data_start: prehistoricStart.toISOString(),
+        prehistoric_data_end: prehistoricEnd.toISOString(),
+        updated_at: new Date().toISOString(),
+      })
 
       console.log("[v0] Prehistoric data loaded successfully")
     } catch (error) {
@@ -192,31 +187,20 @@ export class TradeEngineManager {
     try {
       console.log(`[v0] Loading market data for ${symbol} from ${start.toISOString()} to ${end.toISOString()}`)
 
-      let recordsLoaded = 0
+      // Get market data from Redis cache if available
+      const marketDataKey = `market_data:${this.connectionId}:${symbol}`
+      const cachedData = await getSettings(marketDataKey)
+      
+      if (cachedData && Array.isArray(cachedData)) {
+        console.log(`[v0] Found ${cachedData.length} cached market data points for ${symbol}`)
+        return
+      }
 
-      try {
-        // Get connection details
-        const [connection] = await sql<any>`
-          SELECT * FROM connections WHERE id = ${this.connectionId}
-        `
-
-        if (connection?.api_key && connection?.api_secret) {
-          // Fetch historical market data from database
-          const klines = await sql<any>`
-            SELECT 
-              timestamp, open, high, low, close, volume
-            FROM market_data 
-            WHERE connection_id = ${this.connectionId} 
-              AND symbol = ${symbol}
-              AND timestamp BETWEEN ${start.toISOString()} AND ${end.toISOString()}
-            ORDER BY timestamp ASC
-            LIMIT 1000
-          `
-
-          if (klines && klines.length > 0) {
-            recordsLoaded = klines.length
-          }
-        }
+      console.log(`[v0] No cached market data for ${symbol}, will use real-time data`)
+    } catch (error) {
+      console.error(`[v0] Error loading market data for ${symbol}:`, error)
+    }
+  }
       } catch (exchangeError) {
         console.warn(`[v0] Failed to fetch historical data for ${symbol}:`, exchangeError)
         // Fallback to simulated data for testing

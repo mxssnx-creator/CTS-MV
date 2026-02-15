@@ -5,7 +5,7 @@
  * With validation timeout (15s) and position cooldown (20s)
  */
 
-import { sql } from "@/lib/db"
+import { getSettings, setSettings } from "@/lib/redis-db"
 import { BasePseudoPositionManager } from "./base-pseudo-position-manager"
 import { DataCleanupManager } from "./data-cleanup-manager" // Import DataCleanupManager for time window limits
 
@@ -41,38 +41,36 @@ export class IndicationStateManager {
 
   private async loadSettings(): Promise<void> {
     try {
-      const settings = await sql`
-        SELECT key, value FROM system_settings
-        WHERE key IN (
-          'indicationValidationTimeout', 
-          'positionCooldownTimeout', 
-          'maxPositionsPerConfigSet',
-          'positionCooldownMs',
-          'maxPositionsPerConfigDirection'
+      // Load settings from Redis instead of SQL
+      const indicationSettings = await getSettings("indication_settings")
+      
+      if (indicationSettings) {
+        this.validationTimeout = Number.parseInt(String(indicationSettings.validationTimeout || "15"))
+        const cooldownMs = indicationSettings.positionCooldownMs
+        const cooldownSeconds = indicationSettings.positionCooldownTimeout
+        
+        if (cooldownMs) {
+          this.positionCooldown = Number.parseInt(String(cooldownMs)) / 1000 // Convert ms to seconds
+        } else if (cooldownSeconds) {
+          this.positionCooldown = Number.parseInt(String(cooldownSeconds))
+        } else {
+          this.positionCooldown = 0.1 // 100ms default in seconds
+        }
+        
+        this.maxPositionsPerConfig = Number.parseInt(
+          String(indicationSettings.maxPositionsPerConfigDirection || indicationSettings.maxPositionsPerConfigSet || "1"),
         )
-      `
-
-      const settingsMap = new Map(settings.map((s: any) => [s.key, s.value]))
-
-      this.validationTimeout = Number.parseInt(String(settingsMap.get("indicationValidationTimeout") || "15"))
-      const cooldownMs = settingsMap.get("positionCooldownMs")
-      const cooldownSeconds = settingsMap.get("positionCooldownTimeout")
-      if (cooldownMs) {
-        this.positionCooldown = Number.parseInt(String(cooldownMs)) / 1000 // Convert ms to seconds
-      } else if (cooldownSeconds) {
-        this.positionCooldown = Number.parseInt(String(cooldownSeconds))
-      } else {
-        this.positionCooldown = 0.1 // 100ms default in seconds
       }
-      this.maxPositionsPerConfig = Number.parseInt(
-        String(settingsMap.get("maxPositionsPerConfigDirection") || settingsMap.get("maxPositionsPerConfigSet") || "1"),
-      )
 
       console.log(
         `[v0] Loaded indication settings: validation=${this.validationTimeout}s, cooldown=${this.positionCooldown}s, maxPerConfig=${this.maxPositionsPerConfig}`,
       )
     } catch (error) {
       console.error("[v0] Failed to load indication settings:", error)
+      // Use defaults if loading fails
+      this.validationTimeout = 15
+      this.positionCooldown = 0.1
+      this.maxPositionsPerConfig = 1
     }
   }
 
