@@ -228,14 +228,14 @@ export class TradeEngineManager {
         this.componentHealth.indications.lastCycleDuration = duration
         this.componentHealth.indications.successRate = ((cycleCount - errorCount) / cycleCount) * 100
 
-        await sql`
-          UPDATE trade_engine_state
-          SET 
-            last_indication_run = CURRENT_TIMESTAMP,
-            indication_cycle_count = ${cycleCount},
-            indication_avg_duration_ms = ${totalDuration / cycleCount}
-          WHERE connection_id = ${this.connectionId}
-        `
+        // Update engine state in Redis
+        const engineState = (await getSettings(`engine_state:${this.connectionId}`)) || {}
+        await setSettings(`engine_state:${this.connectionId}`, {
+          ...engineState,
+          last_indication_run: new Date().toISOString(),
+          indication_cycle_count: cycleCount,
+          indication_avg_duration_ms: totalDuration / cycleCount,
+        })
       } catch (error) {
         errorCount++
         this.componentHealth.indications.errorCount++
@@ -270,14 +270,14 @@ export class TradeEngineManager {
         this.componentHealth.strategies.lastCycleDuration = duration
         this.componentHealth.strategies.successRate = ((cycleCount - errorCount) / cycleCount) * 100
 
-        await sql`
-          UPDATE trade_engine_state
-          SET 
-            last_strategy_run = CURRENT_TIMESTAMP,
-            strategy_cycle_count = ${cycleCount},
-            strategy_avg_duration_ms = ${totalDuration / cycleCount}
-          WHERE connection_id = ${this.connectionId}
-        `
+        // Update engine state in Redis
+        const engineState = (await getSettings(`engine_state:${this.connectionId}`)) || {}
+        await setSettings(`engine_state:${this.connectionId}`, {
+          ...engineState,
+          last_strategy_run: new Date().toISOString(),
+          strategy_cycle_count: cycleCount,
+          strategy_avg_duration_ms: totalDuration / cycleCount,
+        })
       } catch (error) {
         errorCount++
         this.componentHealth.strategies.errorCount++
@@ -310,14 +310,14 @@ export class TradeEngineManager {
         this.componentHealth.realtime.lastCycleDuration = duration
         this.componentHealth.realtime.successRate = ((cycleCount - errorCount) / cycleCount) * 100
 
-        await sql`
-          UPDATE trade_engine_state
-          SET 
-            last_realtime_run = CURRENT_TIMESTAMP,
-            realtime_cycle_count = ${cycleCount},
-            realtime_avg_duration_ms = ${totalDuration / cycleCount}
-          WHERE connection_id = ${this.connectionId}
-        `
+        // Update engine state in Redis
+        const engineState = (await getSettings(`engine_state:${this.connectionId}`)) || {}
+        await setSettings(`engine_state:${this.connectionId}`, {
+          ...engineState,
+          last_realtime_run: new Date().toISOString(),
+          realtime_cycle_count: cycleCount,
+          realtime_avg_duration_ms: totalDuration / cycleCount,
+        })
       } catch (error) {
         errorCount++
         this.componentHealth.realtime.errorCount++
@@ -360,17 +360,16 @@ export class TradeEngineManager {
         // Calculate overall health
         const overallHealth = this.calculateOverallHealth()
 
-        // Update database with health status
-        await sql`
-          UPDATE trade_engine_state
-          SET 
-            manager_health_status = ${overallHealth},
-            indications_health = ${this.componentHealth.indications.status},
-            strategies_health = ${this.componentHealth.strategies.status},
-            realtime_health = ${this.componentHealth.realtime.status},
-            last_manager_health_check = CURRENT_TIMESTAMP
-          WHERE connection_id = ${this.connectionId}
-        `
+        // Update health status in Redis
+        const engineState = (await getSettings(`engine_state:${this.connectionId}`)) || {}
+        await setSettings(`engine_state:${this.connectionId}`, {
+          ...engineState,
+          manager_health_status: overallHealth,
+          indications_health: this.componentHealth.indications.status,
+          strategies_health: this.componentHealth.strategies.status,
+          realtime_health: this.componentHealth.realtime.status,
+          last_manager_health_check: new Date().toISOString(),
+        })
 
         if (overallHealth !== "healthy") {
           console.warn(`[v0] TradeEngineManager health for ${this.connectionId}: ${overallHealth}`)
@@ -421,85 +420,62 @@ export class TradeEngineManager {
    */
   private async getSymbols(): Promise<string[]> {
     try {
-      // Get system settings
-      const [settings] = await sql`
-        SELECT value FROM system_settings WHERE key = 'useMainSymbols'
-      `
+      // Get system settings from Redis
+      const useMainSymbols = await getSettings("useMainSymbols")
 
-      const useMainSymbols = settings?.value === "true"
-
-      if (useMainSymbols) {
+      if (useMainSymbols === true || useMainSymbols === "true") {
         // Get main symbols from settings
-        const [mainSymbolsSetting] = await sql`
-          SELECT value FROM system_settings WHERE key = 'mainSymbols'
-        `
-        return JSON.parse(mainSymbolsSetting.value)
-      } else {
-        // Get symbols from exchange
-        const [symbolCountSetting] = await sql<any>`
-          SELECT value FROM system_settings WHERE key = 'symbolsCount'
-        `
-        const symbolCount = Number.parseInt(symbolCountSetting?.value || "30")
-
-        try {
-          // Fetch from database or use default symbols
-          const fallbackSymbols = [
-            "BTCUSDT",
-            "ETHUSDT",
-            "BNBUSDT",
-            "XRPUSDT",
-            "ADAUSDT",
-            "DOGEUSDT",
-            "LINKUSDT",
-            "LITUSDT",
-            "THETAUSDT",
-            "AVAXUSDT",
-            "MATICUSDT",
-            "SOLUSDT",
-            "UNIUSDT",
-            "APTUSDT",
-            "ARBUSDT",
-          ]
-
-          return fallbackSymbols.slice(0, symbolCount)
-        } catch (error) {
-          console.warn("[v0] Failed to get symbols, using defaults:", error)
-          return ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT"]
+        const mainSymbols = await getSettings("mainSymbols")
+        if (Array.isArray(mainSymbols) && mainSymbols.length > 0) {
+          return mainSymbols
+        }
+        if (typeof mainSymbols === "string") {
+          try { return JSON.parse(mainSymbols) } catch { /* fall through */ }
         }
       }
+
+      // Get symbol count from settings
+      const symbolCountSetting = await getSettings("symbolsCount")
+      const symbolCount = Number.parseInt(String(symbolCountSetting || "30"))
+
+      const fallbackSymbols = [
+        "BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT",
+        "DOGEUSDT", "LINKUSDT", "LITUSDT", "THETAUSDT", "AVAXUSDT",
+        "MATICUSDT", "SOLUSDT", "UNIUSDT", "APTUSDT", "ARBUSDT",
+      ]
+
+      return fallbackSymbols.slice(0, symbolCount)
     } catch (error) {
       console.error("[v0] Failed to get symbols:", error)
-      return []
+      return ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT"]
     }
   }
 
   /**
-   * Update engine state
+   * Update engine state (Redis-based)
    */
   private async updateEngineState(status: string, errorMessage?: string): Promise<void> {
     try {
-      await sql`
-        UPDATE trade_engine_state
-        SET 
-          status = ${status},
-          error_message = ${errorMessage || null},
-          updated_at = CURRENT_TIMESTAMP
-        WHERE connection_id = ${this.connectionId}
-      `
+      const stateKey = `engine_state:${this.connectionId}`
+      const currentState = (await getSettings(stateKey)) || {}
+      await setSettings(stateKey, {
+        ...currentState,
+        status,
+        error_message: errorMessage || null,
+        updated_at: new Date().toISOString(),
+      })
     } catch (error) {
       console.error("[v0] Failed to update engine state:", error)
     }
   }
 
   /**
-   * Get engine status
+   * Get engine status (Redis-based)
    */
   async getStatus() {
     try {
-      const [state] = await sql`
-        SELECT * FROM trade_engine_state
-        WHERE connection_id = ${this.connectionId}
-      `
+      const stateKey = `engine_state:${this.connectionId}`
+      const state = (await getSettings(stateKey)) || {}
       return {
         ...state,
         health: {

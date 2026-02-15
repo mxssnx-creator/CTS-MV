@@ -142,20 +142,18 @@ export class IndicationStateManager {
       return cached.price
     }
 
-    const [marketData] = await sql`
-      SELECT price FROM market_data
-      WHERE connection_id = ${this.connectionId}
-        AND symbol = ${symbol}
-      ORDER BY timestamp DESC
-      LIMIT 1
-    `
+    // Get latest price from Redis market data
+    const priceKey = `market_price:${this.connectionId}:${symbol}`
+    const redisPrice = await getSettings(priceKey)
+    
+    if (redisPrice) {
+      const price = Number.parseFloat(redisPrice)
+      this.priceCache.set(symbol, { price, timestamp: now })
+      return price
+    }
 
-    if (!marketData) return null
-
-    const price = Number.parseFloat(marketData.price)
-    this.priceCache.set(symbol, { price, timestamp: now })
-
-    return price
+    // No price data available yet
+    return null
   }
 
   /**

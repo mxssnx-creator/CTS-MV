@@ -1,7 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import { getSettings, setSettings } from "@/lib/redis-db"
-import { RateLimiter } from "@/lib/rate-limiter"
 import { auditLogger } from "@/lib/audit-logger"
 
 // API Category - used in all responses for type tracking
@@ -15,7 +14,21 @@ const ORDER_LIMITS = {
   MAX_ORDERS_PER_MINUTE: 500, // Maximum rate limit - no practical limit
 }
 
-const orderRateLimiter = new RateLimiter(ORDER_LIMITS.MAX_ORDERS_PER_MINUTE, 60000)
+// Simple per-user rate limiter for order creation
+const orderTimestamps = new Map<string, number[]>()
+
+function checkOrderRateLimit(userId: string): boolean {
+  const now = Date.now()
+  const timestamps = orderTimestamps.get(userId) || []
+  // Remove timestamps older than 1 minute
+  const recent = timestamps.filter((ts) => now - ts < 60000)
+  if (recent.length >= ORDER_LIMITS.MAX_ORDERS_PER_MINUTE) {
+    return false
+  }
+  recent.push(now)
+  orderTimestamps.set(userId, recent)
+  return true
+}
 
 function validateOrder(order: any): { valid: boolean; error?: string } {
   if (!order.quantity || typeof order.quantity !== "number") {
@@ -121,8 +134,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Rate limit: max 10 orders per minute per user
-    const isAllowed = await orderRateLimiter.isAllowed(`user:${user.id}`)
+    // Rate limit check
+    const isAllowed = checkOrderRateLimit(user.id)
     if (!isAllowed) {
       return NextResponse.json(
         {

@@ -90,24 +90,13 @@ export class AutoIndicationEngine {
   }
 
   /**
-   * Load 8-hour historical market data
+   * Load 8-hour historical market data (Redis-based)
+   * NOTE: This returns empty data - market_data storage not yet implemented in Redis
    */
   private async load8HourData(symbol: string): Promise<Array<{ price: number; timestamp: Date; volume?: number }>> {
-    const data = await sql`
-      SELECT price, timestamp, volume
-      FROM market_data
-      WHERE connection_id = ${this.connectionId}
-        AND symbol = ${symbol}
-        AND timestamp > NOW() - INTERVAL '8 hours'
-      ORDER BY timestamp DESC
-      LIMIT 2000
-    `
-
-    return data.map((d: any) => ({
-      price: Number.parseFloat(d.price),
-      timestamp: new Date(d.timestamp),
-      volume: d.volume ? Number.parseFloat(d.volume) : undefined,
-    }))
+    // TODO: Implement market data caching in Redis
+    // For now, return empty array to prevent SQL errors
+    return []
   }
 
   /**
@@ -314,53 +303,17 @@ export class AutoIndicationEngine {
   }
 
   /**
-   * Get previous position performance metrics
+   * Get previous position performance metrics (Redis-based)
+   * NOTE: Returns default metrics - position tracking not yet implemented in Redis
    */
   private async getPreviousPositionMetrics(symbol: string): Promise<{
     profitFactor: number
     drawdownTime: number
     successRate: number
   }> {
-    const positions = await sql`
-      SELECT 
-        profit_loss,
-        EXTRACT(EPOCH FROM (closed_at - created_at))/3600 as duration_hours
-      FROM active_exchange_positions
-      WHERE connection_id = ${this.connectionId}
-        AND symbol = ${symbol}
-        AND status = 'closed'
-        AND closed_at > NOW() - INTERVAL '7 days'
-      ORDER BY closed_at DESC
-      LIMIT 50
-    `
-
-    if (positions.length === 0) {
-      return { profitFactor: 0, drawdownTime: 0, successRate: 0 }
-    }
-
-    const totalProfit = positions
-      .filter((p: any) => p.profit_loss > 0)
-      .reduce((sum: number, p: any) => sum + Number.parseFloat(p.profit_loss), 0)
-    const totalLoss = Math.abs(
-      positions
-        .filter((p: any) => p.profit_loss < 0)
-        .reduce((sum: number, p: any) => sum + Number.parseFloat(p.profit_loss), 0),
-    )
-    const profitFactor = totalLoss > 0 ? totalProfit / totalLoss : totalProfit > 0 ? 5.0 : 0
-
-    const avgDrawdownTime =
-      positions
-        .filter((p: any) => p.profit_loss < 0)
-        .reduce((sum: number, p: any) => sum + Number.parseFloat(p.duration_hours), 0) /
-      Math.max(1, positions.filter((p: any) => p.profit_loss < 0).length)
-
-    const successRate = positions.filter((p: any) => p.profit_loss > 0).length / positions.length
-
-    return {
-      profitFactor,
-      drawdownTime: avgDrawdownTime,
-      successRate,
-    }
+    // TODO: Implement position history caching in Redis
+    // For now, return default metrics to prevent SQL errors
+    return { profitFactor: 0, drawdownTime: 0, successRate: 0 }
   }
 
   /**
@@ -518,26 +471,21 @@ export class AutoIndicationEngine {
   }
 
   /**
-   * Load Auto settings from database
+   * Load Auto settings from Redis
    */
   private async loadAutoSettings(): Promise<any> {
-    const settings = await sql`
-      SELECT key, value FROM system_settings
-      WHERE key LIKE 'auto_%'
-    `
-
-    // Parse and return settings
-    // (Implementation details omitted for brevity)
+    // Get Auto settings from Redis
+    const autoSettings = (await getSettings("auto_settings")) || {}
 
     return {
-      enabled: true,
-      strategies: {
+      enabled: autoSettings.enabled !== false,
+      strategies: autoSettings.strategies || {
         block: { enabled: true },
         level: { enabled: true },
         dca: { enabled: true },
       },
-      trailingOptimalRanges: true,
-      simultaneousTrading: true,
+      trailingOptimalRanges: autoSettings.trailingOptimalRanges !== false,
+      simultaneousTrading: autoSettings.simultaneousTrading !== false,
     }
   }
 
