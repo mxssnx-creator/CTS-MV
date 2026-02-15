@@ -182,15 +182,24 @@ class InlineLocalRedis {
   async smembers(key: string): Promise<string[]> {
     const entry = this.getEntry(key)
     if (!entry) {
-      console.log(`[v0] [Redis] smembers(${key}): entry not found`)
+      // Don't log for indications - they're optional and expected to not exist frequently
+      if (!key.startsWith("indication")) {
+        console.log(`[v0] [Redis] smembers(${key}): entry not found`)
+      }
       return []
     }
     if (entry.type !== "set") {
-      console.log(`[v0] [Redis] smembers(${key}): entry is type ${entry.type}, not a set`)
+      // Don't log for indications - expected behavior
+      if (!key.startsWith("indication")) {
+        console.log(`[v0] [Redis] smembers(${key}): entry is type ${entry.type}, not a set`)
+      }
       return []
     }
     const members = Array.from(entry.value as Set<string>)
-    console.log(`[v0] [Redis] smembers(${key}): returning ${members.length} members`)
+    // Only log for non-indication sets to reduce noise
+    if (!key.startsWith("indication")) {
+      console.log(`[v0] [Redis] smembers(${key}): returning ${members.length} members`)
+    }
     return members
   }
 

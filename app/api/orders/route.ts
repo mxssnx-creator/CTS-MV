@@ -4,6 +4,9 @@ import { getSettings, setSettings } from "@/lib/redis-db"
 import { RateLimiter } from "@/lib/rate-limiter"
 import { auditLogger } from "@/lib/audit-logger"
 
+// API Category - used in all responses for type tracking
+const API_CATEGORY = "trading.orders"
+
 // Order validation constants
 const ORDER_LIMITS = {
   MAX_AMOUNT_USDT: 100000, // Max $100k per order
@@ -62,7 +65,10 @@ export async function GET(request: NextRequest) {
   try {
     const user = await getSession()
     if (!user) {
-      return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 })
+      return NextResponse.json(
+        { success: false, error: "Not authenticated", category: API_CATEGORY },
+        { status: 401 }
+      )
     }
 
     const { searchParams } = new URL(request.url)
@@ -74,7 +80,10 @@ export async function GET(request: NextRequest) {
 
     if (status) {
       if (!["pending", "filled", "partially_filled", "cancelled", "rejected"].includes(status)) {
-        return NextResponse.json({ success: false, error: "Invalid status filter" }, { status: 400 })
+        return NextResponse.json(
+          { success: false, error: "Invalid status filter", category: API_CATEGORY },
+          { status: 400 }
+        )
       }
       filtered = filtered.filter((o: any) => o.status === status)
     }
@@ -83,12 +92,22 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      category: API_CATEGORY,
+      timestamp: new Date().toISOString(),
       data: filtered,
       count: filtered.length,
     })
   } catch (error) {
     console.error("[v0] Get orders error:", error)
-    return NextResponse.json({ success: false, error: "Internal server error" }, { status: 500 })
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Internal server error",
+        category: API_CATEGORY,
+        timestamp: new Date().toISOString(),
+      },
+      { status: 500 }
+    )
   }
 }
 
@@ -96,8 +115,128 @@ export async function POST(request: NextRequest) {
   try {
     const user = await getSession()
     if (!user) {
-      return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 })
+      return NextResponse.json(
+        { success: false, error: "Not authenticated", category: API_CATEGORY },
+        { status: 401 }
+      )
     }
+
+    // Rate limit: max 10 orders per minute per user
+    const isAllowed = await orderRateLimiter.isAllowed(`user:${user.id}`)
+    if (!isAllowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Rate limit exceeded: max 10 orders per minute",
+          category: API_CATEGORY,
+          timestamp: new Date().toISOString(),
+        },
+        { status: 429 }
+      )
+    }
+
+    let bodyData
+    try {
+      bodyData = await request.json()
+    } catch (e) {
+      return NextResponse.json(
+        { success: false, error: "Invalid JSON in request body", category: API_CATEGORY },
+        { status: 400 }
+      )
+    }
+
+    const { connection_id, symbol, order_type, side, price, quantity, time_in_force } = bodyData
+
+    // Required field validation
+    if (!connection_id || !symbol || !order_type || !side || !quantity) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Missing required fields: connection_id, symbol, order_type, side, quantity",
+          category: API_CATEGORY,
+        },
+        { status: 400 }
+      )
+    }
+
+    // Order validation
+    const validation = validateOrder({ quantity, price, order_type, side })
+    if (!validation.valid) {
+      console.warn(`[v0] Order validation failed for user ${user.id}: ${validation.error}`)
+      return NextResponse.json(
+        { success: false, error: validation.error, category: API_CATEGORY },
+        { status: 400 }
+      )
+    }
+
+    // Symbol validation (basic format check)
+    if (typeof symbol !== "string" || symbol.length < 2 || symbol.length > 20) {
+      return NextResponse.json(
+        { success: false, error: "Invalid symbol format", category: API_CATEGORY },
+        { status: 400 }
+      )
+    }
+
+    const existing = (await getSettings("orders")) || []
+    const newOrder = {
+      id: `order:${Date.now()}:${Math.random().toString(36).substr(2, 9)}`,
+      user_id: user.id,
+      connection_id,
+      symbol: symbol.toUpperCase(),
+      order_type: order_type.toLowerCase(),
+      side: side.toUpperCase(),
+      price: price || null,
+      quantity,
+      remaining_quantity: quantity,
+      time_in_force: time_in_force || "GTC",
+      status: "pending",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+
+    // Log order creation for audit
+    await auditLogger.log({
+      user_id: user.id,
+      action: "order_create",
+      entity_type: "order",
+      entity_id: newOrder.id,
+      details: {
+        symbol: newOrder.symbol,
+        side: newOrder.side,
+        quantity: newOrder.quantity,
+        price: newOrder.price,
+        order_type: newOrder.order_type,
+      },
+      status: "success",
+      connection_id,
+    })
+
+    console.log(
+      `[v0] [Audit] Order created by ${user.id}: ${symbol} ${side} ${quantity}@${price || "market"}`
+    )
+
+    existing.push(newOrder)
+    await setSettings("orders", existing)
+
+    return NextResponse.json({
+      success: true,
+      category: API_CATEGORY,
+      timestamp: new Date().toISOString(),
+      data: newOrder,
+    })
+  } catch (error) {
+    console.error("[v0] Create order error:", error)
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Internal server error",
+        category: API_CATEGORY,
+        timestamp: new Date().toISOString(),
+      },
+      { status: 500 }
+    )
+  }
+}
 
     // Rate limit: max 10 orders per minute per user
     const isAllowed = await orderRateLimiter.isAllowed(`user:${user.id}`)
