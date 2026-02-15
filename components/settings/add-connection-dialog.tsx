@@ -258,11 +258,11 @@ export function AddConnectionDialog({ open, onOpenChange, onConnectionAdded, sho
       
       // Add API connection info
       formattedLogs.push(`Exchange: ${formData.exchange.toUpperCase()}\n`)
-      const apiInfoParts = [formData.api_type]
+      const apiLogParts = [formData.api_type]
       if (formData.api_subtype && formData.api_subtype !== "unified") {
-        apiInfoParts.push(formData.api_subtype)
+        apiLogParts.push(formData.api_subtype)
       }
-      formattedLogs.push(`API Type: ${apiInfoParts.join(" | ")}\n`)
+      formattedLogs.push(`API Type: ${apiLogParts.join(" | ")}\n`)
       formattedLogs.push(`Connection: ${formData.connection_method.toUpperCase()} | Library: ${formData.connection_library}\n`)
       formattedLogs.push(`---\n`)
       
