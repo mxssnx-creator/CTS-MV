@@ -12,7 +12,7 @@ const ORDER_LIMITS = {
   MAX_AMOUNT_USDT: 100000, // Max $100k per order
   MAX_QUANTITY: 1000000, // Max 1M units per order
   MIN_AMOUNT_USDT: 10, // Min $10 per order
-  MAX_ORDERS_PER_MINUTE: 10,
+  MAX_ORDERS_PER_MINUTE: 500, // Maximum rate limit - no practical limit
 }
 
 const orderRateLimiter = new RateLimiter(ORDER_LIMITS.MAX_ORDERS_PER_MINUTE, 60000)

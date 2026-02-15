@@ -78,6 +78,8 @@ export function ConnectionCard({
     position_mode: connection.position_mode,
     is_testnet: connection.is_testnet,
     api_passphrase: connection.api_passphrase || "",
+    order_type: "market", // Market or Limit (default: Market)
+    order_volume_usdt: 100, // Default $100 per order
   })
 
   // Auto-set connection library based on connection method when editFormData changes
@@ -268,6 +270,8 @@ export function ConnectionCard({
           margin_type: editFormData.margin_type,
           position_mode: editFormData.position_mode,
           is_testnet: editFormData.is_testnet,
+          order_type: editFormData.order_type,
+          order_volume_usdt: editFormData.order_volume_usdt,
         }),
       })
 
@@ -350,12 +354,28 @@ export function ConnectionCard({
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => setEditDialogOpen(true)}
-                className="flex items-center gap-2"
+                onClick={() => {
+                  setEditDialogOpen(true)
+                  setEditDialogTab("api")
+                }}
+                className="flex items-center gap-2 w-full"
               >
                 <Settings className="h-4 w-4" />
                 <span>API Settings</span>
               </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setEditDialogOpen(true)
+                  setEditDialogTab("trade")
+                }}
+                className="flex items-center gap-2 w-full"
+              >
+                <Settings className="h-4 w-4" />
+                <span>Trade Settings</span>
+              </Button>
+            </div>
               <div className="flex items-center justify-end gap-3">
                 <span className="text-sm text-muted-foreground">
                   {connection.is_enabled ? "Enabled" : "Disabled"}
@@ -524,9 +544,10 @@ export function ConnectionCard({
           </DialogHeader>
 
           <Tabs value={editDialogTab} onValueChange={setEditDialogTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="basic">Basic Info</TabsTrigger>
               <TabsTrigger value="api">API Credentials</TabsTrigger>
+              <TabsTrigger value="trade">Trade Settings</TabsTrigger>
               <TabsTrigger value="advanced">Advanced</TabsTrigger>
             </TabsList>
 
@@ -724,6 +745,67 @@ export function ConnectionCard({
 
                 <div className="bg-blue-50 border border-blue-200 rounded p-2 text-xs text-blue-900">
                   ℹ️ Your API credentials are encrypted and only used for secure connections to {connection.exchange}.
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* Trade Settings Tab */}
+            <TabsContent value="trade" className="space-y-4 mt-4">
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex gap-3">
+                <AlertCircle className="h-4 w-4 shrink-0 text-green-900 mt-0.5" />
+                <div className="text-sm text-green-900">
+                  <p className="font-semibold mb-1">Order Configuration</p>
+                  <p className="text-xs">Set default trading parameters that will apply to all positions opened through this connection.</p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-order-type" className="font-medium">Order Type (Default)</Label>
+                  <Select value={editFormData.order_type} onValueChange={(value) => setEditFormData(prev => ({ ...prev, order_type: value }))}>
+                    <SelectTrigger id="edit-order-type" className="bg-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="market">Market (Immediate Execution)</SelectItem>
+                      <SelectItem value="limit">Limit (Price-Based Entry)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {editFormData.order_type === "market" && "Market orders execute immediately at current price"}
+                    {editFormData.order_type === "limit" && "Limit orders wait for specified price levels"}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="edit-order-volume" className="font-medium">Order Volume per Trade (USD)</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="edit-order-volume"
+                      type="number"
+                      min="10"
+                      max="100000"
+                      step="10"
+                      value={editFormData.order_volume_usdt}
+                      onChange={(e) => setEditFormData(prev => ({ ...prev, order_volume_usdt: Math.max(10, Number(e.target.value)) }))}
+                      placeholder="Enter order volume in USD"
+                      className="bg-white flex-1"
+                    />
+                    <span className="text-sm font-medium text-muted-foreground">USDT</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    This is the static order size used for opening and closing all positions. Range: $10 - $100,000 per order. Affects entry and exit throughout the trading system.
+                  </p>
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 rounded p-3 text-xs text-blue-900 space-y-1">
+                  <div className="font-medium">How This Works:</div>
+                  <ul className="list-disc list-inside space-y-0.5 text-xs">
+                    <li><strong>Opening Positions:</strong> New positions will use this order type and volume</li>
+                    <li><strong>Closing Positions:</strong> Exit orders will match this volume setting</li>
+                    <li><strong>Multi-Leg Strategy:</strong> Block, DCA, and Level strategies scale using this base volume</li>
+                    <li><strong>Risk Management:</strong> Adjust volume based on your account size and risk tolerance</li>
+                  </ul>
                 </div>
               </div>
             </TabsContent>
