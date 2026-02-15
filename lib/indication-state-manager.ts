@@ -1033,36 +1033,19 @@ export class IndicationStateManager {
       }
     }
 
-    // Batch insert
+    // Batch insert into Redis
     if (positions.length > 0) {
-      const batchSize = 50
-      for (let i = 0; i < positions.length; i += batchSize) {
-        const batch = positions.slice(i, i + batchSize)
+      const posKey = `positions_optimal:${this.connectionId}:${symbol}:${range}`
+      const existing = (await getSettings(posKey)) as any[] || []
 
-        await Promise.all(
-          batch.map(
-            (p) =>
-              sql`
-              INSERT INTO pseudo_positions (
-                connection_id, symbol, indication_type, indication_range,
-                takeprofit_factor, stoploss_ratio, trailing_enabled,
-                trail_start, trail_stop, entry_price, current_price,
-                direction, status, base_position_id,
-                drawdown_ratio, market_change_range, last_part_ratio,
-                created_at
-              )
-              VALUES (
-                ${p.connection_id}, ${p.symbol}, ${p.indication_type}, ${p.indication_range},
-                ${p.takeprofit_factor}, ${p.stoploss_ratio}, ${p.trailing_enabled},
-                ${p.trail_start}, ${p.trail_stop}, ${p.entry_price}, ${p.current_price},
-                ${p.direction}, ${p.status}, ${p.base_position_id},
-                ${p.drawdown_ratio}, ${p.market_change_range}, ${p.last_part_ratio},
-                CURRENT_TIMESTAMP
-              )
-            `,
-          ),
-        )
+      for (const p of positions) {
+        existing.push({
+          ...p,
+          created_at: new Date().toISOString(),
+        })
       }
+
+      await setSettings(posKey, existing)
 
       console.log(
         `[v0] Created ${positions.length} optimal positions for ${symbol} (range ${range} ${direction}) base ${basePositionId}`,
