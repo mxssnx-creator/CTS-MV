@@ -711,14 +711,27 @@ export async function saveIndication(connectionId: string, indication: any): Pro
 
 export async function getIndications(connectionId: string): Promise<any[]> {
   const client = getClient()
-  const ids = await client.smembers(`indications:${connectionId}`)
-  if (!ids || ids.length === 0) return []
-  const indications = []
-  for (const indicationId of ids) {
-    const data = await client.hgetall(`indication:${indicationId}`)
-    if (data && Object.keys(data).length > 0) indications.push(data)
+  try {
+    // Check if indications set exists before calling smembers to avoid log spam
+    const indicationKey = `indications:${connectionId}`
+    const exists = await client.exists(indicationKey)
+    if (!exists) {
+      // Key doesn't exist - return empty array without logging
+      return []
+    }
+    
+    const ids = await client.smembers(indicationKey)
+    if (!ids || ids.length === 0) return []
+    const indications = []
+    for (const indicationId of ids) {
+      const data = await client.hgetall(`indication:${indicationId}`)
+      if (data && Object.keys(data).length > 0) indications.push(data)
+    }
+    return indications
+  } catch (error) {
+    console.warn(`[v0] [DB] Error getting indications for ${connectionId}:`, error)
+    return []
   }
-  return indications
 }
 
 // ========== Market Data ==========
