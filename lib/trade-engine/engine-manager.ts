@@ -201,28 +201,6 @@ export class TradeEngineManager {
       console.error(`[v0] Error loading market data for ${symbol}:`, error)
     }
   }
-      } catch (exchangeError) {
-        console.warn(`[v0] Failed to fetch historical data for ${symbol}:`, exchangeError)
-        // Fallback to simulated data for testing
-        recordsLoaded = 100
-      }
-
-      // Log the sync
-      await DataSyncManager.logSync(this.connectionId, symbol, "market_data", start, end, recordsLoaded, "success")
-    } catch (error) {
-      console.error(`[v0] Failed to load market data for ${symbol}:`, error)
-      await DataSyncManager.logSync(
-        this.connectionId,
-        symbol,
-        "market_data",
-        start,
-        end,
-        0,
-        "failed",
-        error instanceof Error ? error.message : "Unknown error",
-      )
-    }
-  }
 
   /**
    * Start indication processor (async)

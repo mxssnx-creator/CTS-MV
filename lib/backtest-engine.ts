@@ -63,16 +63,8 @@ export class BacktestEngine {
       const backtests = (await getSettings("backtest_results")) || []
       backtests.push(backtestResult)
       await setSettings("backtest_results", backtests)
-        )
-        VALUES (
-          ${this.presetId}, ${this.connectionId}, 
-          ${this.startDate.toISOString()}, ${this.endDate.toISOString()},
-          ${JSON.stringify(this.symbols)}, 'running'
-        )
-        RETURNING id
-      `
 
-      const backtestId = result.id
+      const backtestId = backtestResult.id
 
       // Run backtest asynchronously
       this.executeBacktest(backtestId).catch((error) => {

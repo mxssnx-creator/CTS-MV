@@ -230,26 +230,6 @@ export class StrategyProcessor {
       return []
     }
   }
-  }
-
-  /**
-   * Get historical indications from Redis
-   */
-  private async getHistoricalIndications(symbol: string, start: Date, end: Date): Promise<any[]> {
-    try {
-      const allIndications = await getIndications(this.connectionId, symbol)
-      
-      return allIndications
-        .filter((ind) => 
-          ind.calculated_at >= start.toISOString() && 
-          ind.calculated_at <= end.toISOString()
-        )
-        .sort((a, b) => a.calculated_at.localeCompare(b.calculated_at))
-    } catch (error) {
-      console.error(`[v0] Failed to get historical indications for ${symbol}:`, error)
-      return []
-    }
-  }
 
   /**
    * Get strategy settings from Redis
