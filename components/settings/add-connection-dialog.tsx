@@ -213,12 +213,16 @@ export function AddConnectionDialog({ open, onOpenChange, onConnectionAdded, sho
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           exchange: formData.exchange,
+          api_type: formData.api_type,
+          api_subtype: formData.api_subtype,
+          connection_method: formData.connection_method,
+          connection_library: formData.connection_library,
           api_key: formData.api_key,
           api_secret: formData.api_secret,
           api_passphrase: formData.api_passphrase || "",
+          margin_type: formData.margin_type,
+          position_mode: formData.position_mode,
           is_testnet: formData.is_testnet,
-          connection_method: formData.connection_method,
-          connection_library: formData.connection_library,
         }),
       })
 
@@ -265,6 +269,10 @@ export function AddConnectionDialog({ open, onOpenChange, onConnectionAdded, sho
       if (data.balance !== undefined) {
         const balanceUSD = parseFloat(data.balance).toFixed(2)
         formattedLogs.push(`\n✓ Account Balance: $${balanceUSD}`)
+        // Show balance in toast message
+        toast.success(`Connection successful! Balance: $${balanceUSD}`)
+      } else {
+        toast.success("Connection successful!")
       }
 
       // Fetch BTC price for context
