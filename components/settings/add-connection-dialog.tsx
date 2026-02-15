@@ -205,7 +205,7 @@ export function AddConnectionDialog({ open, onOpenChange, onConnectionAdded, sho
       logs.push(`[${new Date().toLocaleTimeString()}] Testing connection...`)
       logs.push(`Exchange: ${formData.exchange.toUpperCase()}`)
       const apiInfoParts = [formData.api_type]
-      if (formData.api_subtype && formData.api_subtype !== "unified") {
+      if (formData.api_type === "unified" && formData.api_subtype) {
         apiInfoParts.push(formData.api_subtype)
       }
       logs.push(`API Type: ${apiInfoParts.join(" | ")}`)
@@ -218,7 +218,7 @@ export function AddConnectionDialog({ open, onOpenChange, onConnectionAdded, sho
         body: JSON.stringify({
           exchange: formData.exchange,
           api_type: formData.api_type,
-          ...(formData.api_subtype && formData.api_subtype !== "unified" && { api_subtype: formData.api_subtype }),
+          ...(formData.api_type === "unified" && formData.api_subtype && { api_subtype: formData.api_subtype }),
           connection_method: formData.connection_method,
           connection_library: formData.connection_library,
           api_key: formData.api_key,
@@ -259,7 +259,7 @@ export function AddConnectionDialog({ open, onOpenChange, onConnectionAdded, sho
       // Add API connection info
       formattedLogs.push(`Exchange: ${formData.exchange.toUpperCase()}\n`)
       const apiLogParts = [formData.api_type]
-      if (formData.api_subtype && formData.api_subtype !== "unified") {
+      if (formData.api_type === "unified" && formData.api_subtype) {
         apiLogParts.push(formData.api_subtype)
       }
       formattedLogs.push(`API Type: ${apiLogParts.join(" | ")}\n`)
@@ -334,7 +334,7 @@ export function AddConnectionDialog({ open, onOpenChange, onConnectionAdded, sho
           name: formData.name,
           exchange: formData.exchange,
           api_type: formData.api_type,
-          api_subtype: formData.api_subtype,
+          ...(formData.api_type === "unified" && formData.api_subtype && { api_subtype: formData.api_subtype }),
           connection_method: formData.connection_method,
           connection_library: formData.connection_library,
           api_key: formData.api_key,

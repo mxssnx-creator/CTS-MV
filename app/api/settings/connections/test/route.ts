@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { exchange, api_key, api_secret, api_passphrase, is_testnet, connection_method, connection_library, api_type } = body
+    const { exchange, api_key, api_secret, api_passphrase, is_testnet, connection_method, connection_library, api_type, api_subtype, margin_type, position_mode } = body
 
     if (!exchange || !api_key || !api_secret) {
       return NextResponse.json(
@@ -23,12 +23,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Only use api_subtype when api_type is "unified" (e.g. Bybit Unified Trading Account)
+    const hasSubtype = api_type === "unified" && api_subtype
+    const effectiveApiType = api_type || "futures"
+
     const testLog: string[] = []
     testLog.push(`[${new Date().toISOString()}] Starting connection test...`)
     testLog.push(`[${new Date().toISOString()}] Exchange: ${exchange}`)
-    testLog.push(`[${new Date().toISOString()}] API Type: ${api_type || "futures"}`)
+    testLog.push(`[${new Date().toISOString()}] API Type: ${effectiveApiType}${hasSubtype ? ` | ${api_subtype}` : ""}`)
     testLog.push(`[${new Date().toISOString()}] Connection Method: ${connection_method || "rest"}`)
     testLog.push(`[${new Date().toISOString()}] Connection Library: ${connection_library || "native"}`)
+    if (margin_type) testLog.push(`[${new Date().toISOString()}] Margin Type: ${margin_type}`)
+    if (position_mode) testLog.push(`[${new Date().toISOString()}] Position Mode: ${position_mode}`)
     testLog.push(`[${new Date().toISOString()}] Testnet: ${is_testnet ? "Yes" : "No"}`)
     testLog.push(`[${new Date().toISOString()}] ---`)
 
@@ -41,7 +47,10 @@ export async function POST(request: NextRequest) {
         isTestnet: is_testnet || false,
         connectionMethod: connection_method || "rest",
         connectionLibrary: connection_library || "native",
-        apiType: api_type || "futures",
+        apiType: effectiveApiType,
+        ...(hasSubtype && { apiSubtype: api_subtype }),
+        ...(margin_type && { marginType: margin_type }),
+        ...(position_mode && { positionMode: position_mode }),
       })
 
       testLog.push(`[${new Date().toISOString()}] Testing connection using ${connection_method || "rest"} method with ${connection_library || "native"} library...`)

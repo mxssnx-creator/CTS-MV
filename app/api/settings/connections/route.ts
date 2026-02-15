@@ -120,7 +120,7 @@ export async function POST(request: Request) {
       api_secret: body.api_secret,
       api_passphrase: body.api_passphrase || "",
       api_type: body.api_type || "perpetual_futures",
-      api_subtype: body.api_subtype || "perpetual",
+      api_subtype: body.api_type === "unified" ? (body.api_subtype || "perpetual") : undefined,
       connection_method: body.connection_method || "rest",
       connection_library: body.connection_library || "native",
       margin_type: body.margin_type || "cross",
