@@ -660,7 +660,6 @@ export class IndicationStateManager {
             const advancedPositions = (await getSettings(advancedKey)) as any[] || []
             advancedPositions.push(advancedPositionData)
             await setSettings(advancedKey, advancedPositions)
-            `
 
             createdCount++
           }
