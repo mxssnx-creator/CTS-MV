@@ -165,8 +165,9 @@ export function Dashboard() {
         
         toast.success(`Connection ${enabled ? "enabled - trade engine starting..." : "disabled - trade engine stopped"}`)
         
-        // Refresh in background to ensure state is synchronized
-        setTimeout(() => loadExchangeConnectionsActive(), 2000)
+        // Refresh in background immediately and then again after 1s to catch engine status
+        await loadExchangeConnectionsActive()
+        setTimeout(() => loadExchangeConnectionsActive(), 1000)
       } else {
         const error = await response.json()
         // Revert optimistic update on error
@@ -196,19 +197,27 @@ export function Dashboard() {
         return
       }
 
-      const response = await fetch(`/api/settings/connections/${id}/toggle`, {
+      // Call the live-trade specific endpoint, not the generic toggle
+      const response = await fetch(`/api/settings/connections/${id}/live-trade`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          is_enabled: connection.is_enabled,
           is_live_trade: enabled,
-          is_preset_trade: connection.is_preset_trade,
         }),
       })
 
       if (response.ok) {
         toast.success(`Live trading ${enabled ? "enabled" : "disabled"}`)
         await loadExchangeConnectionsActive()
+      } else {
+        const error = await response.json()
+        toast.error(error.details || error.error || "Failed to toggle live trading")
+      }
+    } catch (error) {
+      console.error("[v0] Failed to toggle live trading:", error)
+      toast.error("Failed to toggle live trading")
+    }
+  }
       } else {
         const error = await response.json()
         toast.error(error.details || "Failed to toggle live trading")
@@ -241,11 +250,38 @@ export function Dashboard() {
 
   const handleTogglePresetTrade = async (id: string, enabled: boolean) => {
     try {
-      const connection = filteredConnections.find((c) => c.id === id)
+      const connection = filteredConnections.find(c => c.id === id)
       if (!connection) {
         toast.error("Connection not found")
         return
       }
+
+      if (!connection.is_enabled && enabled) {
+        toast.error("Please enable the connection first")
+        return
+      }
+
+      // Call the preset-trade specific endpoint
+      const response = await fetch(`/api/settings/connections/${id}/preset-type`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          is_preset_trade: enabled,
+        }),
+      })
+
+      if (response.ok) {
+        toast.success(`Preset trading ${enabled ? "enabled" : "disabled"}`)
+        await loadExchangeConnectionsActive()
+      } else {
+        const error = await response.json()
+        toast.error(error.details || error.error || "Failed to toggle preset trading")
+      }
+    } catch (error) {
+      console.error("[v0] Failed to toggle preset trading:", error)
+      toast.error("Failed to toggle preset trading")
+    }
+  }
 
       const response = await fetch(`/api/settings/connections/${id}/toggle`, {
         method: "POST",

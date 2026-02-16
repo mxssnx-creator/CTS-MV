@@ -1,27 +1,22 @@
 import { NextResponse } from "next/server"
-import { loadConnections } from "@/lib/file-storage"
+import { initRedis, getAllConnections } from "@/lib/redis-db"
 
 export async function GET() {
   try {
-    const connections = loadConnections()
+    await initRedis()
+    const allConnections = await getAllConnections()
     
-    // Ensure connections is an array before filtering
-    if (!Array.isArray(connections)) {
-      console.error("[v0] Connections is not an array:", typeof connections)
-      return NextResponse.json(
-        { success: false, error: "Invalid connections data", connections: [], total: 0, active: 0 },
-        { status: 500 }
-      )
-    }
-
-    const activeConnections = connections.filter(c => c.is_enabled === true && c.is_active === true)
+    // Active connections = connections with is_enabled_dashboard flag set
+    const activeConnections = allConnections.filter((c: any) => 
+      c.is_enabled_dashboard === "1" || c.is_enabled_dashboard === true
+    )
     
-    console.log(`[v0] Active connections: ${activeConnections.length} out of ${connections.length} total`)
+    console.log(`[v0] [Active] Active connections on dashboard: ${activeConnections.length} out of ${allConnections.length} total`)
     
     return NextResponse.json({
       success: true,
       connections: activeConnections,
-      total: connections.length,
+      total: allConnections.length,
       active: activeConnections.length,
     })
   } catch (error) {

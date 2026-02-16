@@ -22,15 +22,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "Connection not found" }, { status: 404 })
     }
 
-    // Update connection in Redis
+    // Update connection in Redis with updated_at timestamp
     const updatedConnection = {
       ...connection,
-      is_enabled,
+      is_enabled: is_enabled ? "1" : "0",
       updated_at: new Date().toISOString(),
     }
 
     await updateConnection(connectionId, updatedConnection)
-    console.log("[v0] [Toggle] Connection state updated in Redis")
+    console.log("[v0] [Toggle] Connection state updated in Redis:", connectionId, "is_enabled:", is_enabled)
 
     let engineStarted = false
     let engineMessage = ""
@@ -108,7 +108,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     return NextResponse.json({
       success: true,
-      connection: updatedConnection,
+      connection: updatedConnection, // Return the properly updated connection
       engineStarted,
       engineStatus: is_enabled ? (engineStarted ? "running" : "starting") : "stopped",
       message: engineMessage,
