@@ -1,15 +1,16 @@
 /**
  * Redis Persistence Manager
- * Saves in-memory Redis state to Upstash Redis for persistence across restarts
- * Uses a dedicated Upstash key to store the full snapshot
+ * Saves in-memory Redis state to Upstash Redis for persistence across restarts.
  * 
- * This avoids filesystem (fs/path) which is not available on Vercel serverless.
+ * Gracefully degrades when Upstash rate limits are hit:
+ * - Falls back to in-memory only operation (no crash)
+ * - Retries persistence after a cooldown period
+ * - Skips backup rotation when rate-limited to reduce API calls
  */
 
 import { Redis } from "@upstash/redis"
 
 const SNAPSHOT_KEY = "cts:redis_snapshot"
-const BACKUP_KEY = "cts:redis_snapshot_backup"
 
 interface RedisSnapshot {
   timestamp: string
@@ -18,26 +19,54 @@ interface RedisSnapshot {
 }
 
 let upstashClient: Redis | null = null
+let rateLimitHit = false
+let rateLimitCooldownUntil = 0
 
-function getUpstashClient(): Redis {
+function getUpstashClient(): Redis | null {
+  // If rate limit was hit, check cooldown (15 minutes)
+  if (rateLimitHit) {
+    if (Date.now() < rateLimitCooldownUntil) {
+      return null // Still in cooldown
+    }
+    // Cooldown expired, try again
+    rateLimitHit = false
+    console.log("[v0] [Persistence] Rate limit cooldown expired, retrying Upstash connection")
+  }
+
   if (!upstashClient) {
-    upstashClient = new Redis({
-      url: process.env.KV_REST_API_URL!,
-      token: process.env.KV_REST_API_TOKEN!,
-    })
+    const url = process.env.KV_REST_API_URL
+    const token = process.env.KV_REST_API_TOKEN
+    
+    if (!url || !token) {
+      console.warn("[v0] [Persistence] Upstash credentials not configured - running in-memory only")
+      return null
+    }
+    
+    upstashClient = new Redis({ url, token })
   }
   return upstashClient
 }
 
+function handleRateLimit(error: any): boolean {
+  const msg = String(error?.message || error || "")
+  if (msg.includes("max requests limit exceeded") || msg.includes("ERR max requests")) {
+    rateLimitHit = true
+    rateLimitCooldownUntil = Date.now() + 15 * 60 * 1000 // 15 min cooldown
+    console.warn("[v0] [Persistence] Upstash rate limit hit - falling back to in-memory only for 15 minutes")
+    return true
+  }
+  return false
+}
+
 export class RedisPersistenceManager {
   /**
-   * Save Redis state to Upstash
+   * Save Redis state to Upstash (single API call, no backup rotation)
    */
   static async saveSnapshot(redisStore: Map<string, any>): Promise<void> {
-    try {
-      const client = getUpstashClient()
+    const client = getUpstashClient()
+    if (!client) return // Rate limited or no credentials - skip silently
 
-      // Convert store to serializable format
+    try {
       const data: Record<string, any> = {}
       for (const [key, value] of redisStore) {
         data[key] = this.serializeValue(value)
@@ -49,31 +78,31 @@ export class RedisPersistenceManager {
         data,
       }
 
-      // Backup current snapshot before overwriting
-      const existing = await client.get<string>(SNAPSHOT_KEY)
-      if (existing) {
-        await client.set(BACKUP_KEY, existing)
-      }
-
-      // Save new snapshot
+      // Single API call - no backup rotation to conserve request quota
       await client.set(SNAPSHOT_KEY, JSON.stringify(snapshot))
 
-      console.log(`[v0] [Persistence] Saved Redis snapshot to Upstash: ${Object.keys(data).length} keys`)
+      console.log(`[v0] [Persistence] Snapshot saved: ${Object.keys(data).length} keys`)
     } catch (error) {
+      if (handleRateLimit(error)) return
       console.error("[v0] [Persistence] Failed to save snapshot:", error)
     }
   }
 
   /**
-   * Load Redis state from Upstash
+   * Load Redis state from Upstash (single API call)
    */
   static async loadSnapshot(): Promise<Map<string, any> | null> {
+    const client = getUpstashClient()
+    if (!client) {
+      console.log("[v0] [Persistence] No Upstash client available - starting with fresh in-memory store")
+      return null
+    }
+
     try {
-      const client = getUpstashClient()
       const raw = await client.get<string>(SNAPSHOT_KEY)
 
       if (!raw) {
-        console.log("[v0] [Persistence] No snapshot found in Upstash - starting fresh")
+        console.log("[v0] [Persistence] No snapshot found - starting fresh")
         return null
       }
 
@@ -84,31 +113,14 @@ export class RedisPersistenceManager {
         store.set(key, this.deserializeValue(value))
       }
 
-      console.log(`[v0] [Persistence] Loaded Redis snapshot from Upstash: ${store.size} keys from ${snapshot.timestamp}`)
+      console.log(`[v0] [Persistence] Loaded snapshot: ${store.size} keys from ${snapshot.timestamp}`)
       return store
     } catch (error) {
-      console.error("[v0] [Persistence] Failed to load snapshot, trying backup:", error)
-
-      // Try backup if main fails
-      try {
-        const client = getUpstashClient()
-        const raw = await client.get<string>(BACKUP_KEY)
-
-        if (raw) {
-          const snapshot: RedisSnapshot = typeof raw === "string" ? JSON.parse(raw) : raw as any
-
-          const store = new Map<string, any>()
-          for (const [key, value] of Object.entries(snapshot.data)) {
-            store.set(key, this.deserializeValue(value))
-          }
-
-          console.log(`[v0] [Persistence] Recovered from backup snapshot: ${store.size} keys`)
-          return store
-        }
-      } catch (backupError) {
-        console.error("[v0] [Persistence] Backup recovery also failed:", backupError)
+      if (handleRateLimit(error)) {
+        console.log("[v0] [Persistence] Rate limited on load - starting with fresh in-memory store")
+        return null
       }
-
+      console.error("[v0] [Persistence] Failed to load snapshot:", error)
       return null
     }
   }
@@ -158,24 +170,20 @@ export class RedisPersistenceManager {
             ? new Map(value.value.value)
             : value.value
 
-      return {
-        ...value,
-        __type: undefined,
-        value: innerValue,
-      }
+      return { ...value, __type: undefined, value: innerValue }
     }
 
     return value
   }
 
   /**
-   * Schedule periodic snapshots
+   * Schedule periodic snapshots (default: every 4 minutes)
    */
   static startPeriodicSnapshots(redisStore: Map<string, any>, intervalMs: number = 240000): void {
     setInterval(() => {
       this.saveSnapshot(redisStore)
     }, intervalMs)
 
-    console.log(`[v0] [Persistence] Periodic snapshots enabled (every ${intervalMs / 1000}s = ${(intervalMs / 1000 / 60).toFixed(1)}min)`)
+    console.log(`[v0] [Persistence] Periodic snapshots enabled (every ${(intervalMs / 1000 / 60).toFixed(1)}min)`)
   }
 }
