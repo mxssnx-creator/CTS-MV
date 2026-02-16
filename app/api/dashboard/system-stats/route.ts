@@ -1,46 +1,73 @@
 import { NextResponse } from "next/server"
-import { getAllConnections, getSettings } from "@/lib/redis-db"
+import { getAllConnections, getSettings, getRedisClient, initRedis } from "@/lib/redis-db"
+import { getGlobalTradeEngineCoordinator } from "@/lib/trade-engine"
 
 export const dynamic = "force-dynamic"
 
 export async function GET() {
   try {
+    await initRedis()
+
     // Fetch all connections from Redis database
     const allConnections = await getAllConnections()
-    const connectionIds = allConnections.map((c: any) => c.id)
+    const client = getRedisClient()
+    const coordinator = getGlobalTradeEngineCoordinator()
     
     // Settings connections = all connections stored in Redis
     const settingsConnections = allConnections
     const enabledSettings = settingsConnections.filter((c: any) => c.is_enabled).length
     
     // Active connections = connections with is_enabled_dashboard = true
-    // These are the connections shown on the dashboard "Active Connections" section
     const activeConnections = allConnections.filter((c: any) => c.is_enabled_dashboard === "1" || c.is_enabled_dashboard === true)
     
     // Active connections that are ENABLED (ready to trade)
     const enabledActiveConnections = activeConnections.filter((c: any) => c.is_enabled === "1" || c.is_enabled === true)
     
-    // Active connections with LIVE TRADE enabled (runs progressions and live trades if this is on)
+    // Active connections with LIVE TRADE enabled
     const activeWithLiveTrade = enabledActiveConnections.filter((c: any) => c.is_live_trade === "1" || c.is_live_trade === true)
     
-    // Active connections with PRESET TRADE enabled (runs live exchange trades immediately)
+    // Active connections with PRESET TRADE enabled
     const activeWithPresetTrade = enabledActiveConnections.filter((c: any) => c.is_preset_trade === "1" || c.is_preset_trade === true)
     
-    console.log(`[v0] [System Stats] Active connections on dashboard: ${activeConnections.length}, Enabled: ${enabledActiveConnections.length}, With Live Trade: ${activeWithLiveTrade.length}, With Preset Trade: ${activeWithPresetTrade.length}`)
+    // Check actual engine status for active connections with Live Trade
+    let mainEnginesRunningSuccessfully = 0
+    for (const conn of activeWithLiveTrade) {
+      const manager = coordinator.getEngineManager(conn.id)
+      if (manager) {
+        // Check if there are any errors
+        const stateKey = `trade_engine_state:${conn.id}`
+        const state = await client.hgetall(stateKey)
+        if (!state?.error) {
+          mainEnginesRunningSuccessfully++
+        }
+      }
+    }
     
-    // TRADE ENGINE LOGIC - depends on active connections
-    // Main Trade Engine (Live Trade) runs if:
-    //   - Global is running AND
-    //   - There's at least one active connection enabled AND
-    //   - Live Trade toggle is enabled on that connection
-    const mainTradeEnabled = activeWithLiveTrade.length > 0
+    // Check actual engine status for active connections with Preset Trade
+    let presetEnginesRunningSuccessfully = 0
+    for (const conn of activeWithPresetTrade) {
+      const manager = coordinator.getEngineManager(conn.id)
+      if (manager) {
+        const stateKey = `trade_engine_state:${conn.id}`
+        const state = await client.hgetall(stateKey)
+        if (!state?.error) {
+          presetEnginesRunningSuccessfully++
+        }
+      }
+    }
     
-    // Preset Trade Engine runs if:
-    //   - Global is running AND
-    //   - There's at least one active connection enabled AND
-    //   - Preset Trade toggle is enabled on that connection
-    const presetTradeEnabled = activeWithPresetTrade.length > 0
+    console.log(`[v0] [System Stats] Active: ${activeConnections.length}, Enabled: ${enabledActiveConnections.length}, Live Trade: ${activeWithLiveTrade.length}(${mainEnginesRunningSuccessfully} running), Preset: ${activeWithPresetTrade.length}(${presetEnginesRunningSuccessfully} running)`)
     
+    // Global trade engine status from Redis
+    const globalEngineState = await getSettings("trade_engine:global")
+    const globalStatus = globalEngineState?.status || "stopped"
+    
+    // Main Trade Engine: running if global is running AND at least one active connection with Live Trade is running successfully
+    const mainTradeStatus = globalStatus === "running" && mainEnginesRunningSuccessfully > 0 ? "running" : "stopped"
+    
+    // Preset Trade Engine: running if global is running AND at least one active connection with Preset Trade is running successfully
+    const presetTradeStatus = globalStatus === "running" && presetEnginesRunningSuccessfully > 0 ? "running" : "stopped"
+
     // Exchange Connections - WORKING status means test succeeded
     const workingConnections = settingsConnections.filter((c: any) => 
       c.last_test_status === "success"
@@ -50,10 +77,6 @@ export async function GET() {
       workingConnections === 0 ? "down" :
       workingConnections < settingsConnections.length / 2 ? "partial" :
       "healthy"
-
-    // Global trade engine status from Redis
-    const globalEngineState = await getSettings("trade_engine:global")
-    const globalStatus = globalEngineState?.status || "stopped"
 
     // Database stats
     const dbStatus = "healthy"
@@ -70,12 +93,12 @@ export async function GET() {
     const stats = {
       tradeEngines: {
         globalStatus: globalStatus,
-        // Main Trade Engine (Live Trade) status
-        mainStatus: globalStatus === "running" && mainTradeEnabled ? "running" : "stopped",
-        // Preset Trade Engine status
-        presetStatus: globalStatus === "running" && presetTradeEnabled ? "running" : "stopped",
-        // Count = number of active+enabled connections with appropriate toggles
-        totalEnabled: enabledActiveConnections.length,
+        // Main Trade Engine status - depends on active connections with Live Trade enabled and running without errors
+        mainStatus: mainTradeStatus,
+        // Preset Trade Engine status - depends on active connections with Preset Trade enabled and running without errors
+        presetStatus: presetTradeStatus,
+        // Count of active+enabled connections actually running successfully
+        totalEnabled: mainEnginesRunningSuccessfully + presetEnginesRunningSuccessfully,
       },
       database: {
         status: dbStatus,
