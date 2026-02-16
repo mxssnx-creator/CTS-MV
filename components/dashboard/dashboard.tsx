@@ -259,6 +259,11 @@ export function Dashboard() {
       {/* Trade Engine Controls */}
       <GlobalTradeEngineControls />
 
+      {/* Intervals & Strategies Monitoring */}
+      {filteredConnections.length > 0 && (
+        <IntervalsStrategiesOverview connections={filteredConnections} />
+      )}
+
       {/* Active Connections */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">

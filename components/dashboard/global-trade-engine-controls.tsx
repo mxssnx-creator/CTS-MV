@@ -213,7 +213,7 @@ export function GlobalTradeEngineControls() {
           </div>
         </div>
 
-        {/* Control Buttons */}
+        {/* Control Buttons - Single toggle between Start and Pause (no Stop button) */}
         <div className="flex gap-1.5 pt-2">
           {!status?.running && (
             <Button onClick={handleStart} disabled={isStarting} size="sm" className="flex-1 text-xs">
@@ -233,13 +233,6 @@ export function GlobalTradeEngineControls() {
             <Button onClick={handleResume} disabled={isResuming} size="sm" className="flex-1 text-xs">
               <Play className="h-3 w-3 mr-1" />
               {isResuming ? "..." : "Resume"}
-            </Button>
-          )}
-
-          {status?.running && (
-            <Button onClick={handleStop} disabled={isStopping} variant="destructive" size="sm" className="flex-1 text-xs">
-              <Square className="h-3 w-3 mr-1" />
-              {isStopping ? "..." : "Stop"}
             </Button>
           )}
         </div>

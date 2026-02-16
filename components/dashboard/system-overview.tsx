@@ -241,7 +241,7 @@ export function SystemOverview() {
                 <div className="text-2xl font-bold">{stats.liveTrades.lastHour}</div>
                 <div className="text-[10px] text-muted-foreground">Total Trades</div>
               </div>
-              {stats.liveTrades.topConnections && stats.liveTrades.topConnections.length > 0 && (
+              {(stats.liveTrades.topConnections && stats.liveTrades.topConnections.length > 0) ? (
                 <div className="pt-2 border-t space-y-1">
                   <div className="text-[10px] text-muted-foreground mb-1">Top Contributors:</div>
                   {stats.liveTrades.topConnections.slice(0, 3).map((conn, idx) => (
