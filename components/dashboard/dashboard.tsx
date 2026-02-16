@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react"
 import { useAuth } from "@/lib/auth-context"
 import { useExchange } from "@/lib/exchange-context"
 import { useConnectionState } from "@/lib/connection-state"
-// import { SystemOverview } from "./system-overview" // Temporarily disabled - parse error at line 113
+import { SystemOverview } from "./system-overview"
 import { GlobalTradeEngineControls } from "./global-trade-engine-controls"
 import { ConnectionCard } from "./connection-card"
 import { AddActiveConnectionDialog } from "@/components/dashboard/add-active-connection-dialog"
@@ -253,9 +253,8 @@ export function Dashboard() {
         </Button>
       </div>
 
-      {/* System Overview - Comprehensive top section */}
-      {/* <SystemOverview /> */}
-      {/* TODO: Fix SystemOverview parse error and re-enable */}
+      {/* Smart Overview - Comprehensive system status */}
+      <SystemOverview />
 
       {/* Trade Engine Controls */}
       <GlobalTradeEngineControls />
