@@ -60,12 +60,6 @@ export function ConnectionCard({
   const [logsExpanded, setLogsExpanded] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [editDialogTab, setEditDialogTab] = useState("basic")
-  const [showSecrets, setShowSecrets] = useState(false)
-  const [showTestLogInstant, setShowTestLogInstant] = useState(false)
-  const [testLogs, setTestLogs] = useState<string[]>([])
-  const [workingStatus, setWorkingStatus] = useState<"idle" | "testing" | "success" | "error">("idle")
-  const [savingSettings, setSavingSettings] = useState(false)
-  const [engineStatus, setEngineStatus] = useState<"idle" | "starting" | "running" | "stopped" | "failed">("idle")
   const [engineError, setEngineError] = useState<string>("")
   const [editFormData, setEditFormData] = useState({
     api_key: connection.api_key,
@@ -99,29 +93,7 @@ export function ConnectionCard({
     }
   }, [editFormData.connection_method])
 
-  // Poll for engine status when enabled
-  useEffect(() => {
-    if (!connection.is_enabled) return
 
-    const pollEngineStatus = async () => {
-      try {
-        const response = await fetch(`/api/trade-engine/status?connectionId=${connection.id}`)
-        if (response.ok) {
-          const data = await response.json()
-          if (data.engineStatus?.status) {
-            setEngineStatus(data.engineStatus.status)
-            setEngineError("")
-          }
-        }
-      } catch (error) {
-        console.warn("[v0] Failed to poll engine status:", error)
-      }
-    }
-
-    pollEngineStatus()
-    const interval = setInterval(pollEngineStatus, 3000)
-    return () => clearInterval(interval)
-  }, [connection.is_enabled, connection.id])
 
   // Define handleTestConnection first so it can be used in useEffect
   const handleTestConnection = async () => {
@@ -341,6 +313,16 @@ export function ConnectionCard({
                 {connection.is_testnet && (
                   <Badge className="text-xs bg-blue-100 text-blue-900">Testnet</Badge>
                 )}
+                {/* Status Badge */}
+                <Badge 
+                  className={`text-xs ${
+                    connection.is_enabled 
+                      ? "bg-green-100 text-green-900 border-green-200" 
+                      : "bg-gray-100 text-gray-600 border-gray-200"
+                  }`}
+                >
+                  {connection.is_enabled ? "Active" : "Inactive"}
+                </Badge>
               </div>
               <div className="space-y-1">
                 <div className="text-sm text-muted-foreground">
