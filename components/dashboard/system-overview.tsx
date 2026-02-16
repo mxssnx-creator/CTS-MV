@@ -110,7 +110,6 @@ export function SystemOverview() {
               <span className="text-xs font-semibold text-muted-foreground">Trade Engines</span>
             </div>
           </div>
-          </div>
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-xs">
               <span className="text-muted-foreground">Global</span>
