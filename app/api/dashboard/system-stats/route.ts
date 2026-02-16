@@ -13,10 +13,12 @@ export async function GET() {
     const settingsConnections = allConnections
     const enabledSettings = settingsConnections.filter((c: any) => c.is_enabled).length
     
-    // Fetch active connections (dashboard connections)
-    const activeConnectionsKey = "active_connections"
-    const activeConnections = (await getSettings(activeConnectionsKey)) || []
-    const enabledActive = activeConnections.filter((c: any) => c.is_enabled).length
+    // Active connections = connections with is_enabled_dashboard = true
+    // These are the connections shown on the dashboard "Active Connections" section
+    const activeConnections = allConnections.filter((c: any) => c.is_enabled_dashboard === "1" || c.is_enabled_dashboard === true)
+    const enabledActive = activeConnections.filter((c: any) => c.is_enabled === "1" || c.is_enabled === true).length
+    
+    console.log(`[v0] [System Stats] Total connections: ${allConnections.length}, Active (dashboard): ${activeConnections.length}, Active+Enabled: ${enabledActive}`)
     
     // Count trade engine statuses
     let runningEngines = 0
@@ -46,9 +48,9 @@ export async function GET() {
       workingConnections < settingsConnections.length / 2 ? "partial" :
       "healthy"
     
-    // Active connection types (simplified)
-    const liveTradeCount = activeConnections.filter((c: any) => c.trade_mode === "live").length
-    const presetTradeCount = activeConnections.filter((c: any) => c.trade_mode === "preset").length
+    // Active connection types - check is_live_trade and is_preset_trade flags
+    const liveTradeCount = activeConnections.filter((c: any) => c.is_live_trade === "1" || c.is_live_trade === true).length
+    const presetTradeCount = activeConnections.filter((c: any) => c.is_preset_trade === "1" || c.is_preset_trade === true).length
     
     // Live trades last hour (mock data for now - would need trade history tracking)
     const tradesByConnection = activeConnections.slice(0, 3).map((c: any) => ({
