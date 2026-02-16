@@ -1,4 +1,5 @@
 import { TradeEngineManager, type EngineConfig } from "./trade-engine/engine-manager"
+import { getSettings, setSettings } from "./redis-db"
 
 // Re-export TradeEngine class and config from subdirectory for convenient imports
 export { TradeEngine, type TradeEngineConfig, TRADE_SERVICE_NAME } from "./trade-engine/trade-engine"
@@ -430,32 +431,24 @@ export class GlobalTradeEngineCoordinator {
   }
 
   /**
-   * Ensure engine state exists in database
+   * Ensure engine state exists in Redis
    */
   private async ensureEngineState(connectionId: string): Promise<void> {
     try {
-      // Check if state exists
-      const [existing] = await sql`
-        SELECT id FROM trade_engine_state WHERE connection_id = ${connectionId}
-      `
+      // Check if state exists in Redis
+      const stateKey = `engine_state:${connectionId}`
+      const existing = await getSettings(stateKey)
 
       if (!existing) {
-        // Create initial state
-        await sql`
-          INSERT INTO trade_engine_state (
-            connection_id, 
-            status, 
-            prehistoric_data_loaded,
-            created_at,
-            updated_at
-          ) VALUES (
-            ${connectionId}, 
-            'idle', 
-            false,
-            CURRENT_TIMESTAMP,
-            CURRENT_TIMESTAMP
-          )
-        `
+        // Create initial state in Redis
+        const initialState = {
+          connection_id: connectionId,
+          status: "idle",
+          prehistoric_data_loaded: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }
+        await setSettings(stateKey, initialState)
         console.log(`[v0] Created engine state for connection: ${connectionId}`)
       }
     } catch (error) {
