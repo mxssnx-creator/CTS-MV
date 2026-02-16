@@ -11,6 +11,11 @@ export default function HomePage() {
 
   useEffect(() => {
     setMounted(true)
+    
+    // Call startup-complete endpoint to trigger connection testing
+    // This happens after the server is fully ready and all API routes are loaded
+    fetch("/api/health/startup-complete", { method: "POST" })
+      .catch(err => console.error("[v0] Failed to notify startup complete:", err))
   }, [])
 
   if (!mounted) {

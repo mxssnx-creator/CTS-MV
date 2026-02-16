@@ -294,20 +294,12 @@ export async function runPreStartup() {
     await initializeDefaultActiveConnections()
     console.log("[v0] [6/8] ✓ Default active connections initialized")
     
-    // Skip connection testing at startup - API routes aren't ready yet
-    // Connection testing will start after server is running
-    
     console.log("[v0] [7/8] Initializing Trade Engine...")
     await initializeTradeEngineAutoStart()
     console.log("[v0] [7/8] ✓ Trade Engine initialized and auto-start activated")
     
-    console.log("[v0] [8/8] Scheduling connection auto-tests (every 5 min after startup)...")
-    // Delay periodic testing to ensure server is ready
-    setTimeout(() => {
-      console.log("[v0] Starting periodic connection testing...")
-      startPeriodicConnectionTesting()
-    }, 3000)
-    console.log("[v0] [8/8] ✓ Auto-testing scheduled")
+    console.log("[v0] [8/8] Startup complete - connection testing will start via /api/health/startup-complete")
+    console.log("[v0] [8/8] ✓ Pre-startup finished")
     
     console.log("[v0] ==========================================")
     console.log("[v0] PRE-STARTUP COMPLETE - SYSTEM READY")
