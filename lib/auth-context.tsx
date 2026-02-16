@@ -28,9 +28,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     role: "admin",
   })
   const [token, setToken] = useState<string | null>("admin-token-disabled")
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(false) // Initialize to false - user is always logged in
 
   useEffect(() => {
+    // User is pre-initialized as admin, so loading is complete immediately
     setIsLoading(false)
   }, [])
 
