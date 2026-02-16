@@ -67,7 +67,10 @@ export function SystemOverview() {
   useEffect(() => {
     const loadStats = async () => {
       try {
-        const response = await fetch("/api/dashboard/system-stats")
+        const response = await fetch("/api/dashboard/system-stats", {
+          cache: "no-store",
+          headers: { "Cache-Control": "no-cache" },
+        })
         if (response.ok) {
           const data = await response.json()
           setStats(data)
@@ -78,7 +81,8 @@ export function SystemOverview() {
     }
 
     loadStats()
-    const interval = setInterval(loadStats, 5000)
+    // Poll every 2 seconds to match GlobalTradeEngineControls polling
+    const interval = setInterval(loadStats, 2000)
     return () => clearInterval(interval)
   }, [])
 
@@ -131,27 +135,35 @@ export function SystemOverview() {
               <Zap className="h-4 w-4 text-muted-foreground" />
               <span className="text-xs font-semibold text-muted-foreground">Trade Engines</span>
             </div>
+            {stats.activeConnections.total === 0 && (
+              <div className="mb-2 p-2 bg-yellow-50 rounded text-[10px] text-yellow-700 border border-yellow-200">
+                💡 Add connections to Active to enable Main/Preset
+              </div>
+            )}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Global</span>
-                <Badge className={`text-[10px] h-5 ${getStatusColor(stats.tradeEngines.globalStatus)}`}>
+                <span className="text-muted-foreground" title="Actual running state of trade engine">Global</span>
+                <Badge 
+                  className={`text-[10px] h-5 ${getStatusColor(stats.tradeEngines.globalStatus)}`}
+                  title={`Actual state: ${stats.tradeEngines.globalStatus}`}
+                >
                   {stats.tradeEngines.globalStatus}
                 </Badge>
               </div>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Main</span>
+                <span className="text-muted-foreground" title="Enabled when: Active connection with Live Trade slider ON">Main</span>
                 <Badge 
                   className={`text-[10px] h-5 ${getStatusColor(stats.tradeEngines.mainStatus)}`}
-                  title={`Depends on: Active connections enabled + Live Trade slider (${stats.activeConnections.liveTrade} active)`}
+                  title={`Config: ${stats.tradeEngines.mainStatus} | Active with Live Trade: ${stats.activeConnections.liveTrade}`}
                 >
                   {stats.tradeEngines.mainStatus}
                 </Badge>
               </div>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Preset</span>
+                <span className="text-muted-foreground" title="Enabled when: Active connection with Preset slider ON">Preset</span>
                 <Badge 
                   className={`text-[10px] h-5 ${getStatusColor(stats.tradeEngines.presetStatus)}`}
-                  title={`Depends on: Active connections enabled + Preset slider (${stats.activeConnections.presetTrade} active)`}
+                  title={`Config: ${stats.tradeEngines.presetStatus} | Active with Preset: ${stats.activeConnections.presetTrade}`}
                 >
                   {stats.tradeEngines.presetStatus}
                 </Badge>
