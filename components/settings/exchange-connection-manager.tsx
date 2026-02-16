@@ -686,7 +686,7 @@ export default function ExchangeConnectionManager() {
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-lg">Base Exchange Connections</h3>
+          <h3 className="font-semibold text-lg">Exchange Connections</h3>
           <Button onClick={() => setShowAddDialog(true)}>
             <Plus className="h-4 w-4 mr-2" />
             Add Connection
@@ -724,7 +724,7 @@ export default function ExchangeConnectionManager() {
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-lg">Base Exchange Connections</h3>
+          <h3 className="font-semibold text-lg">Exchange Connections</h3>
           <Button onClick={() => setShowAddDialog(true)}>
             <Plus className="h-4 w-4 mr-2" />
             Add Connection
@@ -765,7 +765,7 @@ export default function ExchangeConnectionManager() {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="font-semibold text-lg">Base Exchange Connections</h3>
+            <h3 className="font-semibold text-lg">Exchange Connections</h3>
             <p className="text-sm text-muted-foreground">
               Configure API credentials and connection settings - These are base configurations independent of active trading connections
             </p>
