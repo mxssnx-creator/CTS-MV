@@ -150,7 +150,7 @@ async function initializeDefaultSettings() {
   }
 }
 
-async function testAllExchangeConnections() {
+export async function testAllExchangeConnections() {
   console.log("[v0] [Startup] Testing all exchange connections...")
   try {
     const allConnections = await getAllConnections()
@@ -200,7 +200,7 @@ async function testAllExchangeConnections() {
   }
 }
 
-function startPeriodicConnectionTesting() {
+export function startPeriodicConnectionTesting() {
   // Test all connections every 5 minutes
   const intervalId = setInterval(async () => {
     console.log("[v0] [Periodic] Running 5-minute connection tests...")
