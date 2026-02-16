@@ -368,17 +368,17 @@ function flattenForHmset(obj: Record<string, string>): string[] {
 // ========== Init / Client ==========
 
 export async function initRedis(): Promise<void> {
-  if (!redisClient) {
-    redisClient = new InlineLocalRedis()
-    await redisClient.initialize() // Load snapshot and start persistence
+  if (!redisInstance) {
+    redisInstance = new InlineLocalRedis()
+    await redisInstance.initialize() // Load snapshot and start persistence
+    isConnected = true
     console.log("[v0] [Redis] Client initialized with persistence")
     
-    const pong = await redisClient.ping()
+    const pong = await redisInstance.ping()
     if (pong === "PONG") {
       console.log("[v0] [Redis] Connection test successful")
     }
   }
-}
 }
 
 export function getRedisClient() {
