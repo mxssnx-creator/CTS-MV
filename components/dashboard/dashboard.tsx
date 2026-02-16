@@ -244,8 +244,8 @@ export function Dashboard() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">CTS v3.2 Dashboard</h1>
-          <p className="text-muted-foreground">Welcome back, {user?.username || "Administrator"}</p>
+          <h1 className="text-3xl font-bold mb-1">CTS v3.2 Dashboard</h1>
+          <p className="text-muted-foreground text-sm">Monitor and control your active trading connections</p>
         </div>
         <Button onClick={loadExchangeConnectionsActive} size="sm" variant="outline">
           <RefreshCw className="h-4 w-4 mr-2" />
@@ -253,15 +253,11 @@ export function Dashboard() {
         </Button>
       </div>
 
-      {/* System Overview & Trade Engine Controls */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
-          <SystemOverview stats={stats} />
-        </div>
-        <div>
-          <GlobalTradeEngineControls />
-        </div>
-      </div>
+      {/* System Overview - Comprehensive top section */}
+      <SystemOverview />
+
+      {/* Trade Engine Controls */}
+      <GlobalTradeEngineControls />
 
       {/* Active Connections */}
       <Card>
