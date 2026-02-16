@@ -3,7 +3,26 @@ import { BaseExchangeConnector, type ExchangeConnectorResult } from "./base-conn
 
 export class BinanceConnector extends BaseExchangeConnector {
   private getBaseUrl(): string {
-    return this.credentials.isTestnet ? "https://testnet.binancefuture.com" : "https://fapi.binance.com"
+    const testnet = this.credentials.isTestnet
+    const apiType = this.credentials.apiType || "perpetual_futures"
+    
+    console.log(`[v0] [Binance] getBaseUrl called with apiType: ${apiType}, testnet: ${testnet}`)
+    
+    // Binance uses DIFFERENT BASE URLs for different contract types
+    if (apiType === "spot") {
+      const url = testnet ? "https://testnet.binance.vision" : "https://api.binance.com"
+      console.log(`[v0] [Binance] Using SPOT base URL: ${url}`)
+      return url
+    } else if (apiType === "perpetual_futures" || apiType === "futures") {
+      // USDT-M Perpetual Futures use separate API domain
+      const url = testnet ? "https://testnet.binancefuture.com" : "https://fapi.binance.com"
+      console.log(`[v0] [Binance] Using FUTURES base URL: ${url}`)
+      return url
+    }
+    
+    // Default to futures for backward compatibility
+    console.log(`[v0] [Binance] No match for apiType '${apiType}', defaulting to FUTURES`)
+    return testnet ? "https://testnet.binancefuture.com" : "https://fapi.binance.com"
   }
 
   getCapabilities(): string[] {
@@ -41,19 +60,22 @@ export class BinanceConnector extends BaseExchangeConnector {
 
       this.log("Fetching account balance...")
 
-      // Use correct endpoint based on API type
+      // Use correct endpoint path based on API type
+      // Note: Base URL already points to correct domain (api.binance.com for spot, fapi.binance.com for futures)
       const apiType = this.credentials.apiType || "perpetual_futures"
-      let endpoint = "/fapi/v2/balance" // Default: perpetual futures
+      let endpoint = ""
       
       if (apiType === "spot") {
         endpoint = "/api/v3/account"
-        this.log("Using SPOT endpoint for selected API type")
+        this.log("Using SPOT endpoint: /api/v3/account")
+        console.log("[v0] [Binance] Contract Type: SPOT → Endpoint: /api/v3/account")
       } else if (apiType === "perpetual_futures" || apiType === "futures") {
         endpoint = "/fapi/v2/balance"
-        this.log("Using FUTURES endpoint for selected API type")
+        this.log("Using FUTURES endpoint: /fapi/v2/balance")
+        console.log("[v0] [Binance] Contract Type: FUTURES → Endpoint: /fapi/v2/balance")
       }
 
-      this.log(`Endpoint: ${endpoint} (API Type: ${apiType})`)
+      this.log(`Full URL: ${baseUrl}${endpoint}`)
 
       const response = await this.rateLimitedFetch(`${baseUrl}${endpoint}?${queryString}&signature=${signature}`, {
         method: "GET",

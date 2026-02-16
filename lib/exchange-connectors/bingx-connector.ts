@@ -63,20 +63,25 @@ export class BingXConnector extends BaseExchangeConnector {
 
       this.log("Fetching account balance...")
 
-      // Use correct endpoint based on API type
+      // Use correct endpoint based on API type (contract type)
+      // BingX has separate API paths for different contract types
       const apiType = this.credentials.apiType || "perpetual_futures"
       let endpoint = "/openApi/swap/v3/user/balance" // Default: perpetual futures
       
+      console.log(`[v0] [BingX] Configured API Type: ${apiType}`)
+      
       if (apiType === "spot") {
         endpoint = "/openApi/spot/v1/account/balance"
-        this.log("Using SPOT endpoint for selected API type")
+        this.log("Contract Type: SPOT → Using /openApi/spot/v1/account/balance")
+        console.log("[v0] [BingX] Contract Type: SPOT → Endpoint: /openApi/spot/v1/account/balance")
       } else if (apiType === "perpetual_futures" || apiType === "futures") {
         endpoint = "/openApi/swap/v3/user/balance"
-        this.log("Using PERPETUAL FUTURES endpoint for selected API type")
+        this.log("Contract Type: PERPETUAL FUTURES → Using /openApi/swap/v3/user/balance")
+        console.log("[v0] [BingX] Contract Type: PERPETUAL → Endpoint: /openApi/swap/v3/user/balance")
       }
 
       const url = `${baseUrl}${endpoint}?${queryString}&signature=${signature}`
-      this.log(`Endpoint: ${endpoint} (API Type: ${apiType})`)
+      this.log(`Full URL: ${baseUrl}${endpoint}`)
 
       const response = await this.rateLimitedFetch(url, {
         method: "GET",
