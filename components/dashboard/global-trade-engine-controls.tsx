@@ -48,7 +48,20 @@ export function GlobalTradeEngineControls() {
       if (response.ok) {
         const data = await response.json()
         console.log("[v0] [Engine Status] Loaded:", data)
-        setStatus(data)
+        
+        // Transform API response to match EngineStatus interface
+        const statusData: EngineStatus = {
+          running: data.running || false,
+          paused: data.paused || false,
+          connectedExchanges: data.connectedExchanges || 0,
+          activePositions: data.activePositions || 0,
+          totalProfit: data.totalProfit || 0,
+          uptime: data.uptime || 0,
+          lastUpdate: new Date(data.lastUpdate || Date.now()),
+          cycleStats: data.cycleStats,
+        }
+        
+        setStatus(statusData)
       }
     } catch (error) {
       console.error("[v0] Failed to load engine status:", error)
@@ -56,24 +69,31 @@ export function GlobalTradeEngineControls() {
   }
 
   const handleStart = async () => {
+    console.log("[v0] [Trade Engine] START button clicked")
     setIsStarting(true)
     try {
+      console.log("[v0] [Trade Engine] Sending POST to /api/trade-engine/start")
       const response = await fetch("/api/trade-engine/start", { 
         method: "POST",
         headers: { "Content-Type": "application/json" },
       })
       const data = await response.json()
+      console.log("[v0] [Trade Engine] Start response:", { ok: response.ok, status: response.status, data })
 
-      if (response.ok) {
-        toast.success("Global Trade Engine started successfully")
-        // Refresh status immediately after starting
+      if (response.ok && data.success) {
+        console.log("[v0] [Trade Engine] Start SUCCESS - showing toast")
+        toast.success(data.message || "Global Trade Engine started successfully")
+        // Refresh status immediately and again after 500ms
+        await loadStatus()
         setTimeout(loadStatus, 500)
+        setTimeout(loadStatus, 1500)
       } else {
+        console.log("[v0] [Trade Engine] Start FAILED:", data.error)
         toast.error(data.error || "Failed to start engine")
       }
     } catch (error) {
+      console.error("[v0] [Trade Engine] Start EXCEPTION:", error)
       toast.error("Failed to start engine")
-      console.error("[v0] Error starting engine:", error)
     } finally {
       setIsStarting(false)
     }

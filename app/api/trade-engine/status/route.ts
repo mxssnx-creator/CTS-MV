@@ -75,9 +75,20 @@ export async function GET() {
       }),
     )
 
+    // Calculate global engine state
+    const isGloballyRunning = running > 0
+    const isPaused = false // TODO: Implement pause state in coordinator
+    
     return NextResponse.json({
       success: true,
       timestamp: new Date().toISOString(),
+      running: isGloballyRunning,
+      paused: isPaused,
+      connectedExchanges: running,
+      activePositions: totalPositions,
+      totalProfit: 0, // TODO: Calculate from positions
+      uptime: 0, // TODO: Track uptime
+      lastUpdate: new Date(),
       summary: {
         total_connections: connections.length,
         running,
