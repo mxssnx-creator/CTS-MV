@@ -107,6 +107,7 @@ export class TradeEngineManager {
     })
   }
 
+  async stop(): Promise<void> {
     console.log("[v0] Stopping trade engine for connection:", this.connectionId)
 
     // Clear all timers
