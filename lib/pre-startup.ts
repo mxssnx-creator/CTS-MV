@@ -3,7 +3,7 @@
  * Runs once on first deploy or server start
  */
 
-import { initRedis, createConnection, getAllConnections, saveMarketData, setSettings, getSettings } from "@/lib/redis-db"
+import { initRedis, createConnection, getAllConnections, saveMarketData, setSettings, getSettings, updateConnection } from "@/lib/redis-db"
 import { runMigrations } from "@/lib/redis-migrations"
 import { getPredefinedAsExchangeConnections } from "@/lib/connection-predefinitions"
 import { loadSettingsAsync, saveSettings as saveSettingsToFile, getDefaultSettings } from "@/lib/settings-storage"
@@ -150,6 +150,57 @@ async function initializeDefaultSettings() {
   }
 }
 
+async function initializeDefaultActiveConnections() {
+  console.log("[v0] [Seed] Initializing default active connections (Bybit & BingX)...")
+  try {
+    const allConnections = await getAllConnections()
+    
+    // Find bybit-x03 and bingx-x01
+    const bybit = allConnections.find((c: any) => c.id === "bybit-x03")
+    const bingx = allConnections.find((c: any) => c.id === "bingx-x01")
+    
+    let activatedCount = 0
+    
+    // Set bybit-x03 as active connection (is_enabled_dashboard = true)
+    if (bybit) {
+      if (!bybit.is_enabled_dashboard || bybit.is_enabled_dashboard === "0") {
+        console.log("[v0] [Seed] Setting bybit-x03 as active connection...")
+        await updateConnection("bybit-x03", {
+          ...bybit,
+          is_enabled_dashboard: "1"
+        })
+        activatedCount++
+        console.log("[v0] [Seed] ✓ bybit-x03 added to active connections")
+      } else {
+        console.log("[v0] [Seed] bybit-x03 already on active list")
+      }
+    } else {
+      console.warn("[v0] [Seed] bybit-x03 not found in database")
+    }
+    
+    // Set bingx-x01 as active connection (is_enabled_dashboard = true)
+    if (bingx) {
+      if (!bingx.is_enabled_dashboard || bingx.is_enabled_dashboard === "0") {
+        console.log("[v0] [Seed] Setting bingx-x01 as active connection...")
+        await updateConnection("bingx-x01", {
+          ...bingx,
+          is_enabled_dashboard: "1"
+        })
+        activatedCount++
+        console.log("[v0] [Seed] ✓ bingx-x01 added to active connections")
+      } else {
+        console.log("[v0] [Seed] bingx-x01 already on active list")
+      }
+    } else {
+      console.warn("[v0] [Seed] bingx-x01 not found in database")
+    }
+    
+    console.log(`[v0] [Seed] Default active connections initialized: ${activatedCount} connections added to active list`)
+  } catch (error) {
+    console.error("[v0] [Seed] Failed to initialize default active connections:", error)
+  }
+}
+
 export async function runPreStartup() {
   try {
     console.log("[v0] ==========================================")
@@ -173,13 +224,17 @@ export async function runPreStartup() {
     await seedPredefinedConnections()
     console.log("[v0] [4/5] ✓ Connections seeded")
     
-    console.log("[v0] [5/5] Seeding market data...")
+    console.log("[v0] [5/6] Seeding market data...")
     await seedMarketData()
-    console.log("[v0] [5/5] ✓ Market data seeded")
+    console.log("[v0] [5/6] ✓ Market data seeded")
     
-    console.log("[v0] [6/6] Initializing Trade Engine...")
+    console.log("[v0] [6/7] Initializing default active connections...")
+    await initializeDefaultActiveConnections()
+    console.log("[v0] [6/7] ✓ Default active connections initialized")
+    
+    console.log("[v0] [7/7] Initializing Trade Engine...")
     await initializeTradeEngineAutoStart()
-    console.log("[v0] [6/6] ✓ Trade Engine initialized and auto-start activated")
+    console.log("[v0] [7/7] ✓ Trade Engine initialized and auto-start activated")
     
     console.log("[v0] ==========================================")
     console.log("[v0] PRE-STARTUP COMPLETE - SYSTEM READY")
