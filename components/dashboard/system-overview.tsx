@@ -140,13 +140,13 @@ export function SystemOverview() {
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Main</span>
-                <Badge className={`text-[10px] h-5 ${getStatusColor(stats.tradeEngines.mainStatus)}`}>
+                <Badge className={`text-[10px] h-5 ${getStatusColor(stats.tradeEngines.mainStatus)}`} title="Requires: Global running + Live Trade enabled">
                   {stats.tradeEngines.mainStatus}
                 </Badge>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Preset</span>
-                <Badge className={`text-[10px] h-5 ${getStatusColor(stats.tradeEngines.presetStatus)}`}>
+                <Badge className={`text-[10px] h-5 ${getStatusColor(stats.tradeEngines.presetStatus)}`} title="Requires: Global running + Preset Trade enabled">
                   {stats.tradeEngines.presetStatus}
                 </Badge>
               </div>
@@ -241,7 +241,7 @@ export function SystemOverview() {
                 <div className="text-2xl font-bold">{stats.liveTrades.lastHour}</div>
                 <div className="text-[10px] text-muted-foreground">Total Trades</div>
               </div>
-              {(stats.liveTrades.topConnections && stats.liveTrades.topConnections.length > 0) ? (
+              {(stats.liveTrades?.topConnections && stats.liveTrades.topConnections.length > 0) ? (
                 <div className="pt-2 border-t space-y-1">
                   <div className="text-[10px] text-muted-foreground mb-1">Top Contributors:</div>
                   {stats.liveTrades.topConnections.slice(0, 3).map((conn, idx) => (

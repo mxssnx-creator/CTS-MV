@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { initRedis, getAllConnections, getConnection } from "@/lib/redis-db"
+import { initRedis, getAllConnections, getConnection, getRedisClient } from "@/lib/redis-db"
 import { getGlobalTradeEngineCoordinator } from "@/lib/trade-engine"
 import { SystemLogger } from "@/lib/system-logger"
 
@@ -44,6 +44,10 @@ export async function POST(request: NextRequest) {
       }
 
       await coordinator.startAll()
+      
+      // Set global state in Redis
+      const client = getRedisClient()
+      await client.hset("trade_engine:global", { status: "running", started_at: new Date().toISOString() })
 
       return NextResponse.json({
         success: true,

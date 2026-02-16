@@ -52,40 +52,36 @@ export async function GET() {
     const liveTradeCount = activeConnections.filter((c: any) => c.is_live_trade === "1" || c.is_live_trade === true).length
     const presetTradeCount = activeConnections.filter((c: any) => c.is_preset_trade === "1" || c.is_preset_trade === true).length
     
-    // Live trades last hour (mock data for now - would need trade history tracking)
-    const tradesByConnection = activeConnections.slice(0, 3).map((c: any) => ({
-      name: c.name || c.exchange,
-      count: Math.floor(Math.random() * 20)
-    }))
+    // Live trades last hour (use byConnection data which is already calculated)
+    const topConnections = tradesByConnection.sort((a, b) => b.count - a.count).slice(0, 5)
     const totalTrades = tradesByConnection.reduce((sum, c) => sum + c.count, 0)
     
     const stats = {
       tradeEngines: {
         globalStatus: globalStatus,
-        mainTradeStatus: runningEngines > 0 ? "running" : "stopped",
-        presetTradeStatus: presetTradeCount > 0 ? "running" : "stopped",
-        enabledCount: runningEngines,
-        totalCount: totalEngines,
+        mainStatus: enabledActive > 0 && globalStatus === "running" ? "running" : "stopped",
+        presetStatus: presetTradeCount > 0 && globalStatus === "running" ? "running" : "stopped",
+        totalEnabled: runningEngines,
       },
       database: {
         status: dbStatus,
         requestsPerSecond: requestsPerSecond,
       },
       exchangeConnections: {
-        totalInserted: settingsConnections.length,
+        total: settingsConnections.length,
         enabled: enabledSettings,
         working: workingConnections,
         status: exchangeStatus,
       },
       activeConnections: {
-        totalInserted: activeConnections.length,
+        total: activeConnections.length,
         enabled: enabledActive,
         liveTrade: liveTradeCount,
         presetTrade: presetTradeCount,
       },
       liveTrades: {
         lastHour: totalTrades,
-        byConnection: tradesByConnection,
+        topConnections: topConnections,
       },
     }
     
@@ -97,30 +93,29 @@ export async function GET() {
     return NextResponse.json({
       tradeEngines: {
         globalStatus: "error",
-        mainTradeStatus: "error",
-        presetTradeStatus: "error",
-        enabledCount: 0,
-        totalCount: 0,
+        mainStatus: "error",
+        presetStatus: "error",
+        totalEnabled: 0,
       },
       database: {
         status: "down",
         requestsPerSecond: 0,
       },
       exchangeConnections: {
-        totalInserted: 0,
+        total: 0,
         enabled: 0,
         working: 0,
         status: "down",
       },
       activeConnections: {
-        totalInserted: 0,
+        total: 0,
         enabled: 0,
         liveTrade: 0,
         presetTrade: 0,
       },
       liveTrades: {
         lastHour: 0,
-        byConnection: [],
+        topConnections: [],
       },
     })
   }

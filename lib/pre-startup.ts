@@ -150,7 +150,68 @@ async function initializeDefaultSettings() {
   }
 }
 
-async function initializeDefaultActiveConnections() {
+async function testAllExchangeConnections() {
+  console.log("[v0] [Startup] Testing all exchange connections...")
+  try {
+    const allConnections = await getAllConnections()
+    
+    for (const connection of allConnections) {
+      try {
+        // Call test connection API for each connection
+        const testResponse = await fetch(`${process.env.NEXTURL || "http://localhost:3000"}/api/settings/connections/test`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            exchange: connection.exchange,
+            api_key: connection.api_key,
+            api_secret: connection.api_secret,
+            api_type: connection.api_type,
+            api_subtype: connection.api_subtype,
+            is_testnet: connection.is_testnet,
+          }),
+        })
+        
+        const testResult = await testResponse.json()
+        const testStatus = testResult.success ? "success" : "failed"
+        
+        // Update connection with test result
+        await updateConnection(connection.id, {
+          ...connection,
+          last_test_status: testStatus,
+          last_test_time: new Date().toISOString(),
+        })
+        
+        console.log(`[v0] [Startup] Tested ${connection.name} (${connection.exchange}): ${testStatus}`)
+      } catch (error) {
+        console.warn(`[v0] [Startup] Failed to test ${connection.name}:`, error)
+        
+        // Mark as failed
+        await updateConnection(connection.id, {
+          ...connection,
+          last_test_status: "error",
+          last_test_time: new Date().toISOString(),
+        })
+      }
+    }
+    
+    console.log(`[v0] [Startup] Completed testing ${allConnections.length} connections`)
+  } catch (error) {
+    console.error("[v0] [Startup] Failed to test connections:", error)
+  }
+}
+
+function startPeriodicConnectionTesting() {
+  // Test all connections every 5 minutes
+  const intervalId = setInterval(async () => {
+    console.log("[v0] [Periodic] Running 5-minute connection tests...")
+    await testAllExchangeConnections()
+  }, 5 * 60 * 1000) // 5 minutes
+  
+  // Store interval ID globally so it can be cleared if needed
+  if (typeof global !== "undefined") {
+    (global as any).connectionTestingIntervalId = intervalId
+  }
+}
   console.log("[v0] [Seed] Initializing default active connections (Bybit & BingX)...")
   try {
     const allConnections = await getAllConnections()
@@ -228,13 +289,18 @@ export async function runPreStartup() {
     await seedMarketData()
     console.log("[v0] [5/6] ✓ Market data seeded")
     
-    console.log("[v0] [6/7] Initializing default active connections...")
+    console.log("[v0] [6/8] Initializing default active connections...")
     await initializeDefaultActiveConnections()
-    console.log("[v0] [6/7] ✓ Default active connections initialized")
+    console.log("[v0] [6/8] ✓ Default active connections initialized")
     
-    console.log("[v0] [7/7] Initializing Trade Engine...")
+    console.log("[v0] [7/8] Testing all exchange connections...")
+    await testAllExchangeConnections()
+    console.log("[v0] [7/8] ✓ Exchange connections tested")
+    
+    console.log("[v0] [8/8] Initializing Trade Engine and auto-testing (every 5 min)...")
     await initializeTradeEngineAutoStart()
-    console.log("[v0] [7/7] ✓ Trade Engine initialized and auto-start activated")
+    startPeriodicConnectionTesting() // Start 5-minute interval for testing
+    console.log("[v0] [8/8] ✓ Trade Engine initialized and auto-testing enabled")
     
     console.log("[v0] ==========================================")
     console.log("[v0] PRE-STARTUP COMPLETE - SYSTEM READY")

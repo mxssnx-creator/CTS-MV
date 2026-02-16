@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { getTradeEngine } from "@/lib/trade-engine"
+import { getTradeEngine, getRedisClient, initRedis } from "@/lib/trade-engine"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -11,6 +11,7 @@ export const dynamic = "force-dynamic"
  */
 export async function POST() {
   try {
+    await initRedis()
     const coordinator = getTradeEngine()
 
     if (!coordinator) {
@@ -18,6 +19,11 @@ export async function POST() {
     }
 
     await coordinator.pause()
+    
+    // Update Redis global state
+    const client = getRedisClient()
+    await client.hset("trade_engine:global", { status: "paused", paused_at: new Date().toISOString() })
+    
     console.log("[v0] Global Trade Engine Coordinator paused via API")
 
     return NextResponse.json({

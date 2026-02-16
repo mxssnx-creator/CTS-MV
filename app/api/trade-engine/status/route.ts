@@ -75,9 +75,13 @@ export async function GET() {
       }),
     )
 
-    // Calculate global engine state
-    const isGloballyRunning = running > 0
-    const isPaused = false // TODO: Implement pause state in coordinator
+    // Calculate global engine state from Redis
+    const globalState = await client.hgetall("trade_engine:global")
+    const globalStatus = globalState?.status || "stopped"
+    const isGloballyRunning = globalStatus === "running" && running > 0
+    const isPaused = globalStatus === "paused"
+    
+    console.log(`[v0] [Status] Global state: ${globalStatus}, Running engines: ${running}, Globally running: ${isGloballyRunning}`)
     
     return NextResponse.json({
       success: true,
