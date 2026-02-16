@@ -244,10 +244,10 @@ export function SystemOverview() {
               {(stats.liveTrades?.topConnections && Array.isArray(stats.liveTrades.topConnections) && stats.liveTrades.topConnections.length > 0) ? (
                 <div className="pt-2 border-t space-y-1">
                   <div className="text-[10px] text-muted-foreground mb-1">Top Contributors:</div>
-                  {stats.liveTrades.topConnections.slice(0, 3).map((conn, idx) => (
+                  {stats.liveTrades.topConnections.slice(0, 3).map((conn: any, idx: number) => (
                     <div key={idx} className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground truncate">{conn.name}</span>
-                      <span className="font-semibold">{conn.count}</span>
+                      <span className="text-muted-foreground truncate">{conn?.name || `Connection ${idx}`}</span>
+                      <span className="font-semibold">{conn?.count || 0}</span>
                     </div>
                   ))}
                 </div>
