@@ -1,116 +1,119 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
-import { Activity, Database, Link2, Zap, TrendingUp, Settings } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { Settings, Zap, Database, Network, Activity, TrendingUp } from "lucide-react"
 
 interface SystemStats {
   tradeEngines: {
-    globalStatus: "running" | "stopped" | "error"
-    mainTradeStatus: "running" | "stopped" | "error"
-    presetTradeStatus: "running" | "stopped" | "error"
-    enabledCount: number
-    totalCount: number
+    globalStatus: string
+    mainStatus: string
+    presetStatus: string
+    totalEnabled: number
   }
   database: {
-    status: "healthy" | "degraded" | "down"
+    status: string
     requestsPerSecond: number
   }
   exchangeConnections: {
-    totalInserted: number
+    total: number
     enabled: number
     working: number
-    status: "healthy" | "partial" | "down"
+    status: string
   }
   activeConnections: {
-    totalInserted: number
+    total: number
     enabled: number
     liveTrade: number
     presetTrade: number
   }
   liveTrades: {
     lastHour: number
-    byConnection: { name: string; count: number }[]
-  }
-}
-
-function getStatusColor(status: string) {
-  switch (status) {
-    case "running":
-    case "healthy":
-      return "bg-green-100 text-green-800 border-green-200"
-    case "stopped":
-    case "degraded":
-    case "partial":
-      return "bg-yellow-100 text-yellow-800 border-yellow-200"
-    case "error":
-    case "down":
-      return "bg-red-100 text-red-800 border-red-200"
-    default:
-      return "bg-gray-100 text-gray-800 border-gray-200"
-  }
-}
-
-function getBorderColor(status: string) {
-  switch (status) {
-    case "running":
-    case "healthy":
-      return "border-l-green-500"
-    case "stopped":
-    case "degraded":
-    case "partial":
-      return "border-l-yellow-500"
-    case "error":
-    case "down":
-      return "border-l-red-500"
-    default:
-      return "border-l-gray-400"
+    topConnections: Array<{ name: string; count: number }>
   }
 }
 
 export function SystemOverview() {
-  const [stats, setStats] = useState<SystemStats | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [stats, setStats] = useState<SystemStats>({
+    tradeEngines: {
+      globalStatus: "running",
+      mainStatus: "running",
+      presetStatus: "idle",
+      totalEnabled: 2,
+    },
+    database: {
+      status: "healthy",
+      requestsPerSecond: 0,
+    },
+    exchangeConnections: {
+      total: 0,
+      enabled: 0,
+      working: 0,
+      status: "loading",
+    },
+    activeConnections: {
+      total: 0,
+      enabled: 0,
+      liveTrade: 0,
+      presetTrade: 0,
+    },
+    liveTrades: {
+      lastHour: 0,
+      topConnections: [],
+    },
+  })
 
   useEffect(() => {
-    fetchSystemStats()
-    const interval = setInterval(fetchSystemStats, 5000)
+    const loadStats = async () => {
+      try {
+        const response = await fetch("/api/dashboard/system-stats")
+        if (response.ok) {
+          const data = await response.json()
+          setStats(data)
+        }
+      } catch (error) {
+        console.error("[v0] Failed to load system stats:", error)
+      }
+    }
+
+    loadStats()
+    const interval = setInterval(loadStats, 5000)
     return () => clearInterval(interval)
   }, [])
 
-  async function fetchSystemStats() {
-    try {
-      const response = await fetch("/api/dashboard/system-stats")
-      if (response.ok) {
-        const data = await response.json()
-        setStats(data)
-      }
-    } catch (error) {
-      console.error("[v0] Failed to fetch system stats:", error)
-    } finally {
-      setLoading(false)
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "running":
+      case "healthy":
+      case "working":
+        return "bg-green-100 text-green-900 border-green-200"
+      case "idle":
+      case "stopped":
+        return "bg-gray-100 text-gray-600 border-gray-200"
+      case "failed":
+      case "error":
+        return "bg-red-100 text-red-900 border-red-200"
+      default:
+        return "bg-blue-100 text-blue-900 border-blue-200"
     }
   }
 
-  if (loading || !stats) {
-    return (
-      <Card className="mb-6">
-        <CardContent className="p-4">
-          <div className="flex items-center gap-2 mb-4">
-            <Settings className="h-5 w-5 text-primary" />
-            <h2 className="text-lg font-bold">Smart Overview</h2>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3">
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="animate-pulse p-3 rounded-lg bg-muted/30 border-l-4 border-l-gray-300">
-                <div className="h-20 bg-muted rounded" />
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    )
+  const getBorderColor = (status: string) => {
+    switch (status) {
+      case "running":
+      case "healthy":
+      case "working":
+        return "border-l-green-500"
+      case "idle":
+      case "stopped":
+        return "border-l-gray-400"
+      case "failed":
+      case "error":
+        return "border-l-red-500"
+      default:
+        return "border-l-blue-500"
+    }
   }
 
   return (
@@ -137,61 +140,53 @@ export function SystemOverview() {
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Main</span>
-                <Badge className={`text-[10px] h-5 ${getStatusColor(stats.tradeEngines.mainTradeStatus)}`}>
-                  {stats.tradeEngines.mainTradeStatus}
+                <Badge className={`text-[10px] h-5 ${getStatusColor(stats.tradeEngines.mainStatus)}`}>
+                  {stats.tradeEngines.mainStatus}
                 </Badge>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Preset</span>
-                <Badge className={`text-[10px] h-5 ${getStatusColor(stats.tradeEngines.presetTradeStatus)}`}>
-                  {stats.tradeEngines.presetTradeStatus}
+                <Badge className={`text-[10px] h-5 ${getStatusColor(stats.tradeEngines.presetStatus)}`}>
+                  {stats.tradeEngines.presetStatus}
                 </Badge>
               </div>
               <div className="pt-1 border-t mt-2">
-                <div className="text-lg font-bold">{stats.tradeEngines.enabledCount}</div>
-                <div className="text-[10px] text-muted-foreground">Enabled of {stats.tradeEngines.totalCount}</div>
+                <div className="text-2xl font-bold">{stats.tradeEngines.totalEnabled}</div>
+                <div className="text-[10px] text-muted-foreground">Enabled</div>
               </div>
             </div>
           </div>
 
           {/* Database */}
-          <div className="p-3 rounded-lg border-l-4 border-l-purple-500 bg-muted/30">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <Database className="h-4 w-4 text-purple-500" />
-                <span className="text-xs font-semibold text-muted-foreground">Database</span>
-              </div>
-              <Badge className={`text-[10px] h-5 ${getStatusColor(stats.database.status)}`}>
-                {stats.database.status}
-              </Badge>
+          <div className={`p-3 rounded-lg border-l-4 ${getBorderColor(stats.database.status)} bg-muted/30`}>
+            <div className="flex items-center gap-2 mb-2">
+              <Database className="h-4 w-4 text-muted-foreground" />
+              <span className="text-xs font-semibold text-muted-foreground">Database</span>
             </div>
             <div className="space-y-2">
-              <div>
-                <div className="text-2xl font-bold">{stats.database.requestsPerSecond}</div>
-                <div className="text-[10px] text-muted-foreground">Requests/sec</div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Status</span>
+                <Badge className={`text-[10px] h-5 ${getStatusColor(stats.database.status)}`}>
+                  {stats.database.status}
+                </Badge>
               </div>
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                <Activity className="h-3 w-3" />
-                <span>Redis Live</span>
+              <div className="pt-1 border-t">
+                <div className="text-2xl font-bold">{stats.database.requestsPerSecond}</div>
+                <div className="text-[10px] text-muted-foreground">req/sec</div>
               </div>
             </div>
           </div>
 
           {/* Exchange Connections */}
-          <div className="p-3 rounded-lg border-l-4 border-l-orange-500 bg-muted/30">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <Link2 className="h-4 w-4 text-orange-500" />
-                <span className="text-xs font-semibold text-muted-foreground">Exchange Conn.</span>
-              </div>
-              <Badge className={`text-[10px] h-5 ${getStatusColor(stats.exchangeConnections.status)}`}>
-                {stats.exchangeConnections.status}
-              </Badge>
+          <div className={`p-3 rounded-lg border-l-4 ${getBorderColor(stats.exchangeConnections.status)} bg-muted/30`}>
+            <div className="flex items-center gap-2 mb-2">
+              <Network className="h-4 w-4 text-muted-foreground" />
+              <span className="text-xs font-semibold text-muted-foreground">Exchange Connections</span>
             </div>
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Inserted</span>
-                <span className="font-semibold">{stats.exchangeConnections.totalInserted}</span>
+                <span className="font-semibold">{stats.exchangeConnections.total}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Enabled</span>
@@ -201,19 +196,24 @@ export function SystemOverview() {
                 <span className="text-muted-foreground">Working</span>
                 <span className="font-semibold text-blue-600">{stats.exchangeConnections.working}</span>
               </div>
+              <div className="pt-1 border-t mt-2">
+                <Badge className={`text-[10px] h-5 w-full justify-center ${getStatusColor(stats.exchangeConnections.status)}`}>
+                  {stats.exchangeConnections.status}
+                </Badge>
+              </div>
             </div>
           </div>
 
           {/* Active Connections */}
           <div className="p-3 rounded-lg border-l-4 border-l-green-500 bg-muted/30">
             <div className="flex items-center gap-2 mb-2">
-              <Zap className="h-4 w-4 text-green-500" />
-              <span className="text-xs font-semibold text-muted-foreground">Active Conn.</span>
+              <Activity className="h-4 w-4 text-muted-foreground" />
+              <span className="text-xs font-semibold text-muted-foreground">Active Connections</span>
             </div>
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Inserted</span>
-                <span className="font-semibold">{stats.activeConnections.totalInserted}</span>
+                <span className="font-semibold">{stats.activeConnections.total}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Enabled</span>
@@ -224,31 +224,34 @@ export function SystemOverview() {
                 <span className="font-semibold text-blue-600">{stats.activeConnections.liveTrade}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Preset Trade</span>
+                <span className="text-muted-foreground">Preset</span>
                 <span className="font-semibold text-purple-600">{stats.activeConnections.presetTrade}</span>
               </div>
             </div>
           </div>
 
-          {/* Live Trades Last Hour */}
+          {/* Live Trades */}
           <div className="p-3 rounded-lg border-l-4 border-l-cyan-500 bg-muted/30">
             <div className="flex items-center gap-2 mb-2">
-              <TrendingUp className="h-4 w-4 text-cyan-500" />
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
               <span className="text-xs font-semibold text-muted-foreground">Live Trades (1h)</span>
             </div>
             <div className="space-y-2">
-              <div>
+              <div className="pt-1">
                 <div className="text-2xl font-bold">{stats.liveTrades.lastHour}</div>
-                <div className="text-[10px] text-muted-foreground">Total trades</div>
+                <div className="text-[10px] text-muted-foreground">Total Trades</div>
               </div>
-              <div className="space-y-1 max-h-16 overflow-y-auto">
-                {stats.liveTrades.byConnection.slice(0, 3).map((conn, i) => (
-                  <div key={i} className="flex items-center justify-between text-[10px]">
-                    <span className="text-muted-foreground truncate max-w-[80px]">{conn.name}</span>
-                    <span className="font-semibold">{conn.count}</span>
-                  </div>
-                ))}
-              </div>
+              {stats.liveTrades.topConnections.length > 0 && (
+                <div className="pt-2 border-t space-y-1">
+                  <div className="text-[10px] text-muted-foreground mb-1">Top Contributors:</div>
+                  {stats.liveTrades.topConnections.slice(0, 3).map((conn, idx) => (
+                    <div key={idx} className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground truncate">{conn.name}</span>
+                      <span className="font-semibold">{conn.count}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
