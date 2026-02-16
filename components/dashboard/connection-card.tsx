@@ -1391,9 +1391,9 @@ export function ConnectionCard({
       <Dialog open={showLogs} onOpenChange={setShowLogs}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Connection Dashboard - {connection.name}</DialogTitle>
+            <DialogTitle>Active Connection - {connection.name}</DialogTitle>
             <DialogDescription>
-              Monitor connection state, performance, and real-time activity
+              Monitor connection state, performance, and real-time activity for this actively used trading connection
             </DialogDescription>
           </DialogHeader>
           

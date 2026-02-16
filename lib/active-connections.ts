@@ -1,7 +1,11 @@
 /**
  * Active Connections Manager
- * Handles connections currently actively using (INDEPENDENT from Settings)
+ * Handles connections actively in use for trading (INDEPENDENT from Settings)
  * Uses Redis as single source of truth (via is_enabled_dashboard field)
+ *
+ * TERMINOLOGY:
+ * - These are called "Active Connections" or "Actively Using" connections
+ * - NOT called "Dashboard Connections" to avoid confusion
  *
  * INDEPENDENCE GUARANTEE:
  * - Toggling an Active connection does NOT affect Settings connections
