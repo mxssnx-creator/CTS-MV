@@ -239,6 +239,37 @@ export function Dashboard() {
     }
   }
 
+  const handleTogglePresetTrade = async (id: string, enabled: boolean) => {
+    try {
+      const connection = filteredConnections.find((c) => c.id === id)
+      if (!connection) {
+        toast.error("Connection not found")
+        return
+      }
+
+      const response = await fetch(`/api/settings/connections/${id}/toggle`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          is_enabled: connection.is_enabled,
+          is_live_trade: connection.is_live_trade,
+          is_preset_trade: enabled,
+        }),
+      })
+
+      if (response.ok) {
+        toast.success(`Preset trading ${enabled ? "enabled" : "disabled"}`)
+        await loadExchangeConnectionsActive()
+      } else {
+        const error = await response.json()
+        toast.error(error.details || "Failed to toggle preset trading")
+      }
+    } catch (error) {
+      console.error("[v0] Failed to toggle preset trading:", error)
+      toast.error("Failed to toggle preset trading")
+    }
+  }
+
   return (
     <div className="flex-1 space-y-6 p-6">
       {/* Header */}
@@ -286,6 +317,7 @@ export function Dashboard() {
                   connection={connection}
                   onToggleEnable={handleToggleEnable}
                   onToggleLiveTrade={handleToggleLiveTrade}
+                  onTogglePresetTrade={handleTogglePresetTrade}
                   onDelete={handleDeleteConnection}
                   isActive={exchangeConnectionsActiveStatus.get(connection.id) ?? false}
                   onToggleActive={() => toggleExchangeConnectionsActiveStatus(connection.id)}

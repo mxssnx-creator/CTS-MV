@@ -16,56 +16,50 @@ export async function GET() {
     // Active connections = connections with is_enabled_dashboard = true
     // These are the connections shown on the dashboard "Active Connections" section
     const activeConnections = allConnections.filter((c: any) => c.is_enabled_dashboard === "1" || c.is_enabled_dashboard === true)
-    const enabledActive = activeConnections.filter((c: any) => c.is_enabled === "1" || c.is_enabled === true).length
     
-    console.log(`[v0] [System Stats] Total connections: ${allConnections.length}, Active (dashboard): ${activeConnections.length}, Active+Enabled: ${enabledActive}`)
+    // Active connections that are ENABLED (ready to trade)
+    const enabledActiveConnections = activeConnections.filter((c: any) => c.is_enabled === "1" || c.is_enabled === true)
     
-    // Count trade engine statuses
-    let runningEngines = 0
-    let totalEngines = connectionIds.length
+    // Active connections with LIVE TRADE enabled (runs progressions and live trades if this is on)
+    const activeWithLiveTrade = enabledActiveConnections.filter((c: any) => c.is_live_trade === "1" || c.is_live_trade === true)
     
-    for (const connId of connectionIds) {
-      const engineState = await getSettings(`engine_state:${connId}`)
-      if (engineState?.status === "running") {
-        runningEngines++
-      }
-    }
+    // Active connections with PRESET TRADE enabled (runs live exchange trades immediately)
+    const activeWithPresetTrade = enabledActiveConnections.filter((c: any) => c.is_preset_trade === "1" || c.is_preset_trade === true)
     
-    // Get global trade engine status
-    const globalEngineState = await getSettings("trade_engine:global")
-    const globalStatus = globalEngineState?.status || "stopped"
+    console.log(`[v0] [System Stats] Active connections on dashboard: ${activeConnections.length}, Enabled: ${enabledActiveConnections.length}, With Live Trade: ${activeWithLiveTrade.length}, With Preset Trade: ${activeWithPresetTrade.length}`)
     
-    // Database stats (Redis)
-    const dbStatus = "healthy" // Simplified - if we got this far, Redis is working
-    const requestsPerSecond = Math.floor(Math.random() * 50) + 20 // Mock for now - could be tracked via middleware
+    // TRADE ENGINE LOGIC - depends on active connections
+    // Main Trade Engine (Live Trade) runs if:
+    //   - Global is running AND
+    //   - There's at least one active connection enabled AND
+    //   - Live Trade toggle is enabled on that connection
+    const mainTradeEnabled = activeWithLiveTrade.length > 0
     
-    // Exchange connections status
+    // Preset Trade Engine runs if:
+    //   - Global is running AND
+    //   - There's at least one active connection enabled AND
+    //   - Preset Trade toggle is enabled on that connection
+    const presetTradeEnabled = activeWithPresetTrade.length > 0
+    
+    // Exchange Connections - WORKING status means test succeeded
     const workingConnections = settingsConnections.filter((c: any) => 
-      c.last_test_status === "success" || c.is_enabled
+      c.last_test_status === "success"
     ).length
+    
     const exchangeStatus = 
       workingConnections === 0 ? "down" :
       workingConnections < settingsConnections.length / 2 ? "partial" :
       "healthy"
     
-    // Active connection types - check is_live_trade and is_preset_trade flags
-    const liveTradeCount = activeConnections.filter((c: any) => c.is_live_trade === "1" || c.is_live_trade === true).length
-    const presetTradeCount = activeConnections.filter((c: any) => c.is_preset_trade === "1" || c.is_preset_trade === true).length
-    
-    // Live trades last hour - build from active connections
-    const tradesByConnection = activeConnections.map((c: any) => ({
-      name: c.name || c.exchange || c.id,
-      count: 0, // Real trade counts would come from trade history tracking
-    }))
-    const topConnections = tradesByConnection.sort((a: any, b: any) => b.count - a.count).slice(0, 5)
-    const totalTrades = tradesByConnection.reduce((sum: number, c: any) => sum + c.count, 0)
-    
     const stats = {
       tradeEngines: {
         globalStatus: globalStatus,
-        mainStatus: enabledActive > 0 && globalStatus === "running" ? "running" : "stopped",
-        presetStatus: presetTradeCount > 0 && globalStatus === "running" ? "running" : "stopped",
-        totalEnabled: runningEngines,
+        // Main Trade Engine (Live Trade) status
+        mainStatus: globalStatus === "running" && mainTradeEnabled ? "running" : "stopped",
+        // Preset Trade Engine status
+        presetStatus: globalStatus === "running" && presetTradeEnabled ? "running" : "stopped",
+        // Count = number of active+enabled connections with appropriate toggles
+        totalEnabled: enabledActiveConnections.length,
       },
       database: {
         status: dbStatus,
@@ -74,14 +68,15 @@ export async function GET() {
       exchangeConnections: {
         total: settingsConnections.length,
         enabled: enabledSettings,
+        // ONLY count as working if test succeeded
         working: workingConnections,
         status: exchangeStatus,
       },
       activeConnections: {
         total: activeConnections.length,
-        enabled: enabledActive,
-        liveTrade: liveTradeCount,
-        presetTrade: presetTradeCount,
+        enabled: enabledActiveConnections.length,
+        liveTrade: activeWithLiveTrade.length,
+        presetTrade: activeWithPresetTrade.length,
       },
       liveTrades: {
         lastHour: totalTrades,

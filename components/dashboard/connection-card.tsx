@@ -27,6 +27,7 @@ interface ConnectionCardProps {
   connection: ExchangeConnection
   onToggleEnable: (id: string, enabled: boolean) => void
   onToggleLiveTrade: (id: string, enabled: boolean) => void
+  onTogglePresetTrade: (id: string, enabled: boolean) => void
   onDelete: (id: string) => void
   isActive?: boolean // Independent active status for dashboard
   onToggleActive?: () => void
@@ -61,6 +62,7 @@ export function ConnectionCard({
   connection,
   onToggleEnable,
   onToggleLiveTrade,
+  onTogglePresetTrade,
   onDelete,
   isActive = false,
   onToggleActive,
@@ -481,6 +483,9 @@ export function ConnectionCard({
     }
 
     setPresetTradeEnabled(enabled)
+
+    // Call the parent handler to update the connection's is_preset_trade field
+    onTogglePresetTrade(connection.id, enabled)
 
     if (enabled && selectedPresetType) {
       try {

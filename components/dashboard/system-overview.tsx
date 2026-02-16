@@ -140,13 +140,19 @@ export function SystemOverview() {
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Main</span>
-                <Badge className={`text-[10px] h-5 ${getStatusColor(stats.tradeEngines.mainStatus)}`} title="Requires: Global running + Live Trade enabled">
+                <Badge 
+                  className={`text-[10px] h-5 ${getStatusColor(stats.tradeEngines.mainStatus)}`}
+                  title={`Depends on: Active connections enabled + Live Trade slider (${stats.activeConnections.liveTrade} active)`}
+                >
                   {stats.tradeEngines.mainStatus}
                 </Badge>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Preset</span>
-                <Badge className={`text-[10px] h-5 ${getStatusColor(stats.tradeEngines.presetStatus)}`} title="Requires: Global running + Preset Trade enabled">
+                <Badge 
+                  className={`text-[10px] h-5 ${getStatusColor(stats.tradeEngines.presetStatus)}`}
+                  title={`Depends on: Active connections enabled + Preset slider (${stats.activeConnections.presetTrade} active)`}
+                >
                   {stats.tradeEngines.presetStatus}
                 </Badge>
               </div>
@@ -193,7 +199,7 @@ export function SystemOverview() {
                 <span className="font-semibold text-green-600">{stats.exchangeConnections.enabled}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Working</span>
+                <span className="text-muted-foreground" title="Only connections where test succeeded">Working</span>
                 <span className="font-semibold text-blue-600">{stats.exchangeConnections.working}</span>
               </div>
               <div className="pt-1 border-t mt-2">
