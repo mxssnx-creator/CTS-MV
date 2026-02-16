@@ -73,28 +73,35 @@ export async function addActiveConnection(connectionId: string, exchangeName: st
   try {
     await initRedis()
 
-    // Retry mechanism - sometimes the connection set is empty momentarily
+    console.log(`[v0] [ActiveConnections] Adding connection ${connectionId} (${exchangeName}) to active list`)
+
+    // Use getAllConnections (which is proven reliable) instead of getConnection
     let connection = null
-    let retries = 0
-    const maxRetries = 3
     
-    while (!connection && retries < maxRetries) {
-      connection = await getConnection(connectionId)
-      if (!connection) {
-        retries++
-        console.log(`[v0] [ActiveConnections] Connection ${connectionId} not found, retry ${retries}/${maxRetries}`)
-        if (retries < maxRetries) {
-          await new Promise(resolve => setTimeout(resolve, 100))
-        }
+    // First try getConnection directly
+    connection = await getConnection(connectionId)
+    
+    // Fallback: search through getAllConnections if direct lookup fails
+    if (!connection) {
+      console.log(`[v0] [ActiveConnections] Direct lookup failed for ${connectionId}, falling back to getAllConnections`)
+      const allConnections = await getAllConnections()
+      console.log(`[v0] [ActiveConnections] getAllConnections returned ${allConnections.length} connections`)
+      connection = allConnections.find((c: any) => c.id === connectionId)
+      
+      if (connection) {
+        console.log(`[v0] [ActiveConnections] Found ${connectionId} via getAllConnections fallback`)
       }
     }
     
     if (!connection) {
-      throw new Error(`Connection ${connectionId} not found after ${maxRetries} retries`)
+      console.error(`[v0] [ActiveConnections] Connection ${connectionId} not found in Redis at all`)
+      throw new Error(`Connection ${connectionId} not found in database`)
     }
 
+    console.log(`[v0] [ActiveConnections] Setting is_enabled_dashboard=1 for ${connectionId}`)
     connection.is_enabled_dashboard = "1"
     await updateConnection(connectionId, connection)
+    console.log(`[v0] [ActiveConnections] Successfully added ${connectionId} to active list`)
 
     return {
       id: `active-${connectionId}`,
@@ -113,7 +120,11 @@ export async function removeActiveConnection(connectionId: string): Promise<void
   try {
     await initRedis()
 
-    const connection = await getConnection(connectionId)
+    let connection = await getConnection(connectionId)
+    if (!connection) {
+      const all = await getAllConnections()
+      connection = all.find((c: any) => c.id === connectionId)
+    }
     if (connection) {
       connection.is_enabled_dashboard = "0"
       await updateConnection(connectionId, connection)
@@ -128,7 +139,11 @@ export async function toggleActiveConnection(connectionId: string, isActive: boo
   try {
     await initRedis()
 
-    const connection = await getConnection(connectionId)
+    let connection = await getConnection(connectionId)
+    if (!connection) {
+      const all = await getAllConnections()
+      connection = all.find((c: any) => c.id === connectionId)
+    }
     if (connection) {
       connection.is_enabled = isActive ? "1" : "0"
       await updateConnection(connectionId, connection)
