@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server"
-import { getSettings, getAllConnections } from "@/lib/redis-db"
+import { getAllConnections, getSettings } from "@/lib/redis-db"
 
 export const dynamic = "force-dynamic"
 
 export async function GET() {
   try {
-    // Fetch all connections from Redis
+    // Fetch all connections from Redis database
     const allConnections = await getAllConnections()
     const connectionIds = allConnections.map((c: any) => c.id)
     
