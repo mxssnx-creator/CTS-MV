@@ -52,9 +52,13 @@ export async function GET() {
     const liveTradeCount = activeConnections.filter((c: any) => c.is_live_trade === "1" || c.is_live_trade === true).length
     const presetTradeCount = activeConnections.filter((c: any) => c.is_preset_trade === "1" || c.is_preset_trade === true).length
     
-    // Live trades last hour (use byConnection data which is already calculated)
-    const topConnections = tradesByConnection.sort((a, b) => b.count - a.count).slice(0, 5)
-    const totalTrades = tradesByConnection.reduce((sum, c) => sum + c.count, 0)
+    // Live trades last hour - build from active connections
+    const tradesByConnection = activeConnections.map((c: any) => ({
+      name: c.name || c.exchange || c.id,
+      count: 0, // Real trade counts would come from trade history tracking
+    }))
+    const topConnections = tradesByConnection.sort((a: any, b: any) => b.count - a.count).slice(0, 5)
+    const totalTrades = tradesByConnection.reduce((sum: number, c: any) => sum + c.count, 0)
     
     const stats = {
       tradeEngines: {
