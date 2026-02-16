@@ -8,6 +8,7 @@ import { SystemOverview } from "./system-overview"
 import { GlobalTradeEngineControls } from "./global-trade-engine-controls"
 import { ConnectionCard } from "./connection-card"
 import { AddActiveConnectionDialog } from "@/components/dashboard/add-active-connection-dialog"
+import { IntervalsStrategiesOverview } from "./intervals-strategies-overview"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Plus, RefreshCw } from "lucide-react"
@@ -300,6 +301,11 @@ export function Dashboard() {
           )}
         </CardContent>
       </Card>
+
+      {/* Intervals & Strategies Overview */}
+      {filteredConnections.length > 0 && (
+        <IntervalsStrategiesOverview connections={filteredConnections} />
+      )}
 
       <AddActiveConnectionDialog
         open={addDialogOpen}
