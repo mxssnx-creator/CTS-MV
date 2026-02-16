@@ -1,7 +1,8 @@
 /**
  * Redis Persistence Manager (In-Memory Only)
- * Keeps data in memory during the deployment lifetime.
- * Data resets on redeploy (normal for Vercel), persists within a deployment.
+ * No external services used. Data stays in memory during the deployment lifetime.
+ * Data resets on redeploy (standard Vercel behavior), persists within a single deployment.
+ * No Upstash, no filesystem, no remote storage.
  */
 
 export class RedisPersistenceManager {
