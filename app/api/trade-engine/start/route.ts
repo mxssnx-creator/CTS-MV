@@ -1,26 +1,23 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { initRedis, getAllConnections, getConnection, getRedisClient } from "@/lib/redis-db"
+import { initRedis, getRedisClient } from "@/lib/redis-db"
 import { getGlobalTradeEngineCoordinator } from "@/lib/trade-engine"
 import { SystemLogger } from "@/lib/system-logger"
 
 export const dynamic = "force-dynamic"
 
+/**
+ * POST /api/trade-engine/start
+ * Start the Global Trade Engine Coordinator (independent of any connections)
+ * 
+ * The Global Coordinator is the overall control system.
+ * Individual connection engines (Main and Preset) are controlled separately via:
+ * - /api/settings/connections/[id]/live-trade (Main Engine)
+ * - /api/settings/connections/[id]/preset-toggle (Preset Engine)
+ */
 export async function POST(request: NextRequest) {
   try {
-    let connectionId: string | undefined
-    
-    try {
-      const text = await request.text()
-      if (text && text.trim()) {
-        const body = JSON.parse(text)
-        connectionId = body.connectionId
-      }
-    } catch {
-      // Empty or invalid body - start all engines
-    }
-
-    console.log("[v0] [Trade Engine] Starting for:", connectionId || "all")
-    await SystemLogger.logTradeEngine(`Starting: ${connectionId || "all"}`, "info", { connectionId })
+    console.log("[v0] [Trade Engine] Starting Global Trade Engine Coordinator (independent of connections)")
+    await SystemLogger.logTradeEngine(`Starting Global Coordinator`, "info")
 
     const coordinator = getGlobalTradeEngineCoordinator()
     
@@ -28,84 +25,38 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Coordinator not initialized" }, { status: 503 })
     }
 
-    // Start all enabled connections if no specific ID provided
-    if (!connectionId) {
-      await initRedis()
-      const connections = await getAllConnections()
-      const enabledConnections = connections.filter((c) => c.is_enabled === true || c.is_enabled === "true")
-      
-      console.log("[v0] Found", enabledConnections.length, "enabled connections")
-      
-      if (enabledConnections.length === 0) {
-        return NextResponse.json({
-          success: false,
-          error: "No enabled connections found",
-        }, { status: 400 })
-      }
-
-      await coordinator.startAll()
-      
-      // Set global state in Redis
-      const client = getRedisClient()
-      await client.hset("trade_engine:global", { status: "running", started_at: new Date().toISOString() })
-
-      return NextResponse.json({
-        success: true,
-        message: `Started ${enabledConnections.length} trade engines`,
-        count: enabledConnections.length,
-      })
-    }
-
-    // Check if already running
-    const existingManager = coordinator.getEngineManager(connectionId)
-    if (existingManager) {
-      return NextResponse.json({
-        success: true,
-        message: "Trade engine already running",
-      })
-    }
-
-    // Load connection from Redis
+    // Initialize Redis
     await initRedis()
-    let connection = await getConnection(connectionId)
+    const client = getRedisClient()
     
-    if (!connection) {
-      const allConnections = await getAllConnections()
-      connection = allConnections.find(c => c.id === connectionId)
-    }
+    // Set global state in Redis
+    await client.hset("trade_engine:global", { 
+      status: "running", 
+      started_at: new Date().toISOString(),
+      coordinator_ready: "true"
+    })
 
-    if (!connection || (connection.is_enabled !== true && connection.is_enabled !== "true")) {
-      await SystemLogger.logTradeEngine(`Connection not found: ${connectionId}`, "error")
-      return NextResponse.json({ error: "Connection not found or not enabled" }, { status: 404 })
-    }
+    console.log("[v0] [Trade Engine] Global Coordinator is running and ready")
+    console.log("[v0] [Trade Engine] Connection-specific engines controlled via:")
+    console.log("[v0] [Trade Engine]   - Main Engine: POST /api/settings/connections/[id]/live-trade")
+    console.log("[v0] [Trade Engine]   - Preset Engine: POST /api/settings/connections/[id]/preset-toggle")
 
-    console.log("[v0] Starting engine for:", connection.name)
-
-    // Start engine with coordinator
-    const config = {
-      connectionId: connection.id,
-      connection_name: connection.name,
-      exchange: connection.exchange,
-    }
-
-    await coordinator.startEngine(connectionId, config)
-
-    console.log("[v0] Engine started for:", connectionId)
-    await SystemLogger.logTradeEngine(`Started: ${connection.name}`, "info", { connectionId })
+    await SystemLogger.logTradeEngine(`Global Coordinator started and ready`, "info")
 
     return NextResponse.json({
       success: true,
-      message: `Trade engine started for ${connection.name}`,
-      connectionId,
+      message: "Global Trade Engine Coordinator started and ready",
+      details: "Connection-specific engines are controlled independently via their toggle endpoints",
+      coordinator_status: "running",
     })
 
   } catch (error) {
-    console.error("[v0] Failed to start:", error)
+    console.error("[v0] Failed to start Global Coordinator:", error)
     await SystemLogger.logError(error, "trade-engine", "POST /api/trade-engine/start")
 
     return NextResponse.json(
       {
-        error: "Failed to start trade engine",
+        error: "Failed to start Global Coordinator",
         details: error instanceof Error ? error.message : "Unknown error",
       },
       { status: 500 }

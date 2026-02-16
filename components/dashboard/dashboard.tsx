@@ -212,42 +212,6 @@ export function Dashboard() {
       } else {
         const error = await response.json()
         toast.error(error.details || error.error || "Failed to toggle live trading")
-      }
-    } catch (error) {
-      console.error("[v0] Failed to toggle live trading:", error)
-      toast.error("Failed to toggle live trading")
-    }
-  }
-      } else {
-        const error = await response.json()
-        toast.error(error.details || "Failed to toggle live trading")
-      }
-    } catch (error) {
-      console.error("[v0] Failed to toggle live trading:", error)
-      toast.error("Failed to toggle live trading")
-    }
-  }
-
-  const handleDeleteConnection = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this connection?")) return
-
-    try {
-      const response = await fetch(`/api/settings/connections/${id}`, {
-        method: "DELETE",
-      })
-
-      if (response.ok) {
-        toast.success("Connection deleted")
-        await loadExchangeConnectionsActive()
-      } else {
-        toast.error("Failed to delete connection")
-      }
-    } catch (error) {
-      console.error("[v0] Failed to delete connection:", error)
-      toast.error("Failed to delete connection")
-    }
-  }
-
   const handleTogglePresetTrade = async (id: string, enabled: boolean) => {
     try {
       const connection = filteredConnections.find(c => c.id === id)
@@ -261,8 +225,8 @@ export function Dashboard() {
         return
       }
 
-      // Call the preset-trade specific endpoint
-      const response = await fetch(`/api/settings/connections/${id}/preset-type`, {
+      // Call the preset-toggle endpoint (controls Preset Engine)
+      const response = await fetch(`/api/settings/connections/${id}/preset-toggle`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -276,29 +240,6 @@ export function Dashboard() {
       } else {
         const error = await response.json()
         toast.error(error.details || error.error || "Failed to toggle preset trading")
-      }
-    } catch (error) {
-      console.error("[v0] Failed to toggle preset trading:", error)
-      toast.error("Failed to toggle preset trading")
-    }
-  }
-
-      const response = await fetch(`/api/settings/connections/${id}/toggle`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          is_enabled: connection.is_enabled,
-          is_live_trade: connection.is_live_trade,
-          is_preset_trade: enabled,
-        }),
-      })
-
-      if (response.ok) {
-        toast.success(`Preset trading ${enabled ? "enabled" : "disabled"}`)
-        await loadExchangeConnectionsActive()
-      } else {
-        const error = await response.json()
-        toast.error(error.details || "Failed to toggle preset trading")
       }
     } catch (error) {
       console.error("[v0] Failed to toggle preset trading:", error)
