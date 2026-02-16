@@ -33,11 +33,12 @@ class InlineLocalRedis {
       this.store = snapshot
     }
 
-    // Enable periodic snapshots
+    // Enable periodic snapshots - every 4 minutes (240 seconds)
     if (!this.persistenceEnabled) {
       this.persistenceEnabled = true
-      RedisPersistenceManager.startPeriodicSnapshots(this.store, 60000) // Save every 60 seconds
-      console.log("[v0] [Redis] Persistence initialized - snapshots every 60s")
+      const snapshotIntervalMs = 4 * 60 * 1000 // 4 minutes = 240,000ms
+      RedisPersistenceManager.startPeriodicSnapshots(this.store, snapshotIntervalMs)
+      console.log("[v0] [Redis] Persistence initialized - snapshots every 4 minutes (240s)")
     }
   }
 

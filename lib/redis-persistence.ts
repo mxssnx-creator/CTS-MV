@@ -181,11 +181,11 @@ export class RedisPersistenceManager {
   /**
    * Schedule periodic snapshots
    */
-  static startPeriodicSnapshots(redisStore: Map<string, any>, intervalMs: number = 60000): void {
+  static startPeriodicSnapshots(redisStore: Map<string, any>, intervalMs: number = 240000): void {
     setInterval(() => {
       this.saveSnapshot(redisStore)
     }, intervalMs)
 
-    console.log(`[v0] [Persistence] Periodic snapshots enabled (every ${intervalMs / 1000}s)`)
+    console.log(`[v0] [Persistence] Periodic snapshots enabled (every ${intervalMs / 1000}s = ${(intervalMs / 1000 / 60).toFixed(1)}min)`)
   }
 }
