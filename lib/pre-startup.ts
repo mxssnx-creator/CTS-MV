@@ -212,6 +212,7 @@ function startPeriodicConnectionTesting() {
     (global as any).connectionTestingIntervalId = intervalId
   }
 }
+async function initializeDefaultActiveConnections() {
   console.log("[v0] [Seed] Initializing default active connections (Bybit & BingX)...")
   try {
     const allConnections = await getAllConnections()
@@ -268,26 +269,26 @@ export async function runPreStartup() {
     console.log("[v0] PRE-STARTUP INITIALIZATION STARTED")
     console.log("[v0] ==========================================")
     
-    console.log("[v0] [1/5] Initializing Redis...")
+    console.log("[v0] [1/8] Initializing Redis with file persistence...")
     await initRedis()
-    console.log("[v0] [1/5] ✓ Redis initialized")
+    console.log("[v0] [1/8] ✓ Redis initialized with persistence - snapshots every 60 seconds")
     
-    console.log("[v0] [2/5] Running ALL Redis migrations (automatic)...")
+    console.log("[v0] [2/8] Running ALL Redis migrations (automatic)...")
     const migrationResult = await runMigrations()
-    console.log(`[v0] [2/5] ✓ Migrations completed: ${migrationResult.message}`)
-    console.log(`[v0] [2/5] ✓ Current schema version: ${migrationResult.version}`)
+    console.log(`[v0] [2/8] ✓ Migrations completed: ${migrationResult.message}`)
+    console.log(`[v0] [2/8] ✓ Current schema version: ${migrationResult.version}`)
     
-    console.log("[v0] [3/5] Initializing settings...")
+    console.log("[v0] [3/8] Initializing settings...")
     await initializeDefaultSettings()
-    console.log("[v0] [3/5] ✓ Settings initialized")
+    console.log("[v0] [3/8] ✓ Settings initialized")
     
-    console.log("[v0] [4/5] Seeding exchange connections...")
+    console.log("[v0] [4/8] Seeding exchange connections...")
     await seedPredefinedConnections()
-    console.log("[v0] [4/5] ✓ Connections seeded")
+    console.log("[v0] [4/8] ✓ Connections seeded")
     
-    console.log("[v0] [5/6] Seeding market data...")
+    console.log("[v0] [5/8] Seeding market data...")
     await seedMarketData()
-    console.log("[v0] [5/6] ✓ Market data seeded")
+    console.log("[v0] [5/8] ✓ Market data seeded")
     
     console.log("[v0] [6/8] Initializing default active connections...")
     await initializeDefaultActiveConnections()

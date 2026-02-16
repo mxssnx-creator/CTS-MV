@@ -93,13 +93,19 @@ export class TradeEngineManager {
   }
 
   /**
-   * Stop the trade engine
+   * Graceful error recovery - catches errors in processors and logs them
    */
-  async stop(): Promise<void> {
-    if (!this.isRunning) {
-      console.log("[v0] Trade engine not running")
-      return
-    }
+  private setupErrorRecovery() {
+    // Processors already have internal error handling
+    // This ensures we log and recover from any unhandled errors
+    process.on("unhandledRejection", (reason, promise) => {
+      if (this.isRunning) {
+        console.error("[v0] Unhandled rejection in trade engine:", reason)
+        // Update engine state to degraded but keep running
+        this.updateEngineState("error", `Unhandled rejection: ${reason}`)
+      }
+    })
+  }
 
     console.log("[v0] Stopping trade engine for connection:", this.connectionId)
 

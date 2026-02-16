@@ -1,13 +1,15 @@
 /**
  * Redis database client and operations
- * Uses local in-memory Redis - no remote API calls, no request limits
+ * Uses local in-memory Redis with file persistence
+ * Data is automatically saved to .data/redis-snapshot.json and restored on startup
  * 
  * IMPORTANT: All exported functions are async to satisfy Turbopack's
  * Server Action requirement for files in the instrumentation import chain.
  */
 
+import { RedisPersistenceManager } from "./redis-persistence"
+
 // Inline the LocalRedis class to avoid cross-module sync export issues with Turbopack
-// This eliminates the need to import sync functions from local-redis.ts
 
 interface RedisDataValue {
   type: "string" | "hash" | "set"
@@ -17,6 +19,31 @@ interface RedisDataValue {
 
 class InlineLocalRedis {
   private store = new Map<string, RedisDataValue>()
+  private persistenceEnabled = false
+  private snapshotInterval: NodeJS.Timeout | null = null
+
+  constructor() {
+    // Constructor is empty - initialization happens in initialize()
+  }
+
+  async initialize(): Promise<void> {
+    // Load snapshot from disk
+    const snapshot = await RedisPersistenceManager.loadSnapshot()
+    if (snapshot) {
+      this.store = snapshot
+    }
+
+    // Enable periodic snapshots
+    if (!this.persistenceEnabled) {
+      this.persistenceEnabled = true
+      RedisPersistenceManager.startPeriodicSnapshots(this.store, 60000) // Save every 60 seconds
+      console.log("[v0] [Redis] Persistence initialized - snapshots every 60s")
+    }
+  }
+
+  async saveSnapshot(): Promise<void> {
+    await RedisPersistenceManager.saveSnapshot(this.store)
+  }
 
   private isExpired(entry: RedisDataValue | undefined): boolean {
     if (!entry) return true
@@ -340,14 +367,17 @@ function flattenForHmset(obj: Record<string, string>): string[] {
 // ========== Init / Client ==========
 
 export async function initRedis(): Promise<void> {
-  if (isConnected) return
-  const redis = getClient()
-  const ping = await redis.ping()
-  if (ping === "PONG") {
-    isConnected = true
-  } else {
-    throw new Error("Redis ping failed")
+  if (!redisClient) {
+    redisClient = new InlineLocalRedis()
+    await redisClient.initialize() // Load snapshot and start persistence
+    console.log("[v0] [Redis] Client initialized with persistence")
+    
+    const pong = await redisClient.ping()
+    if (pong === "PONG") {
+      console.log("[v0] [Redis] Connection test successful")
+    }
   }
+}
 }
 
 export function getRedisClient() {
