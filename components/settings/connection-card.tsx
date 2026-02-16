@@ -57,6 +57,8 @@ export function ConnectionCard({
   isNewlyAdded = false,
 }: ConnectionCardProps) {
   const [testingConnection, setTestingConnection] = useState(false)
+  const [testLogs, setTestLogs] = useState<string[]>([])
+  const [showTestLogInstant, setShowTestLogInstant] = useState(false)
   const [logsExpanded, setLogsExpanded] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [editDialogTab, setEditDialogTab] = useState("basic")
