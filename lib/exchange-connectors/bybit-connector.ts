@@ -52,7 +52,10 @@ export class BybitConnector extends BaseExchangeConnector {
 
       this.log("Fetching account balance...")
       const accountType = this.getEffectiveAccountType()
-      this.log(`Using account type: ${accountType}`)
+      const configuredApiType = this.credentials.apiType || "not set"
+      this.log(`Configured API Type: ${configuredApiType}`)
+      this.log(`Using Bybit account type: ${accountType}`)
+      console.log(`[v0] [Bybit] API Type: ${configuredApiType} → Account Type: ${accountType}`)
 
       const response = await this.rateLimitedFetch(`${baseUrl}/v5/account/wallet-balance?accountType=${accountType}`, {
         method: "GET",

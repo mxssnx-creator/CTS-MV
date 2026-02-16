@@ -41,7 +41,21 @@ export class BinanceConnector extends BaseExchangeConnector {
 
       this.log("Fetching account balance...")
 
-      const response = await this.rateLimitedFetch(`${baseUrl}/fapi/v2/balance?${queryString}&signature=${signature}`, {
+      // Use correct endpoint based on API type
+      const apiType = this.credentials.apiType || "perpetual_futures"
+      let endpoint = "/fapi/v2/balance" // Default: perpetual futures
+      
+      if (apiType === "spot") {
+        endpoint = "/api/v3/account"
+        this.log("Using SPOT endpoint for selected API type")
+      } else if (apiType === "perpetual_futures" || apiType === "futures") {
+        endpoint = "/fapi/v2/balance"
+        this.log("Using FUTURES endpoint for selected API type")
+      }
+
+      this.log(`Endpoint: ${endpoint} (API Type: ${apiType})`)
+
+      const response = await this.rateLimitedFetch(`${baseUrl}${endpoint}?${queryString}&signature=${signature}`, {
         method: "GET",
         headers: {
           "X-MBX-APIKEY": this.credentials.apiKey,
@@ -57,14 +71,33 @@ export class BinanceConnector extends BaseExchangeConnector {
 
       this.log("Successfully retrieved account data")
 
-      const usdtBalance = Number.parseFloat(data.find((b: any) => b.asset === "USDT")?.balance || "0")
+      // Parse balance data differently for spot vs futures
+      let usdtBalance = 0
+      let balances: any[] = []
 
-      const balances = data.map((b: any) => ({
-        asset: b.asset,
-        free: Number.parseFloat(b.availableBalance || "0"),
-        locked: Number.parseFloat(b.balance || "0") - Number.parseFloat(b.availableBalance || "0"),
-        total: Number.parseFloat(b.balance || "0"),
-      }))
+      if (apiType === "spot") {
+        // Spot API returns {balances: [{asset, free, locked}]}
+        const spotBalances = data.balances || []
+        const usdtData = spotBalances.find((b: any) => b.asset === "USDT")
+        usdtBalance = Number.parseFloat(usdtData?.free || "0") + Number.parseFloat(usdtData?.locked || "0")
+        
+        balances = spotBalances.map((b: any) => ({
+          asset: b.asset,
+          free: Number.parseFloat(b.free || "0"),
+          locked: Number.parseFloat(b.locked || "0"),
+          total: Number.parseFloat(b.free || "0") + Number.parseFloat(b.locked || "0"),
+        }))
+      } else {
+        // Futures API returns array of [{asset, balance, availableBalance}]
+        usdtBalance = Number.parseFloat(data.find((b: any) => b.asset === "USDT")?.balance || "0")
+        
+        balances = data.map((b: any) => ({
+          asset: b.asset,
+          free: Number.parseFloat(b.availableBalance || "0"),
+          locked: Number.parseFloat(b.balance || "0") - Number.parseFloat(b.availableBalance || "0"),
+          total: Number.parseFloat(b.balance || "0"),
+        }))
+      }
 
       this.log(`Account Balance: ${usdtBalance.toFixed(2)} USDT`)
 

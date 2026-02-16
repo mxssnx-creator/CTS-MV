@@ -61,15 +61,19 @@ export abstract class BaseExchangeConnector {
 
   protected getEffectiveAccountType(): string {
     // Map API/contract types to account type (exchange-specific implementation)
-    if (this.credentials.apiType === "unified") {
+    const apiType = this.credentials.apiType
+    console.log(`[v0] [Connector] getEffectiveAccountType called with apiType: ${apiType}`)
+    
+    if (apiType === "unified") {
       return "UNIFIED"
     }
-    if (this.credentials.apiType === "perpetual_futures") {
+    if (apiType === "perpetual_futures" || apiType === "futures") {
       return "CONTRACT"
     }
-    if (this.credentials.apiType === "spot") {
+    if (apiType === "spot") {
       return "SPOT"
     }
+    console.log(`[v0] [Connector] No match for apiType '${apiType}', using default UNIFIED`)
     return "UNIFIED" // Default fallback
   }
 
