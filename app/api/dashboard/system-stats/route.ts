@@ -1,16 +1,16 @@
 import { NextResponse } from "next/server"
-import { getSettings, getAllConnectionIds } from "@/lib/redis-db"
+import { getSettings, getAllConnections } from "@/lib/redis-db"
 
 export const dynamic = "force-dynamic"
 
 export async function GET() {
   try {
-    // Fetch all connection IDs
-    const connectionIds = await getAllConnectionIds()
+    // Fetch all connections from Redis
+    const allConnections = await getAllConnections()
+    const connectionIds = allConnections.map((c: any) => c.id)
     
-    // Fetch exchange connections (settings connections)
-    const settingsConnectionsKey = "connections"
-    const settingsConnections = (await getSettings(settingsConnectionsKey)) || []
+    // Settings connections = all connections stored in Redis
+    const settingsConnections = allConnections
     const enabledSettings = settingsConnections.filter((c: any) => c.is_enabled).length
     
     // Fetch active connections (dashboard connections)
