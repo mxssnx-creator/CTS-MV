@@ -1,15 +1,15 @@
 /**
  * Redis Persistence Manager
- * Saves Redis state to JSON files for persistence across restarts
- * Automatically creates snapshots and restores on startup
+ * Saves in-memory Redis state to Upstash Redis for persistence across restarts
+ * Uses a dedicated Upstash key to store the full snapshot
+ * 
+ * This avoids filesystem (fs/path) which is not available on Vercel serverless.
  */
 
-import fs from "fs"
-import path from "path"
+import { Redis } from "@upstash/redis"
 
-const SNAPSHOTS_DIR = path.join(process.cwd(), ".data")
-const MAIN_SNAPSHOT = path.join(SNAPSHOTS_DIR, "redis-snapshot.json")
-const BACKUP_SNAPSHOT = path.join(SNAPSHOTS_DIR, "redis-snapshot.backup.json")
+const SNAPSHOT_KEY = "cts:redis_snapshot"
+const BACKUP_KEY = "cts:redis_snapshot_backup"
 
 interface RedisSnapshot {
   timestamp: string
@@ -17,21 +17,25 @@ interface RedisSnapshot {
   data: Record<string, any>
 }
 
+let upstashClient: Redis | null = null
+
+function getUpstashClient(): Redis {
+  if (!upstashClient) {
+    upstashClient = new Redis({
+      url: process.env.KV_REST_API_URL!,
+      token: process.env.KV_REST_API_TOKEN!,
+    })
+  }
+  return upstashClient
+}
+
 export class RedisPersistenceManager {
   /**
-   * Save Redis state to file
+   * Save Redis state to Upstash
    */
   static async saveSnapshot(redisStore: Map<string, any>): Promise<void> {
     try {
-      // Ensure directory exists
-      if (!fs.existsSync(SNAPSHOTS_DIR)) {
-        fs.mkdirSync(SNAPSHOTS_DIR, { recursive: true })
-      }
-
-      // Create backup of existing snapshot
-      if (fs.existsSync(MAIN_SNAPSHOT)) {
-        fs.copyFileSync(MAIN_SNAPSHOT, BACKUP_SNAPSHOT)
-      }
+      const client = getUpstashClient()
 
       // Convert store to serializable format
       const data: Record<string, any> = {}
@@ -45,45 +49,53 @@ export class RedisPersistenceManager {
         data,
       }
 
-      // Write snapshot atomically
-      const tempFile = MAIN_SNAPSHOT + ".tmp"
-      fs.writeFileSync(tempFile, JSON.stringify(snapshot, null, 2))
-      fs.renameSync(tempFile, MAIN_SNAPSHOT)
+      // Backup current snapshot before overwriting
+      const existing = await client.get<string>(SNAPSHOT_KEY)
+      if (existing) {
+        await client.set(BACKUP_KEY, existing)
+      }
 
-      console.log(`[v0] [Persistence] Saved Redis snapshot: ${Object.keys(data).length} keys`)
+      // Save new snapshot
+      await client.set(SNAPSHOT_KEY, JSON.stringify(snapshot))
+
+      console.log(`[v0] [Persistence] Saved Redis snapshot to Upstash: ${Object.keys(data).length} keys`)
     } catch (error) {
       console.error("[v0] [Persistence] Failed to save snapshot:", error)
     }
   }
 
   /**
-   * Load Redis state from file
+   * Load Redis state from Upstash
    */
   static async loadSnapshot(): Promise<Map<string, any> | null> {
     try {
-      if (!fs.existsSync(MAIN_SNAPSHOT)) {
-        console.log("[v0] [Persistence] No snapshot found - starting fresh")
+      const client = getUpstashClient()
+      const raw = await client.get<string>(SNAPSHOT_KEY)
+
+      if (!raw) {
+        console.log("[v0] [Persistence] No snapshot found in Upstash - starting fresh")
         return null
       }
 
-      const content = fs.readFileSync(MAIN_SNAPSHOT, "utf-8")
-      const snapshot: RedisSnapshot = JSON.parse(content)
+      const snapshot: RedisSnapshot = typeof raw === "string" ? JSON.parse(raw) : raw as any
 
       const store = new Map<string, any>()
       for (const [key, value] of Object.entries(snapshot.data)) {
         store.set(key, this.deserializeValue(value))
       }
 
-      console.log(`[v0] [Persistence] Loaded Redis snapshot: ${store.size} keys from ${snapshot.timestamp}`)
+      console.log(`[v0] [Persistence] Loaded Redis snapshot from Upstash: ${store.size} keys from ${snapshot.timestamp}`)
       return store
     } catch (error) {
       console.error("[v0] [Persistence] Failed to load snapshot, trying backup:", error)
 
       // Try backup if main fails
       try {
-        if (fs.existsSync(BACKUP_SNAPSHOT)) {
-          const content = fs.readFileSync(BACKUP_SNAPSHOT, "utf-8")
-          const snapshot: RedisSnapshot = JSON.parse(content)
+        const client = getUpstashClient()
+        const raw = await client.get<string>(BACKUP_KEY)
+
+        if (raw) {
+          const snapshot: RedisSnapshot = typeof raw === "string" ? JSON.parse(raw) : raw as any
 
           const store = new Map<string, any>()
           for (const [key, value] of Object.entries(snapshot.data)) {
@@ -98,28 +110,6 @@ export class RedisPersistenceManager {
       }
 
       return null
-    }
-  }
-
-  /**
-   * Clean up snapshots (keep only recent ones)
-   */
-  static async cleanupOldSnapshots(): Promise<void> {
-    try {
-      if (!fs.existsSync(SNAPSHOTS_DIR)) return
-
-      const files = fs.readdirSync(SNAPSHOTS_DIR)
-      const snapshots = files.filter((f) => f.startsWith("redis-snapshot"))
-
-      // Keep only main + backup
-      const toDelete = snapshots.filter((f) => !f.includes(".backup") && f !== "redis-snapshot.json")
-      for (const file of toDelete) {
-        fs.unlinkSync(path.join(SNAPSHOTS_DIR, file))
-      }
-
-      console.log(`[v0] [Persistence] Cleanup: removed ${toDelete.length} old snapshots`)
-    } catch (error) {
-      console.error("[v0] [Persistence] Cleanup failed:", error)
     }
   }
 

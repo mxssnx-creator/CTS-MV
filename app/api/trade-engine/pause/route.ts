@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
-import { getTradeEngine, getRedisClient, initRedis } from "@/lib/trade-engine"
+import { getTradeEngine } from "@/lib/trade-engine"
+import { initRedis, getRedisClient } from "@/lib/redis-db"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
