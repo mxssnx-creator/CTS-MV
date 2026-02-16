@@ -64,6 +64,18 @@ export default function MainIndicationsSettingsPage() {
       min_positions: 3,
       continuation_ratio: 0.6,
     },
+    optimal: {
+      enabled: true,
+      range: { from: 3, to: 30, step: 1 },
+      drawdown_ratio: { from: 0.1, to: 0.5, step: 0.1 },
+      market_change_range: { from: 1, to: 10, step: 2 },
+      market_change_lastpart_base: 20,
+      market_change_lastpart_ratios: { from: 1.0, to: 2.5, step: 0.5 },
+      min_calculation_time: 3,
+      interval: 2,
+      timeout: 10,
+      trailing_optimal_ranges: true,
+    },
   })
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
@@ -1385,6 +1397,124 @@ export default function MainIndicationsSettingsPage() {
                   onChange={(e) => updateSetting("active_advanced", "continuation_ratio", "", e.target.value)}
                 />
                 <p className="text-xs text-muted-foreground">Min 60% continuation required</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Optimal Indication */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <TrendingUp className="h-5 w-5 text-blue-500" />
+                <CardTitle>Optimal Indication</CardTitle>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Enabled</span>
+                <Switch
+                  checked={settings.optimal?.enabled !== false}
+                  onCheckedChange={(checked) =>
+                    setSettings((prev) => ({
+                      ...prev,
+                      optimal: { ...prev.optimal, enabled: checked },
+                    }))
+                  }
+                />
+              </div>
+            </div>
+            <CardDescription>
+              Tracks market changes with trailing optimal ranges for dynamic entry timing
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="space-y-4">
+              <div>
+                <Label className="text-base font-semibold">Range (Consecutive Steps)</Label>
+                <div className="grid grid-cols-3 gap-4 mt-2">
+                  <div className="space-y-2">
+                    <Label className="text-sm text-muted-foreground">From</Label>
+                    <Input
+                      type="number"
+                      min="3"
+                      max="100"
+                      value={settings.optimal?.range?.from || 3}
+                      onChange={(e) => updateSetting("optimal", "range", "from", e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm text-muted-foreground">To</Label>
+                    <Input
+                      type="number"
+                      min="3"
+                      max="100"
+                      value={settings.optimal?.range?.to || 30}
+                      onChange={(e) => updateSetting("optimal", "range", "to", e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm text-muted-foreground">Step</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={settings.optimal?.range?.step || 1}
+                      onChange={(e) => updateSetting("optimal", "range", "step", e.target.value)}
+                    />
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Count: {calculateCount(settings.optimal?.range || { from: 3, to: 30, step: 1 })} variations
+                </p>
+              </div>
+
+              <div className="border-t pt-4">
+                <h4 className="text-sm font-semibold mb-3">Interval & Timeout Settings</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Check Interval (seconds)</Label>
+                    <Input
+                      type="number"
+                      step="1"
+                      min="1"
+                      max="60"
+                      value={settings.optimal?.interval || 2}
+                      onChange={(e) => updateSetting("optimal", "interval", null, e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">How often to check for optimal patterns</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Timeout (seconds)</Label>
+                    <Input
+                      type="number"
+                      step="1"
+                      min="3"
+                      max="60"
+                      value={settings.optimal?.timeout || 10}
+                      onChange={(e) => updateSetting("optimal", "timeout", null, e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">Maximum wait time (Interval × 5)</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t pt-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label className="text-base font-semibold">Trailing Optimal Ranges</Label>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Dynamically adjust ranges based on market conditions
+                    </p>
+                  </div>
+                  <Switch
+                    checked={settings.optimal?.trailing_optimal_ranges !== false}
+                    onCheckedChange={(checked) =>
+                      setSettings((prev) => ({
+                        ...prev,
+                        optimal: { ...prev.optimal, trailing_optimal_ranges: checked },
+                      }))
+                    }
+                  />
+                </div>
               </div>
             </div>
           </CardContent>
