@@ -122,6 +122,8 @@ export class BingXConnector extends BaseExchangeConnector {
       }
 
       // Extract USDT balance - BingX returns balance as a string number
+      // For SPOT: use 'balance' field (total = free + locked, already calculated)
+      // For PERPETUAL: use 'balance' field (this is the total balance in wallet)
       const usdtEntry = balanceData.find((b: any) => b.asset === "USDT")
       const usdtBalance = usdtEntry ? Number.parseFloat(usdtEntry.balance || "0") : 0
       
@@ -143,11 +145,30 @@ export class BingXConnector extends BaseExchangeConnector {
       }
 
       // Map all balances with proper field extraction
-      const balances = balanceData.map((b: any) => ({
-        asset: b.asset || "UNKNOWN",
-        free: Number.parseFloat(b.availableMargin || b.free || "0"),
-        locked: Number.parseFloat(b.frozenMargin || b.locked || "0"),
-        total: Number.parseFloat(b.balance || b.total || "0"),
+      // IMPORTANT: BingX uses different field names for SPOT vs PERPETUAL
+      const balances = balanceData.map((b: any) => {
+        // For SPOT: availableMargin/frozenMargin are futures-only fields
+        // Use free/locked for spot, availableMargin/frozenMargin for perpetual
+        const isFutures = apiType === "perpetual_futures" || apiType === "futures"
+        
+        if (isFutures) {
+          // Perpetual Futures: availableMargin = available, frozenMargin = locked
+          return {
+            asset: b.asset || "UNKNOWN",
+            free: Number.parseFloat(b.availableMargin || "0"),
+            locked: Number.parseFloat(b.frozenMargin || "0"),
+            total: Number.parseFloat(b.balance || "0"),
+          }
+        } else {
+          // SPOT: free/locked are the correct fields
+          return {
+            asset: b.asset || "UNKNOWN",
+            free: Number.parseFloat(b.free || "0"),
+            locked: Number.parseFloat(b.locked || "0"),
+            total: Number.parseFloat(b.balance || "0"),
+          }
+        }
+      })
       }))
 
       this.log(`✓ Account Balance: ${usdtBalance.toFixed(4)} USDT`)

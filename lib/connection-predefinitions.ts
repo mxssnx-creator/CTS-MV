@@ -1,23 +1,14 @@
-import crypto from "crypto"
-
 /**
- * Generate a deterministic hash ID for predefined connections
- * Ensures consistent IDs across restarts
- */
-export function generateHashId(exchange: string, variant: string): string {
-  const input = `${exchange}:${variant}`
-  const hash = crypto.createHash("sha256").update(input).digest("hex").substring(0, 16)
-  return hash
-}
- * Pre-configured exchange connection templates for quick setup
- * Includes API types, library names, and exchange-specific options
- * 
+ * Connection Predefinitions
+ * Pre-configured exchange connection templates for quick setup.
+ * Includes API types, library names, and exchange-specific options.
+ *
  * PRIMARY EXCHANGES (auto-created and enabled on initialization):
  * - Bybit (bybit-x03)
  * - BingX (bingx-x01)
  * - Pionex (pionex-x01)
  * - OrangeX (orangex-x01)
- * 
+ *
  * SECONDARY EXCHANGES (available as templates for manual setup):
  * - Binance, OKX, GateIO, KuCoin, MEXC, Bitget, Huobi
  */
@@ -407,7 +398,7 @@ export function getPredefinedAsExchangeConnections(): ExchangeConnection[] {
   console.log("[v0] Creating predefined connections with defaults:", defaultEnabled)
   
   return CONNECTION_PREDEFINITIONS.map(pred => ({
-    id: generateHashId(pred.exchange, pred.id), // Use hash ID internally
+    id: pred.id,
     name: pred.name,
     exchange: pred.exchange,
     api_type: pred.apiType,
@@ -420,7 +411,7 @@ export function getPredefinedAsExchangeConnections(): ExchangeConnection[] {
     is_testnet: false,
     is_enabled: defaultEnabled.includes(pred.exchange.toLowerCase()),
     is_active: defaultEnabled.includes(pred.exchange.toLowerCase()), // Active if enabled
-    is_predefined: true, // Mark as predefined template
+    is_predefined: true,
     is_live_trade: false,
     is_preset_trade: false,
     last_test_status: null,

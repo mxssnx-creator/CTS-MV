@@ -36,27 +36,13 @@ export class OrangeXConnector extends BaseExchangeConnector {
     this.log("Generating signature...")
 
     try {
-      const apiType = this.credentials.apiType || "spot"
-      let endpoint = "/v1/account/balance" // Default: spot
-
-      // OrangeX uses different endpoints for spot vs perpetual/futures
-      if (apiType === "spot") {
-        endpoint = "/v1/account/balance"
-        this.log("Contract Type: SPOT → Using /v1/account/balance")
-        console.log("[v0] [OrangeX] Contract Type: SPOT → Endpoint: /v1/account/balance")
-      } else if (apiType === "perpetual_futures" || apiType === "futures") {
-        endpoint = "/v1/perpetual/account/balance"
-        this.log("Contract Type: PERPETUAL FUTURES → Using /v1/perpetual/account/balance")
-        console.log("[v0] [OrangeX] Contract Type: PERPETUAL → Endpoint: /v1/perpetual/account/balance")
-      }
-
       const queryString = `timestamp=${timestamp}`
       const signature = crypto.createHmac("sha256", this.credentials.apiSecret).update(queryString).digest("hex")
 
       this.log("Fetching account balance...")
 
       const response = await this.rateLimitedFetch(
-        `${baseUrl}${endpoint}?${queryString}&signature=${signature}`,
+        `${baseUrl}/v1/account/balance?${queryString}&signature=${signature}`,
         {
           method: "GET",
           headers: {

@@ -59,39 +59,20 @@ export async function GET() {
     console.log(`[v0] [System Stats] Total connections: ${allConnections.length}`)
     console.log(`[v0] [System Stats] Active: ${activeConnections.length}, Enabled: ${enabledActiveConnections.length}, Live Trade: ${activeWithLiveTrade.length}(${mainEnginesRunningSuccessfully} running), Preset: ${activeWithPresetTrade.length}(${presetEnginesRunningSuccessfully} running)`)
     
-    // Count only USER-STORED connections (not predefined templates)
-    const predefinedConnections = allConnections.filter((c: any) => c.is_predefined === true || c.is_predefined === "true")
-    const userStoredConnections = allConnections.filter((c: any) => !c.is_predefined || c.is_predefined === false || c.is_predefined === "false")
-    const storedConnections = userStoredConnections.length
-
-    console.log(`[v0] [System Stats] Connections breakdown: ${allConnections.length} total (${predefinedConnections.length} predefined, ${storedConnections} user-stored)`)
-
-    // Exchange Connections - count ONLY user-stored connections
-    // WORKING status means test succeeded
-    const workingConnections = userStoredConnections.filter((c: any) => 
-      c.last_test_status === "success"
+    // Exchange Connections - WORKING status means test succeeded
+    // ONLY count from actual stored connections (not predefined templates)
+    const workingConnections = allConnections.filter((c: any) => 
+      c.last_test_status === "success" && !c.is_predefined
     ).length
     
     const exchangeStatus = 
       workingConnections === 0 ? "down" :
-      workingConnections < storedConnections / 2 ? "partial" :
+      workingConnections < (allConnections.length - predefinedCount) / 2 ? "partial" :
       "healthy"
 
-    // Global Trade Engine Coordinator status from Redis
-    const globalEngineState = await client.hgetall("trade_engine:global")
-    const globalStatus = globalEngineState?.status === "running" ? "running" : "stopped"
-
-    // Main Trade Engine status - depends on active connections with Live Trade enabled and running
-    const mainTradeStatus = 
-      activeWithLiveTrade.length === 0 ? "stopped" :
-      mainEnginesRunningSuccessfully > 0 ? "running" :
-      "error"
-
-    // Preset Trade Engine status - depends on active connections with Preset Trade enabled and running
-    const presetTradeStatus = 
-      activeWithPresetTrade.length === 0 ? "stopped" :
-      presetEnginesRunningSuccessfully > 0 ? "running" :
-      "error"
+    // Count only non-predefined connections as "inserted"
+    const predefinedCount = allConnections.filter((c: any) => c.is_predefined).length
+    const storedConnections = allConnections.length - predefinedCount
 
     // Database stats
     const dbStatus = "healthy"
@@ -107,7 +88,7 @@ export async function GET() {
 
     const stats = {
       tradeEngines: {
-        globalStatus,
+        globalStatus: globalStatus,
         // Main Trade Engine status - depends on active connections with Live Trade enabled and running without errors
         mainStatus: mainTradeStatus,
         // Preset Trade Engine status - depends on active connections with Preset Trade enabled and running without errors
@@ -120,9 +101,9 @@ export async function GET() {
         requestsPerSecond: requestsPerSecond,
       },
       exchangeConnections: {
-        total: storedConnections, // Only user-stored connections
-        enabled: enabledActiveConnections.filter((c: any) => !c.is_predefined).length, // User-stored only
-        // ONLY count as working if test succeeded
+        total: storedConnections, // Only stored connections, not predefined
+        enabled: enabledActiveConnections.filter((c: any) => !c.is_predefined).length, // Enabled stored connections
+        // ONLY count as working if test succeeded AND not predefined
         working: workingConnections,
         status: exchangeStatus,
       },

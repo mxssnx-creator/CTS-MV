@@ -32,28 +32,25 @@ export class OKXConnector extends BaseExchangeConnector {
   async getBalance(): Promise<ExchangeConnectorResult> {
     const timestamp = new Date().toISOString()
     const baseUrl = this.getBaseUrl()
+    const apiType = this.credentials.apiType || "perpetual_futures"
 
+    this.log(`API Type: ${apiType}`)
     this.log("Generating signature...")
 
     try {
       const method = "GET"
+      // OKX uses different endpoints or filter parameters for different account types
+      // /api/v5/account/balance returns balances for configured accounts
+      // ccy parameter can filter by currency
       const requestPath = "/api/v5/account/balance"
       const body = ""
       const prehash = timestamp + method + requestPath + body
       const signature = crypto.createHmac("sha256", this.credentials.apiSecret).update(prehash).digest("base64")
 
-      const apiType = this.credentials.apiType || "perpetual_futures"
-      const accountType = this.getEffectiveOKXAccountType(apiType)
-      
-      this.log(`Configured API Type: ${apiType}`)
-      this.log(`Using OKX accountType: ${accountType}`)
-      console.log(`[v0] [OKX] API Type: ${apiType} → accountType: ${accountType}`)
-
       this.log("Fetching account balance...")
+      console.log(`[v0] [OKX] API Type: ${apiType}`)
 
-      // OKX API v5 supports acctType parameter to filter by account type
-      // FUNDING = funding account, TRADING = trading account, MARGIN = margin account, FUTURES = perpetual/futures
-      const response = await this.rateLimitedFetch(`${baseUrl}${requestPath}?acctType=${accountType}`, {
+      const response = await this.rateLimitedFetch(`${baseUrl}${requestPath}`, {
         method: "GET",
         headers: {
           "OK-ACCESS-KEY": this.credentials.apiKey,
@@ -73,17 +70,20 @@ export class OKXConnector extends BaseExchangeConnector {
 
       this.log("Successfully retrieved account data")
 
-      // Parse balance from the response
-      // OKX returns details array with all holdings in the account
+      // OKX returns account details with balances for each currency
       const details = data.data?.[0]?.details || []
       const usdtDetail = details.find((d: any) => d.ccy === "USDT")
-      const usdtBalance = Number.parseFloat(usdtDetail?.eq || "0")
+      const usdtBalance = Number.parseFloat(usdtDetail?.eq || "0") // eq = equity (total balance)
+
+      this.log(`USDT Equity (Total): ${usdtBalance.toFixed(2)}`)
+      this.log(`USDT Available: ${Number.parseFloat(usdtDetail?.availBal || "0").toFixed(2)}`)
+      this.log(`USDT Frozen: ${Number.parseFloat(usdtDetail?.frozenBal || "0").toFixed(2)}`)
 
       const balances = details.map((d: any) => ({
         asset: d.ccy,
-        free: Number.parseFloat(d.availBal || "0"),
-        locked: Number.parseFloat(d.frozenBal || "0"),
-        total: Number.parseFloat(d.eq || "0"),
+        free: Number.parseFloat(d.availBal || "0"), // Available balance
+        locked: Number.parseFloat(d.frozenBal || "0"), // Frozen/locked balance
+        total: Number.parseFloat(d.eq || "0"), // Total equity
       }))
 
       this.log(`Account Balance: ${usdtBalance.toFixed(2)} USDT`)
@@ -99,29 +99,5 @@ export class OKXConnector extends BaseExchangeConnector {
       this.logError(`Connection error: ${error instanceof Error ? error.message : "Unknown"}`)
       throw error
     }
-  }
-
-  /**
-   * Map contract type to OKX accountType parameter
-   * OKX account types: FUNDING (funding account), TRADING (spot/margin), MARGIN (margin trading), FUTURES (perpetual/swap)
-   */
-  private getEffectiveOKXAccountType(apiType: string): string {
-    console.log(`[v0] [OKX] Mapping contract type '${apiType}' to OKX accountType`)
-    
-    if (apiType === "spot") {
-      console.log(`[v0] [OKX] Contract Type 'spot' → OKX accountType 'TRADING'`)
-      return "TRADING"
-    }
-    if (apiType === "perpetual_futures" || apiType === "futures") {
-      console.log(`[v0] [OKX] Contract Type '${apiType}' → OKX accountType 'FUTURES'`)
-      return "FUTURES"
-    }
-    if (apiType === "margin") {
-      console.log(`[v0] [OKX] Contract Type 'margin' → OKX accountType 'MARGIN'`)
-      return "MARGIN"
-    }
-    // Default to TRADING/SPOT for backward compatibility
-    console.log(`[v0] [OKX] No match for apiType '${apiType}', defaulting to TRADING`)
-    return "TRADING"
   }
 }

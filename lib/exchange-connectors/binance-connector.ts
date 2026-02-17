@@ -99,9 +99,13 @@ export class BinanceConnector extends BaseExchangeConnector {
 
       if (apiType === "spot") {
         // Spot API returns {balances: [{asset, free, locked}]}
+        // 'free' = available to trade, 'locked' = in open orders
         const spotBalances = data.balances || []
         const usdtData = spotBalances.find((b: any) => b.asset === "USDT")
+        // For SPOT: total balance = free + locked
         usdtBalance = Number.parseFloat(usdtData?.free || "0") + Number.parseFloat(usdtData?.locked || "0")
+        
+        this.log(`SPOT USDT Balance - Free: ${Number.parseFloat(usdtData?.free || "0").toFixed(2)}, Locked: ${Number.parseFloat(usdtData?.locked || "0").toFixed(2)}, Total: ${usdtBalance.toFixed(2)}`)
         
         balances = spotBalances.map((b: any) => ({
           asset: b.asset,
@@ -111,7 +115,11 @@ export class BinanceConnector extends BaseExchangeConnector {
         }))
       } else {
         // Futures API returns array of [{asset, balance, availableBalance}]
-        usdtBalance = Number.parseFloat(data.find((b: any) => b.asset === "USDT")?.balance || "0")
+        // 'balance' = total in account, 'availableBalance' = available to trade
+        const usdtFutures = data.find((b: any) => b.asset === "USDT")
+        usdtBalance = Number.parseFloat(usdtFutures?.balance || "0")
+        
+        this.log(`FUTURES USDT Balance - Available: ${Number.parseFloat(usdtFutures?.availableBalance || "0").toFixed(2)}, Total: ${usdtBalance.toFixed(2)}`)
         
         balances = data.map((b: any) => ({
           asset: b.asset,
