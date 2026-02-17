@@ -126,13 +126,14 @@ export function ConnectionCard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           exchange: connection.exchange,
-          api_type: connection.api_type || "futures",
-          connection_method: connection.connection_method || "rest",
-          connection_library: connection.connection_library || "native",
-          api_key: connection.api_key || "",
-          api_secret: connection.api_secret || "",
-          api_passphrase: connection.api_passphrase || "",
-          is_testnet: connection.is_testnet || false,
+          api_type: editFormData.api_type || "perpetual_futures",
+          api_subtype: editFormData.api_subtype,
+          connection_method: editFormData.connection_method || "rest",
+          connection_library: editFormData.connection_library || "native",
+          api_key: editFormData.api_key || "",
+          api_secret: editFormData.api_secret || "",
+          api_passphrase: editFormData.api_passphrase || "",
+          is_testnet: editFormData.is_testnet || false,
         }),
       })
 
@@ -177,10 +178,10 @@ export function ConnectionCard({
         toast.error("Connection Test Failed", {
           description: data.error || "Failed to test connection",
         })
-        setTestLogs(data.log || [])
+        setTestLogs(Array.isArray(data.log) ? data.log : (data.log ? [data.log] : []))
         setShowTestLogInstant(true)
         setLogsExpanded(true)
-        onTestConnection?.(data.log || [])
+        onTestConnection?.(Array.isArray(data.log) ? data.log : (data.log ? [data.log] : []))
         return
       }
 
@@ -189,10 +190,10 @@ export function ConnectionCard({
         toast.error("Connection Test Failed", {
           description: data.error || data.message || "Failed to test connection",
         })
-        setTestLogs(data.log || [])
+        setTestLogs(Array.isArray(data.log) ? data.log : (data.log ? [data.log] : []))
         setShowTestLogInstant(true)
         setLogsExpanded(true)
-        onTestConnection?.(data.log || [])
+        onTestConnection?.(Array.isArray(data.log) ? data.log : (data.log ? [data.log] : []))
         return
       }
 
@@ -200,10 +201,10 @@ export function ConnectionCard({
       toast.success("Connection Test Successful", {
         description: `Balance: ${data.balance?.toFixed(2) || "N/A"} USDT | API Type: ${data.apiType}${data.apiSubtype ? ` (${data.apiSubtype})` : ""}`,
       })
-      setTestLogs(data.log || [])
+      setTestLogs(Array.isArray(data.log) ? data.log : (data.log ? [data.log] : []))
       setShowTestLogInstant(true)
       setLogsExpanded(true)
-      onTestConnection?.(data.log || [])
+      onTestConnection?.(Array.isArray(data.log) ? data.log : (data.log ? [data.log] : []))
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : "Unknown error"
       setWorkingStatus("error")

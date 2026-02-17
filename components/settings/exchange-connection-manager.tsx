@@ -124,7 +124,7 @@ function EditConnectionDialog({ connection, onSave, exchangeName }: { connection
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           exchange: connection.exchange,
-          api_type: connection.api_type,
+          api_type: formData.api_type,
           api_subtype: formData.api_subtype,
           connection_method: formData.connection_method,
           connection_library: formData.connection_library,
@@ -138,7 +138,7 @@ function EditConnectionDialog({ connection, onSave, exchangeName }: { connection
       let logs = [
         `[${new Date().toLocaleTimeString()}] Starting connection test...\n`,
         `Exchange: ${connection.exchange.toUpperCase()} (${exchangeName})\n`,
-        `API Type: ${connection.api_type} | Subtype: ${formData.api_subtype}\n`,
+        `API Type: ${formData.api_type} | Subtype: ${formData.api_subtype}\n`,
         `Connection: ${formData.connection_method.toUpperCase()} | Library: ${formData.connection_library}\n`,
         `Testnet: ${formData.is_testnet ? "Yes" : "No"}\n`,
         `Margin: ${formData.margin_type} | Position: ${formData.position_mode}\n`,

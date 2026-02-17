@@ -13,6 +13,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const testLog: string[] = []
   const startTime = Date.now()
   const { id } = await params
+  const body = await request.json()
 
   try {
     const now = Date.now()
@@ -39,6 +40,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     testAttemptMap.set(id, attempt)
 
     testLog.push(`[${new Date().toISOString()}] Starting connection test for ID: ${id}`)
+    testLog.push(`[${new Date().toISOString()}] Using API Type: ${body.api_type || "perpetual_futures"}`)
 
     await initRedis()
 
@@ -60,12 +62,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     testLog.push(`[${new Date().toISOString()}] Connection found: ${connection.name} (${connection.exchange})`)
 
     // Validate credentials - check for placeholder/test values
-    const isPlaceholder = !connection.api_key || 
-      connection.api_key === "" || 
-      connection.api_key.includes("PLACEHOLDER") ||
-      connection.api_key.includes("00998877") ||
-      connection.api_key.startsWith("test") ||
-      connection.api_key.length < 20
+    const apiKey = body.api_key || connection.api_key
+    const isPlaceholder = !apiKey || 
+      apiKey === "" || 
+      apiKey.includes("PLACEHOLDER") ||
+      apiKey.includes("00998877") ||
+      apiKey.startsWith("test") ||
+      apiKey.length < 20
 
     if (isPlaceholder) {
       testLog.push(`[${new Date().toISOString()}] WARNING: API key is placeholder or test credentials`)
@@ -74,7 +77,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       await updateConnection(id, {
         ...connection,
         last_test_status: "warning",
-        last_test_log: testLog,
+        last_test_log: JSON.stringify(testLog),
         last_test_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
@@ -108,11 +111,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const testResult = await rateLimiter.execute(async () => {
       await new Promise((resolve) => setTimeout(resolve, minInterval))
 
+      // Use request body values (which may be edited, unsaved values) OR fall back to stored connection
       const connector = await createExchangeConnector(connection.exchange, {
-        apiKey: connection.api_key,
-        apiSecret: connection.api_secret,
-        apiPassphrase: connection.api_passphrase || "",
-        isTestnet: connection.is_testnet || false,
+        apiKey: body.api_key || connection.api_key,
+        apiSecret: body.api_secret || connection.api_secret,
+        apiPassphrase: body.api_passphrase || connection.api_passphrase || "",
+        isTestnet: body.is_testnet !== undefined ? body.is_testnet : (connection.is_testnet || false),
+        apiType: body.api_type || connection.api_type,
+        apiSubtype: body.api_subtype || connection.api_subtype,
+        connectionMethod: body.connection_method || connection.connection_method,
+        connectionLibrary: body.connection_library || connection.connection_library,
       })
 
       const testPromise = connector.testConnection()
@@ -140,7 +148,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       ...connection,
       last_test_status: "success",
       last_test_balance: result.balance,
-      last_test_log: testLog,
+      last_test_log: JSON.stringify(testLog),
       last_test_at: new Date().toISOString(),
       api_capabilities: JSON.stringify(result.capabilities || []),
       updated_at: new Date().toISOString(),
@@ -158,11 +166,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       btcPrice: result.btcPrice || 0,
       balances: result.balances || [],
       capabilities: result.capabilities || [],
-      apiType: connection.api_type,
-      apiSubtype: connection.api_subtype,
+      apiType: body.api_type || connection.api_type,
+      apiSubtype: body.api_subtype || connection.api_subtype,
       exchange: connection.exchange,
-      connectionMethod: connection.connection_method,
-      connectionLibrary: connection.connection_library,
+      connectionMethod: body.connection_method || connection.connection_method,
+      connectionLibrary: body.connection_library || connection.connection_library,
       log: testLog,
       duration,
     })

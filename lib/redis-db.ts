@@ -520,6 +520,20 @@ export async function getAllConnections(): Promise<any[]> {
         }
         
         // Convert string boolean values to actual booleans
+        // Parse test logs from JSON string if needed
+        let testLogs: string[] = []
+        if (data.last_test_log) {
+          try {
+            if (typeof data.last_test_log === 'string') {
+              testLogs = JSON.parse(data.last_test_log)
+            } else if (Array.isArray(data.last_test_log)) {
+              testLogs = data.last_test_log
+            }
+          } catch (e) {
+            testLogs = [data.last_test_log]
+          }
+        }
+
         connections.push({
           id: data.id,
           name: data.name,
@@ -540,6 +554,11 @@ export async function getAllConnections(): Promise<any[]> {
           is_live_trade: toBool(data.is_live_trade),
           is_preset_trade: toBool(data.is_preset_trade),
           api_passphrase: data.api_passphrase || "",
+          last_test_status: data.last_test_status || "",
+          last_test_balance: data.last_test_balance ? parseFloat(data.last_test_balance) : 0,
+          last_test_log: testLogs,
+          last_test_at: data.last_test_at || null,
+          api_capabilities: data.api_capabilities || "",
           created_at: data.created_at,
           updated_at: data.updated_at,
         })
