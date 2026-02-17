@@ -43,25 +43,28 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     testLog.push(`[${new Date().toISOString()}] Starting connection test for ID: ${id}`)
     testLog.push(`[${new Date().toISOString()}] Using API Type: ${body.api_type || "perpetual_futures"}`)
 
+    // CRITICAL: Initialize Redis first and verify it's ready
     await initRedis()
+    
+    // Small delay to ensure Redis client is fully initialized
+    await new Promise(resolve => setTimeout(resolve, 100))
 
     const connection = await getConnection(id)
 
     if (!connection) {
-      // Helpful debug: try to show available IDs
-      try {
-        const allConns = await getAllConnections()
-        const availableIds = allConns.map((c: any) => c.id)
-        console.log("[v0] [Test] Connection lookup failed. Available IDs:", availableIds)
-      } catch (err) {
-        console.log("[v0] [Test] Failed to fetch available connections:", err)
-      }
+      // Debug: try to get all connections to verify they exist
+      const allConns = await getAllConnections()
+      const availableIds = allConns.map((c: any) => c.id)
+      console.log("[v0] [Test] Connection not found. Available IDs:", availableIds)
+      console.log("[v0] [Test] Looking for ID:", id)
+      console.log("[v0] [Test] ID exists in available IDs:", availableIds.includes(id))
       
       testLog.push(`[${new Date().toISOString()}] ERROR: Connection not found (ID: ${id})`)
+      testLog.push(`[${new Date().toISOString()}] Available connection IDs: ${availableIds.join(", ")}`)
       throw new ApiError(`Connection not found with ID: ${id}`, {
         statusCode: 404,
         code: "CONNECTION_NOT_FOUND",
-        details: { connectionId: id },
+        details: { connectionId: id, availableIds },
         context: { operation: "test_connection" },
       })
     }
