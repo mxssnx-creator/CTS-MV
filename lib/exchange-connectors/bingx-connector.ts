@@ -170,9 +170,9 @@ export class BingXConnector extends BaseExchangeConnector {
         }
       })
 
-      this.log(`✓ Account Balance: ${usdtBalance.toFixed(4)} USDT`)
+      this.log(`✓ Account balance: ${usdtBalance.toFixed(4)} USDT`)
       this.log(`✓ Total assets: ${balances.length}`)
-      this.log(`✓ BTC Price: $${btcPrice.toFixed(2)}`)
+      this.log(`✓ BTC price: $${btcPrice.toFixed(2)}`)
 
       return {
         success: true,
