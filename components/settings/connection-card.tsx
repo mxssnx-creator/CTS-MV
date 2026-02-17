@@ -57,6 +57,7 @@ export function ConnectionCard({
   isNewlyAdded = false,
 }: ConnectionCardProps) {
   const [testingConnection, setTestingConnection] = useState(false)
+  const [workingStatus, setWorkingStatus] = useState<"idle" | "testing" | "success" | "error">("idle")
   const [testLogs, setTestLogs] = useState<string[]>([])
   const [showTestLogInstant, setShowTestLogInstant] = useState(false)
   const [showSecrets, setShowSecrets] = useState(false)
