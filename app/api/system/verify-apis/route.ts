@@ -48,150 +48,36 @@ export async function GET() {
       const connections = await getAllConnections()
       results.system.redisStorage = Array.isArray(connections)
       results.connections.count = connections.length
+
+      const enabledConnections = connections.filter((c: any) =>
+        c.is_enabled === "1" || c.is_enabled === true
+      )
+
+      results.apis.test.push({
+        type: "redis-storage",
+        status: "ok",
+        totalConnections: connections.length,
+        enabledConnections: enabledConnections.length,
+      })
     } catch (error) {
       results.connections.errors.push(`Redis Storage error: ${error instanceof Error ? error.message : String(error)}`)
     }
 
-  try {
-    // Test 1: ConnectionManager
-    try {
-      const manager = getConnectionManager()
-      const connections = manager.getConnections()
-      results.system.connectionManager = true
-      console.log(`[v0] ConnectionManager: OK (${connections.length} connections)`)
-    } catch (error) {
-      results.system.connectionManager = false
-      results.connections.errors.push(`ConnectionManager failed: ${error}`)
-    }
-
-    // Test 2: Trade Engine Coordinator
-    try {
-      const coordinator = getGlobalTradeEngineCoordinator()
-      if (coordinator) {
-        results.system.tradeEngineCoordinator = true
-        console.log("[v0] TradeEngineCoordinator: OK")
-      } else {
-        results.system.tradeEngineCoordinator = false
-        results.connections.errors.push("TradeEngineCoordinator is null")
-      }
-    } catch (error) {
-      results.system.tradeEngineCoordinator = false
-      results.connections.errors.push(`TradeEngineCoordinator failed: ${error}`)
-    }
-
-    // Test 3: File Storage
-    try {
-      const connections = loadConnections()
-      if (Array.isArray(connections)) {
-        results.system.fileStorage = true
-        results.connections.count = connections.length
-        console.log(`[v0] FileStorage: OK (${connections.length} connections)`)
-
-        // Get enabled connections
-        const enabledConnections = connections.filter((c) => c.is_enabled)
-        results.apis.test.push({
-          type: "file-storage",
-          status: "ok",
-          totalConnections: connections.length,
-          enabledConnections: enabledConnections.length,
-        })
-      } else {
-        results.system.fileStorage = false
-        results.connections.errors.push("Connections is not an array")
-      }
-    } catch (error) {
-      results.system.fileStorage = false
-      results.connections.errors.push(`FileStorage failed: ${error}`)
-    }
-
-    // Test 4: Connection Manager State
-    try {
-      const manager = getConnectionManager()
-      manager.refresh()
-      const managerConnections = manager.getConnections()
-
-      const testResults = {
-        type: "connection-manager-state",
-        status: "ok",
-        connections: managerConnections.map((c) => ({
-          id: c.id,
-          name: c.name,
-          exchange: c.exchange,
-          status: c.status,
-          enabled: c.enabled,
-          testPassed: c.testPassed,
-          credentialsConfigured: c.credentialsConfigured,
-        })),
-      }
-
-      results.apis.test.push(testResults)
-      console.log("[v0] ConnectionManager State: OK")
-    } catch (error) {
-      results.connections.errors.push(`ConnectionManager state test failed: ${error}`)
-    }
-
-    // Test 5: API Endpoints Structure
-    try {
-      const testData = {
-        type: "api-endpoints",
-        status: "ok",
-        endpoints: [
-          {
-            method: "GET",
-            path: "/api/settings/connections",
-            purpose: "Get all connections",
-            status: "available",
-          },
-          {
-            method: "POST",
-            path: "/api/settings/connections",
-            purpose: "Create new connection",
-            status: "available",
-          },
-          {
-            method: "GET",
-            path: "/api/settings/connections/:id",
-            purpose: "Get connection details",
-            status: "available",
-          },
-          {
-            method: "PATCH",
-            path: "/api/settings/connections/:id",
-            purpose: "Update connection settings",
-            status: "available",
-          },
-          {
-            method: "DELETE",
-            path: "/api/settings/connections/:id",
-            purpose: "Delete connection",
-            status: "available",
-          },
-          {
-            method: "POST",
-            path: "/api/settings/connections/:id/test",
-            purpose: "Test connection",
-            status: "available",
-          },
-          {
-            method: "POST",
-            path: "/api/trade-engine/start",
-            purpose: "Start trade engine",
-            status: "available",
-          },
-          {
-            method: "GET",
-            path: "/api/trade-engine/status-all",
-            purpose: "Get all engine statuses",
-            status: "available",
-          },
-        ],
-      }
-
-      results.apis.test.push(testData)
-      console.log("[v0] API Endpoints: OK")
-    } catch (error) {
-      results.connections.errors.push(`API endpoints test failed: ${error}`)
-    }
+    // Test 4: API Endpoints Structure
+    results.apis.test.push({
+      type: "api-endpoints",
+      status: "ok",
+      endpoints: [
+        { method: "GET", path: "/api/settings/connections", purpose: "Get all connections" },
+        { method: "POST", path: "/api/settings/connections", purpose: "Create new connection" },
+        { method: "POST", path: "/api/settings/connections/:id/toggle", purpose: "Toggle connection enabled" },
+        { method: "POST", path: "/api/settings/connections/:id/live-trade", purpose: "Toggle Main Engine" },
+        { method: "POST", path: "/api/settings/connections/:id/preset-toggle", purpose: "Toggle Preset Engine" },
+        { method: "POST", path: "/api/settings/connections/:id/test", purpose: "Test connection" },
+        { method: "POST", path: "/api/trade-engine/start", purpose: "Start Global Coordinator" },
+        { method: "GET", path: "/api/trade-engine/status", purpose: "Get engine status" },
+      ],
+    })
 
     await SystemLogger.logAPI("API Verification completed", "info", "GET /api/system/verify-apis", results)
 
@@ -210,7 +96,7 @@ export async function GET() {
         details: error instanceof Error ? error.message : String(error),
         results,
       },
-      { status: 500 }
+      { status: 500 },
     )
   }
 }
