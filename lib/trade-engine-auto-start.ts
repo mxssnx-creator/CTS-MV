@@ -5,6 +5,7 @@
 
 import { getGlobalTradeEngineCoordinator } from "./trade-engine"
 import { getAllConnections, getRedisClient, initRedis } from "./redis-db"
+import { loadSettingsAsync } from "./settings-storage"
 
 let autoStartInitialized = false
 let autoStartTimer: NodeJS.Timeout | null = null

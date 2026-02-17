@@ -9,7 +9,15 @@ export async function GET() {
 
     const client = getRedisClient()
     const coordinator = getGlobalTradeEngineCoordinator()
-    const connections = await getAllConnections()
+    const allConnections = await getAllConnections()
+
+    // ONLY return status for connections that are ACTIVE on dashboard
+    const connections = allConnections.filter((c: any) => {
+      const isActive = c.is_enabled_dashboard === true || c.is_enabled_dashboard === "true" || c.is_enabled_dashboard === "1"
+      return isActive
+    })
+
+    console.log(`[v0] [Status] Filtering from ${allConnections.length} total to ${connections.length} active connections on dashboard`)
 
     let running = 0
     let totalTrades = 0
@@ -88,7 +96,7 @@ export async function GET() {
       timestamp: new Date().toISOString(),
       running: isGloballyRunning,
       paused: isPaused,
-      connectedExchanges: running,
+      connectedExchanges: running, // Only count ACTIVE connections that are running
       activePositions: totalPositions,
       totalProfit: 0, // TODO: Calculate from positions
       uptime: 0, // TODO: Track uptime

@@ -40,8 +40,8 @@ export function AddActiveConnectionDialog({
     setLoading(true)
     try {
       console.log("[v0] [AddDialog] Loading enabled connections from Settings...")
-      // Load ENABLED connections from settings (is_enabled=true for trade engine)
-      const response = await fetch("/api/settings/connections?enabled=true", {
+      // Load ALL connections first to check which have real credentials
+      const response = await fetch("/api/settings/connections", {
         cache: "no-store",
         headers: { "Cache-Control": "no-cache" },
       })
@@ -50,6 +50,37 @@ export function AddActiveConnectionDialog({
         toast.error("Failed to load connections")
         return
       }
+
+      const data = await response.json()
+      const allConnections = data.connections || []
+      
+      // Filter to ONLY show connections that are BOTH:
+      // 1. Enabled (is_enabled = true for trade engine capability)
+      // 2. Have REAL credentials (not placeholders, actually configured in Settings)
+      const configuredConnections = allConnections.filter((c: any) => {
+        const isEnabled = c.is_enabled === "1" || c.is_enabled === true
+        const hasRealCredentials = c.api_key && c.api_key.length > 0 && !c.api_key.includes("PLACEHOLDER")
+        const notAlreadyActive = !c.is_enabled_dashboard
+        
+        console.log(`[v0] [AddDialog] Checking ${c.name}: enabled=${isEnabled}, hasCreds=${hasRealCredentials}, notActive=${notAlreadyActive}`)
+        return isEnabled && hasRealCredentials && notAlreadyActive
+      })
+      
+      console.log("[v0] [AddDialog] Filtered to", configuredConnections.length, "configured connections with real credentials")
+      setEnabledConnections(configuredConnections)
+
+      // Set first enabled connection as default
+      if (configuredConnections.length > 0 && !selectedConnection) {
+        setSelectedConnection(configuredConnections[0].id || "")
+        console.log("[v0] [AddDialog] Auto-selected first connection:", configuredConnections[0].name)
+      }
+    } catch (error) {
+      console.error("[v0] Error loading connections:", error)
+      toast.error("Failed to load connections")
+    } finally {
+      setLoading(false)
+    }
+  }
 
       const data = await response.json()
       const connections = data.connections || []
