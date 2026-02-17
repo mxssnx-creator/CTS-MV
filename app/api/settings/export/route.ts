@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { initRedis, getRedisClient, getAllConnections } from "@/lib/redis-db"
 
+
 export async function GET() {
   try {
     console.log("[v0] Exporting settings and connections from Redis...")
