@@ -1,33 +1,106 @@
 import { NextRequest, NextResponse } from "next/server"
-import { loadSettings, saveSettings } from "@/lib/file-storage"
+import { initRedis, getRedisClient, getConnection, updateConnection, createConnection } from "@/lib/redis-db"
 
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData()
     const file = formData.get("file") as File
-    
+
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 })
     }
-    
+
     const content = await file.text()
     const lines = content.split("\n")
-    
-    // Load existing settings
-    const existingSettings = loadSettings()
-    const updatedSettings = { ...existingSettings }
-    
+
+    await initRedis()
+    const client = getRedisClient()
+
     let imported = 0
     let skipped = 0
     let errors = 0
-    
+    const errors_list: string[] = []
+
     for (const line of lines) {
       const trimmed = line.trim()
-      
+
       // Skip empty lines and comments
       if (!trimmed || trimmed.startsWith("#")) {
         skipped++
         continue
+      }
+
+      try {
+        const [key, ...valueParts] = trimmed.split("=")
+        const actualKey = key.trim()
+        const actualValue = valueParts.join("=").trim()
+
+        if (!actualKey || !actualValue) {
+          skipped++
+          continue
+        }
+
+        // Check if this is a connection field (format: connection-id:field-name)
+        if (actualKey.includes(":")) {
+          const [connId, fieldName] = actualKey.split(":")
+          const connection = await getConnection(connId)
+
+          if (connection) {
+            // Parse value (could be JSON string)
+            let parsedValue: any = actualValue
+            try {
+              if (actualValue.startsWith("{") || actualValue.startsWith("[")) {
+                parsedValue = JSON.parse(actualValue)
+              }
+            } catch {
+              parsedValue = actualValue
+            }
+
+            const updated = {
+              ...connection,
+              [fieldName]: parsedValue,
+            }
+            await updateConnection(connId, updated)
+            imported++
+          }
+        } else {
+          // Regular setting - store in Redis
+          let parsedValue: any = actualValue
+          try {
+            if (actualValue.startsWith("{") || actualValue.startsWith("[")) {
+              parsedValue = JSON.parse(actualValue)
+            }
+          } catch {
+            parsedValue = actualValue
+          }
+
+          await client.set(`settings:${actualKey}`, parsedValue)
+          imported++
+        }
+      } catch (error) {
+        errors++
+        errors_list.push(`Line: ${trimmed} - ${error instanceof Error ? error.message : "Unknown error"}`)
+      }
+    }
+
+    console.log(`[v0] Import complete: ${imported} imported, ${skipped} skipped, ${errors} errors`)
+
+    return NextResponse.json({
+      success: true,
+      imported,
+      skipped,
+      errors,
+      errors: errors_list,
+      message: `Import complete: ${imported} items imported, ${skipped} skipped, ${errors} errors`,
+    })
+  } catch (error) {
+    console.error("[v0] Failed to import settings:", error)
+    return NextResponse.json(
+      { error: "Failed to import settings", details: error instanceof Error ? error.message : "Unknown error" },
+      { status: 500 }
+    )
+  }
+}
       }
       
       // Parse key = value format

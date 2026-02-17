@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server"
-import { loadCommonIndicationSettings, saveCommonIndicationSettings } from "@/lib/file-storage"
+import { initRedis, getRedisClient } from "@/lib/redis-db"
 
 export async function GET() {
   try {
-    const settings = loadCommonIndicationSettings()
-    return NextResponse.json({ success: true, settings })
+    await initRedis()
+    const client = getRedisClient()
+    const settings = await client.get("indications:common")
+    return NextResponse.json({ success: true, settings: settings || {} })
   } catch (error) {
     console.error("[v0] Error loading common indication settings:", error)
     return NextResponse.json({ success: false, error: "Failed to load common indication settings" }, { status: 500 })
@@ -20,7 +22,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: "Settings are required" }, { status: 400 })
     }
 
-    saveCommonIndicationSettings(settings)
+    await initRedis()
+    const client = getRedisClient()
+    await client.set("indications:common", settings)
 
     return NextResponse.json({ success: true, message: "Common indication settings saved successfully" })
   } catch (error) {
