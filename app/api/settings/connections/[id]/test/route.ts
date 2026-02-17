@@ -158,6 +158,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       btcPrice: result.btcPrice || 0,
       balances: result.balances || [],
       capabilities: result.capabilities || [],
+      apiType: connection.api_type,
+      apiSubtype: connection.api_subtype,
+      exchange: connection.exchange,
+      connectionMethod: connection.connection_method,
+      connectionLibrary: connection.connection_library,
       log: testLog,
       duration,
     })

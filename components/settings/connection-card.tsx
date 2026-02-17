@@ -198,7 +198,7 @@ export function ConnectionCard({
 
       setWorkingStatus("success")
       toast.success("Connection Test Successful", {
-        description: `Balance: ${data.balance?.toFixed(2) || "N/A"} USDT`,
+        description: `Balance: ${data.balance?.toFixed(2) || "N/A"} USDT | API Type: ${data.apiType}${data.apiSubtype ? ` (${data.apiSubtype})` : ""}`,
       })
       setTestLogs(data.log || [])
       setShowTestLogInstant(true)
