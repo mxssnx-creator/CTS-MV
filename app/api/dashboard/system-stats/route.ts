@@ -56,27 +56,23 @@ export async function GET() {
       }
     }
     
+    console.log(`[v0] [System Stats] Total connections: ${allConnections.length}`)
     console.log(`[v0] [System Stats] Active: ${activeConnections.length}, Enabled: ${enabledActiveConnections.length}, Live Trade: ${activeWithLiveTrade.length}(${mainEnginesRunningSuccessfully} running), Preset: ${activeWithPresetTrade.length}(${presetEnginesRunningSuccessfully} running)`)
     
-    // Global trade engine status from Redis
-    const globalEngineState = await getSettings("trade_engine:global")
-    const globalStatus = globalEngineState?.status || "stopped"
-    
-    // Main Trade Engine: running if global is running AND at least one active connection with Live Trade is running successfully
-    const mainTradeStatus = globalStatus === "running" && mainEnginesRunningSuccessfully > 0 ? "running" : "stopped"
-    
-    // Preset Trade Engine: running if global is running AND at least one active connection with Preset Trade is running successfully
-    const presetTradeStatus = globalStatus === "running" && presetEnginesRunningSuccessfully > 0 ? "running" : "stopped"
-
     // Exchange Connections - WORKING status means test succeeded
-    const workingConnections = settingsConnections.filter((c: any) => 
-      c.last_test_status === "success"
+    // ONLY count from actual stored connections (not predefined templates)
+    const workingConnections = allConnections.filter((c: any) => 
+      c.last_test_status === "success" && !c.is_predefined
     ).length
     
     const exchangeStatus = 
       workingConnections === 0 ? "down" :
-      workingConnections < settingsConnections.length / 2 ? "partial" :
+      workingConnections < (allConnections.length - predefinedCount) / 2 ? "partial" :
       "healthy"
+
+    // Count only non-predefined connections as "inserted"
+    const predefinedCount = allConnections.filter((c: any) => c.is_predefined).length
+    const storedConnections = allConnections.length - predefinedCount
 
     // Database stats
     const dbStatus = "healthy"
@@ -105,9 +101,9 @@ export async function GET() {
         requestsPerSecond: requestsPerSecond,
       },
       exchangeConnections: {
-        total: settingsConnections.length,
-        enabled: enabledSettings,
-        // ONLY count as working if test succeeded
+        total: storedConnections, // Only stored connections, not predefined
+        enabled: enabledActiveConnections.filter((c: any) => !c.is_predefined).length, // Enabled stored connections
+        // ONLY count as working if test succeeded AND not predefined
         working: workingConnections,
         status: exchangeStatus,
       },
