@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server"
 import { getGlobalTradeEngineCoordinator } from "@/lib/trade-engine"
-import { loadConnections, loadSettings } from "@/lib/file-storage"
+import { initRedis, getAllConnections } from "@/lib/redis-db"
 import { SystemLogger } from "@/lib/system-logger"
 
 export async function GET() {
   try {
     const coordinator = getGlobalTradeEngineCoordinator()
     
-    // Null check on coordinator
     if (!coordinator) {
       console.warn("[v0] [START-ALL] Coordinator is null - engines may not be initialized yet")
       return NextResponse.json({
@@ -17,9 +16,9 @@ export async function GET() {
       }, { status: 503 })
     }
 
-    const connections = loadConnections()
+    await initRedis()
+    const connections = await getAllConnections()
     
-    // Ensure connections is an array
     if (!Array.isArray(connections)) {
       console.error("[v0] [START-ALL] Connections is not an array:", typeof connections)
       return NextResponse.json({
@@ -29,15 +28,18 @@ export async function GET() {
       }, { status: 500 })
     }
 
-    const enabledConnections = connections.filter((c) => c.is_enabled === true && c.is_active === true)
-    const settings = loadSettings()
+    // Filter for enabled connections with live trade active
+    const activeConnections = connections.filter((c) => 
+      (c.is_enabled === "1" || c.is_enabled === true) && 
+      (c.is_live_trade === "1" || c.is_live_trade === true)
+    )
 
-    console.log(`[v0] [START-ALL] Found ${enabledConnections.length} enabled connections to start`)
+    console.log(`[v0] [START-ALL] Found ${activeConnections.length} active connections with live trade enabled`)
 
-    if (enabledConnections.length === 0) {
+    if (activeConnections.length === 0) {
       return NextResponse.json({
         success: true,
-        message: "No enabled connections to start",
+        message: "No active connections with live trade enabled",
         totalConnections: connections.length,
         enabledConnections: 0,
         results: [],

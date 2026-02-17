@@ -6,7 +6,6 @@
 import { initRedis, createConnection, getAllConnections, saveMarketData, setSettings, getSettings, updateConnection } from "@/lib/redis-db"
 import { runMigrations } from "@/lib/redis-migrations"
 import { getPredefinedAsExchangeConnections } from "@/lib/connection-predefinitions"
-import { loadSettingsAsync, saveSettings as saveSettingsToFile, getDefaultSettings } from "@/lib/settings-storage"
 import { initializeTradeEngineAutoStart } from "@/lib/trade-engine-auto-start"
 import { getGlobalTradeEngineCoordinator } from "@/lib/trade-engine"
 

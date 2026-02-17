@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { getConnectionManager } from "@/lib/connection-manager"
 import { getGlobalTradeEngineCoordinator } from "@/lib/trade-engine"
-import { loadConnections } from "@/lib/file-storage"
+import { initRedis, getAllConnections } from "@/lib/redis-db"
 import { SystemLogger } from "@/lib/system-logger"
 
 /**
@@ -14,7 +14,7 @@ export async function GET() {
     system: {
       connectionManager: false,
       tradeEngineCoordinator: false,
-      fileStorage: false,
+      redisStorage: false,
     },
     connections: {
       count: 0,
@@ -24,6 +24,33 @@ export async function GET() {
       test: [] as any[],
     },
   }
+
+  try {
+    // Test 1: ConnectionManager
+    try {
+      const connManager = getConnectionManager()
+      results.system.connectionManager = !!connManager
+    } catch (error) {
+      results.connections.errors.push(`ConnectionManager error: ${error instanceof Error ? error.message : String(error)}`)
+    }
+
+    // Test 2: Trade Engine Coordinator
+    try {
+      const coordinator = getGlobalTradeEngineCoordinator()
+      results.system.tradeEngineCoordinator = !!coordinator
+    } catch (error) {
+      results.connections.errors.push(`Trade Engine Coordinator error: ${error instanceof Error ? error.message : String(error)}`)
+    }
+
+    // Test 3: Redis Storage
+    try {
+      await initRedis()
+      const connections = await getAllConnections()
+      results.system.redisStorage = Array.isArray(connections)
+      results.connections.count = connections.length
+    } catch (error) {
+      results.connections.errors.push(`Redis Storage error: ${error instanceof Error ? error.message : String(error)}`)
+    }
 
   try {
     // Test 1: ConnectionManager

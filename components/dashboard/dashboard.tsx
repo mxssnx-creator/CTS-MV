@@ -197,13 +197,10 @@ export function Dashboard() {
         return
       }
 
-      // Call the live-trade specific endpoint, not the generic toggle
       const response = await fetch(`/api/settings/connections/${id}/live-trade`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          is_live_trade: enabled,
-        }),
+        body: JSON.stringify({ is_live_trade: enabled }),
       })
 
       if (response.ok) {
@@ -212,6 +209,13 @@ export function Dashboard() {
       } else {
         const error = await response.json()
         toast.error(error.details || error.error || "Failed to toggle live trading")
+      }
+    } catch (error) {
+      console.error("[v0] Failed to toggle live trading:", error)
+      toast.error("Failed to toggle live trading")
+    }
+  }
+
   const handleTogglePresetTrade = async (id: string, enabled: boolean) => {
     try {
       const connection = filteredConnections.find(c => c.id === id)
@@ -266,11 +270,6 @@ export function Dashboard() {
 
       {/* Trade Engine Controls */}
       <GlobalTradeEngineControls />
-
-      {/* Intervals & Strategies Monitoring */}
-      {filteredConnections.length > 0 && (
-        <IntervalsStrategiesOverview connections={filteredConnections} />
-      )}
 
       {/* Active Connections */}
       <Card>

@@ -1,12 +1,10 @@
 /**
  * Trade Engine Auto-Start Service
- * Automatically starts trade engines for enabled connections
- * Independent from Active list - engines run if enabled in Settings
+ * Automatically starts trade engines for enabled connections via their toggles
  */
 
 import { getGlobalTradeEngineCoordinator } from "./trade-engine"
-import { getAllConnections } from "./redis-db"
-import { loadSettingsAsync } from "./settings-storage"
+import { getAllConnections, getRedisClient, initRedis } from "./redis-db"
 
 let autoStartInitialized = false
 let autoStartTimer: NodeJS.Timeout | null = null

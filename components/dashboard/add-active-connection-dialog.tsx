@@ -9,8 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, AlertCircle } from "lucide-react"
 import { toast } from "@/lib/simple-toast"
-import type { Connection } from "@/lib/file-storage"
-import { addActiveConnection, loadActiveConnections } from "@/lib/active-connections"
+import type { Connection } from "@/lib/redis-db"
 
 interface AddActiveConnectionDialogProps {
   open: boolean

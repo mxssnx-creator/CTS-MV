@@ -1,9 +1,9 @@
 /**
  * ConnectionManager v2
- * Modern connection management with proper state validation, error handling, and UI updates
+ * Modern connection management with Redis storage, proper state validation, error handling, and UI updates
  */
 
-import { loadConnections, saveConnections, type Connection } from "@/lib/file-storage"
+import { initRedis, getAllConnections, getConnection, updateConnection, type Connection } from "@/lib/redis-db"
 import { SystemLogger } from "@/lib/system-logger"
 
 export type ConnectionStatus = "active" | "inactive" | "error" | "testing"
@@ -21,17 +21,16 @@ export interface ConnectionState {
 }
 
 /**
- * ConnectionManager v2 - Singleton pattern for managing exchange connections
+ * ConnectionManager - Singleton pattern for managing exchange connections using Redis
  * Provides state validation, error handling, and coordinated updates
  */
 export class ConnectionManager {
   private static instance: ConnectionManager
   private connections: Map<string, ConnectionState> = new Map()
   private listeners: Set<(connections: ConnectionState[]) => void> = new Set()
+  private initialized = false
 
-  private constructor() {
-    this.loadConnections()
-  }
+  private constructor() {}
 
   static getInstance(): ConnectionManager {
     if (!ConnectionManager.instance) {
@@ -41,15 +40,14 @@ export class ConnectionManager {
   }
 
   /**
-   * Load connections from file storage and build state map
+   * Initialize and load connections from Redis
    */
-  private loadConnections(): void {
+  async initialize(): Promise<void> {
+    if (this.initialized) return
+
     try {
-      const connections = loadConnections()
-      if (!Array.isArray(connections)) {
-        console.error("[v0] Connections is not an array")
-        return
-      }
+      await initRedis()
+      const connections = await getAllConnections()
 
       this.connections.clear()
 
@@ -58,6 +56,91 @@ export class ConnectionManager {
           id: conn.id,
           name: conn.name,
           exchange: conn.exchange,
+          status: conn.is_enabled ? "active" : "inactive",
+          enabled: conn.is_enabled === "1" || conn.is_enabled === true,
+          testPassed: conn.last_test_status === "success",
+          lastTestTime: conn.last_test_at ? new Date(conn.last_test_at) : undefined,
+          lastError: undefined,
+          credentialsConfigured: !!(conn.api_key && conn.api_secret),
+        })
+      }
+
+      this.initialized = true
+      this.notifyListeners()
+    } catch (error) {
+      console.error("[v0] Failed to initialize ConnectionManager:", error)
+      await SystemLogger.logError(error, "connection-manager", "initialize")
+    }
+  }
+
+  /**
+   * Get all connections as ConnectionState array
+   */
+  getConnections(): ConnectionState[] {
+    return Array.from(this.connections.values())
+  }
+
+  /**
+   * Get a specific connection
+   */
+  getConnection(id: string): ConnectionState | undefined {
+    return this.connections.get(id)
+  }
+
+  /**
+   * Update a connection state in both memory and Redis
+   */
+  async updateConnection(id: string, updates: Partial<ConnectionState>): Promise<void> {
+    try {
+      await initRedis()
+      const connection = await getConnection(id)
+
+      if (!connection) {
+        throw new Error(`Connection not found: ${id}`)
+      }
+
+      // Update Redis
+      const updatedConnection: any = {
+        ...connection,
+        is_enabled: updates.enabled ? "1" : "0",
+        updated_at: new Date().toISOString(),
+      }
+
+      await updateConnection(id, updatedConnection)
+
+      // Update memory
+      const state = this.connections.get(id)
+      if (state) {
+        Object.assign(state, updates)
+        this.notifyListeners()
+      }
+
+      console.log("[v0] Connection updated:", id)
+    } catch (error) {
+      console.error("[v0] Failed to update connection:", error)
+      await SystemLogger.logError(error, "connection-manager", `updateConnection(${id})`)
+    }
+  }
+
+  /**
+   * Subscribe to connection changes
+   */
+  subscribe(listener: (connections: ConnectionState[]) => void): () => void {
+    this.listeners.add(listener)
+    return () => this.listeners.delete(listener)
+  }
+
+  /**
+   * Notify all listeners of state changes
+   */
+  private notifyListeners(): void {
+    const connections = this.getConnections()
+    for (const listener of this.listeners) {
+      listener(connections)
+    }
+  }
+}
+
           status: conn.is_enabled ? "active" : "inactive",
           enabled: conn.is_enabled,
           testPassed: conn.last_test_status === "success",
