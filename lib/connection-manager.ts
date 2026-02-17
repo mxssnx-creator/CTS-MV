@@ -141,32 +141,6 @@ export class ConnectionManager {
   }
 }
 
-          status: conn.is_enabled ? "active" : "inactive",
-          enabled: conn.is_enabled,
-          testPassed: conn.last_test_status === "success",
-          lastTestTime: conn.last_test_at ? new Date(conn.last_test_at) : undefined,
-          credentialsConfigured: !!(conn.api_key && !conn.api_key.includes("PLACEHOLDER")),
-        })
-      }
-
-      console.log("[v0] ConnectionManager loaded", this.connections.size, "connections")
-    } catch (error) {
-      console.error("[v0] Failed to load connections:", error)
-      // Log error asynchronously without awaiting
-      SystemLogger.logError(error, "system", "loadConnections").catch((logError) => {
-        console.error("[v0] Failed to log error:", logError)
-      })
-    }
-  }
-
-  /**
-   * Get all connections
-   */
-  getConnections(): ConnectionState[] {
-    return Array.from(this.connections.values())
-  }
-
-  /**
    * Get connection by ID
    */
   getConnection(id: string): ConnectionState | undefined {
