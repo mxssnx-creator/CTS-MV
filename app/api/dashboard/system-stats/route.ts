@@ -59,6 +59,10 @@ export async function GET() {
     console.log(`[v0] [System Stats] Total connections: ${allConnections.length}`)
     console.log(`[v0] [System Stats] Active: ${activeConnections.length}, Enabled: ${enabledActiveConnections.length}, Live Trade: ${activeWithLiveTrade.length}(${mainEnginesRunningSuccessfully} running), Preset: ${activeWithPresetTrade.length}(${presetEnginesRunningSuccessfully} running)`)
     
+    // Count only non-predefined connections as "inserted"
+    const predefinedCount = allConnections.filter((c: any) => c.is_predefined).length
+    const storedConnections = allConnections.length - predefinedCount
+
     // Exchange Connections - WORKING status means test succeeded
     // ONLY count from actual stored connections (not predefined templates)
     const workingConnections = allConnections.filter((c: any) => 
@@ -67,12 +71,24 @@ export async function GET() {
     
     const exchangeStatus = 
       workingConnections === 0 ? "down" :
-      workingConnections < (allConnections.length - predefinedCount) / 2 ? "partial" :
+      workingConnections < storedConnections / 2 ? "partial" :
       "healthy"
 
-    // Count only non-predefined connections as "inserted"
-    const predefinedCount = allConnections.filter((c: any) => c.is_predefined).length
-    const storedConnections = allConnections.length - predefinedCount
+    // Global Trade Engine Coordinator status from Redis
+    const globalEngineState = await client.hgetall("trade_engine:global")
+    const globalStatus = globalEngineState?.status === "running" ? "running" : "stopped"
+
+    // Main Trade Engine status - depends on active connections with Live Trade enabled and running
+    const mainTradeStatus = 
+      activeWithLiveTrade.length === 0 ? "stopped" :
+      mainEnginesRunningSuccessfully > 0 ? "running" :
+      "error"
+
+    // Preset Trade Engine status - depends on active connections with Preset Trade enabled and running
+    const presetTradeStatus = 
+      activeWithPresetTrade.length === 0 ? "stopped" :
+      presetEnginesRunningSuccessfully > 0 ? "running" :
+      "error"
 
     // Database stats
     const dbStatus = "healthy"
@@ -88,7 +104,7 @@ export async function GET() {
 
     const stats = {
       tradeEngines: {
-        globalStatus: globalStatus,
+        globalStatus,
         // Main Trade Engine status - depends on active connections with Live Trade enabled and running without errors
         mainStatus: mainTradeStatus,
         // Preset Trade Engine status - depends on active connections with Preset Trade enabled and running without errors

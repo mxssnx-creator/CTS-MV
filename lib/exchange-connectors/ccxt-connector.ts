@@ -48,6 +48,16 @@ export class CCXTConnector extends BaseExchangeConnector {
         timeout: this.timeout,
       }
 
+      // Pass contract type for exchanges that support it
+      const apiType = this.credentials.apiType || "spot"
+      this.log(`Configured API Type: ${apiType}`)
+      console.log(`[v0] [CCXT] Exchange: ${this.exchange}, API Type: ${apiType}`)
+      
+      if (apiType && apiType !== "spot") {
+        exchangeConfig.defaultType = apiType === "perpetual_futures" || apiType === "futures" ? "swap" : apiType
+        this.log(`Set CCXT defaultType to: ${exchangeConfig.defaultType}`)
+      }
+
       // Add passphrase if provided (for exchanges like OKX, Kraken)
       if (this.credentials.apiPassphrase) {
         exchangeConfig.password = this.credentials.apiPassphrase

@@ -56,11 +56,24 @@ export class PionexConnector extends BaseExchangeConnector {
     const timestamp = Date.now().toString()
     const baseUrl = this.getBaseUrl()
     const method = "GET"
-    const path = "/api/v1/account/balances"
 
     this.log("Generating signature...")
 
     try {
+      const apiType = this.credentials.apiType || "perpetual_futures"
+      let path = "/api/v1/account/balances" // Default: spot
+
+      // Pionex uses different endpoints for spot vs perpetual/futures
+      if (apiType === "spot") {
+        path = "/api/v1/account/balances"
+        this.log("Contract Type: SPOT → Using /api/v1/account/balances")
+        console.log("[v0] [Pionex] Contract Type: SPOT → Endpoint: /api/v1/account/balances")
+      } else if (apiType === "perpetual_futures" || apiType === "futures") {
+        path = "/api/v1/perpetual/account/balances"
+        this.log("Contract Type: PERPETUAL FUTURES → Using /api/v1/perpetual/account/balances")
+        console.log("[v0] [Pionex] Contract Type: PERPETUAL → Endpoint: /api/v1/perpetual/account/balances")
+      }
+
       const params: Record<string, string> = { timestamp }
       const signature = this.generateSignature(method, path, params)
 
