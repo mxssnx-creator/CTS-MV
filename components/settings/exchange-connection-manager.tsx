@@ -119,7 +119,7 @@ function EditConnectionDialog({ connection, onSave, exchangeName }: { connection
         is_testnet: formData.is_testnet,
       })
 
-      const response = await fetch("/api/settings/connections/test", {
+      const response = await fetch(`/api/settings/connections/${connection.id}/test`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

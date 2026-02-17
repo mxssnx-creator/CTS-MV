@@ -28,6 +28,7 @@ export interface ExchangeBalance {
 export interface ExchangeConnectorResult {
   success: boolean
   balance: number // USDT balance
+  btcPrice?: number // BTC/USDT price (optional)
   balances?: ExchangeBalance[]
   capabilities: string[]
   error?: string

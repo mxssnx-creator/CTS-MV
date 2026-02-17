@@ -114,7 +114,14 @@ export function ConnectionCard({
     })
 
     try {
-      const response = await fetch("/api/settings/connections/test", {
+      // Get connection ID from props
+      const connId = connection?.id
+      if (!connId) {
+        toast.error("Connection ID not found")
+        return
+      }
+
+      const response = await fetch(`/api/settings/connections/${connId}/test`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
