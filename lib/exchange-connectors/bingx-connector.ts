@@ -169,7 +169,6 @@ export class BingXConnector extends BaseExchangeConnector {
           }
         }
       })
-      }))
 
       this.log(`✓ Account Balance: ${usdtBalance.toFixed(4)} USDT`)
       this.log(`✓ Total assets: ${balances.length}`)
