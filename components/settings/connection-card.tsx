@@ -64,6 +64,7 @@ export function ConnectionCard({
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [editDialogTab, setEditDialogTab] = useState("basic")
   const [engineError, setEngineError] = useState<string>("")
+  const [savingSettings, setSavingSettings] = useState(false)
   const [editFormData, setEditFormData] = useState({
     api_key: connection.api_key,
     api_secret: connection.api_secret,
