@@ -118,8 +118,11 @@ export function ConnectionCard({
       const connId = connection?.id
       if (!connId) {
         toast.error("Connection ID not found")
+        console.log("[v0] Connection object:", connection)
         return
       }
+
+      console.log("[v0] Testing connection with ID:", connId)
 
       const response = await fetch(`/api/settings/connections/${connId}/test`, {
         method: "POST",

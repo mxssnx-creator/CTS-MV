@@ -41,12 +41,27 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     testLog.push(`[${new Date().toISOString()}] Starting connection test for ID: ${id}`)
     testLog.push(`[${new Date().toISOString()}] Using API Type: ${body.api_type || "perpetual_futures"}`)
+    console.log("[v0] [Test] Received connection ID:", id)
+    console.log("[v0] [Test] Request body API type:", body.api_type)
 
     await initRedis()
 
     const connection = await getConnection(id)
 
     if (!connection) {
+      console.log("[v0] [Test] Connection not found for ID:", id)
+      console.log("[v0] [Test] Attempting to fetch all connections to verify ID format...")
+      
+      // Debug: Try to get all connections to verify what IDs exist
+      const { getAllConnections } = await import("@/lib/redis-db")
+      try {
+        const allConns = await getAllConnections()
+        const availableIds = allConns.map((c: any) => c.id)
+        console.log("[v0] [Test] Available connection IDs in Redis:", availableIds)
+      } catch (err) {
+        console.log("[v0] [Test] Error fetching all connections:", err)
+      }
+      
       testLog.push(`[${new Date().toISOString()}] ERROR: Connection not found (ID: ${id})`)
       await SystemLogger.logAPI(`Connection test failed: not found - ${id}`, "error", "POST /api/settings/connections/[id]/test")
       return NextResponse.json(
