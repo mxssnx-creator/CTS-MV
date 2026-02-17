@@ -59,14 +59,17 @@ export async function GET() {
     console.log(`[v0] [System Stats] Total connections: ${allConnections.length}`)
     console.log(`[v0] [System Stats] Active: ${activeConnections.length}, Enabled: ${enabledActiveConnections.length}, Live Trade: ${activeWithLiveTrade.length}(${mainEnginesRunningSuccessfully} running), Preset: ${activeWithPresetTrade.length}(${presetEnginesRunningSuccessfully} running)`)
     
-    // Count only non-predefined connections as "inserted"
-    const predefinedCount = allConnections.filter((c: any) => c.is_predefined).length
-    const storedConnections = allConnections.length - predefinedCount
+    // Count only USER-STORED connections (not predefined templates)
+    const predefinedConnections = allConnections.filter((c: any) => c.is_predefined === true || c.is_predefined === "true")
+    const userStoredConnections = allConnections.filter((c: any) => !c.is_predefined || c.is_predefined === false || c.is_predefined === "false")
+    const storedConnections = userStoredConnections.length
 
-    // Exchange Connections - WORKING status means test succeeded
-    // ONLY count from actual stored connections (not predefined templates)
-    const workingConnections = allConnections.filter((c: any) => 
-      c.last_test_status === "success" && !c.is_predefined
+    console.log(`[v0] [System Stats] Connections breakdown: ${allConnections.length} total (${predefinedConnections.length} predefined, ${storedConnections} user-stored)`)
+
+    // Exchange Connections - count ONLY user-stored connections
+    // WORKING status means test succeeded
+    const workingConnections = userStoredConnections.filter((c: any) => 
+      c.last_test_status === "success"
     ).length
     
     const exchangeStatus = 
@@ -117,9 +120,9 @@ export async function GET() {
         requestsPerSecond: requestsPerSecond,
       },
       exchangeConnections: {
-        total: storedConnections, // Only stored connections, not predefined
-        enabled: enabledActiveConnections.filter((c: any) => !c.is_predefined).length, // Enabled stored connections
-        // ONLY count as working if test succeeded AND not predefined
+        total: storedConnections, // Only user-stored connections
+        enabled: enabledActiveConnections.filter((c: any) => !c.is_predefined).length, // User-stored only
+        // ONLY count as working if test succeeded
         working: workingConnections,
         status: exchangeStatus,
       },
