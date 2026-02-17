@@ -8,6 +8,7 @@ import { runMigrations } from "@/lib/redis-migrations"
 import { getPredefinedAsExchangeConnections } from "@/lib/connection-predefinitions"
 import { initializeTradeEngineAutoStart } from "@/lib/trade-engine-auto-start"
 import { getGlobalTradeEngineCoordinator } from "@/lib/trade-engine"
+import { getDefaultSettings } from "@/lib/settings-storage"
 
 async function seedMarketData() {
   console.log("[v0] [Seed] Starting market data seeding...")
