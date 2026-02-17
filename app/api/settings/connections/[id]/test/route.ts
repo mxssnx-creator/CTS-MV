@@ -1,9 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { SystemLogger } from "@/lib/system-logger"
 import { createExchangeConnector } from "@/lib/exchange-connectors"
-import { initRedis, getConnection, updateConnection, getSettings } from "@/lib/redis-db"
+import { initRedis, getConnection, updateConnection, getSettings, getAllConnections } from "@/lib/redis-db"
 import { getConnectionManager } from "@/lib/connection-manager"
 import { RateLimiter } from "@/lib/rate-limiter"
+import { apiErrorHandler, ApiError } from "@/lib/api-error-handler"
 
 const TEST_TIMEOUT_MS = 30000
 const testAttemptMap = new Map<string, { count: number; lastTime: number }>()
@@ -41,37 +42,28 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     testLog.push(`[${new Date().toISOString()}] Starting connection test for ID: ${id}`)
     testLog.push(`[${new Date().toISOString()}] Using API Type: ${body.api_type || "perpetual_futures"}`)
-    console.log("[v0] [Test] Received connection ID:", id)
-    console.log("[v0] [Test] Request body API type:", body.api_type)
 
     await initRedis()
 
     const connection = await getConnection(id)
 
     if (!connection) {
-      console.log("[v0] [Test] Connection not found for ID:", id)
-      console.log("[v0] [Test] Attempting to fetch all connections to verify ID format...")
-      
-      // Debug: Try to get all connections to verify what IDs exist
-      const { getAllConnections } = await import("@/lib/redis-db")
+      // Helpful debug: try to show available IDs
       try {
         const allConns = await getAllConnections()
         const availableIds = allConns.map((c: any) => c.id)
-        console.log("[v0] [Test] Available connection IDs in Redis:", availableIds)
+        console.log("[v0] [Test] Connection lookup failed. Available IDs:", availableIds)
       } catch (err) {
-        console.log("[v0] [Test] Error fetching all connections:", err)
+        console.log("[v0] [Test] Failed to fetch available connections:", err)
       }
       
       testLog.push(`[${new Date().toISOString()}] ERROR: Connection not found (ID: ${id})`)
-      await SystemLogger.logAPI(`Connection test failed: not found - ${id}`, "error", "POST /api/settings/connections/[id]/test")
-      return NextResponse.json(
-        {
-          error: "Connection not found",
-          details: `No connection with ID ${id} found in database`,
-          log: testLog,
-        },
-        { status: 404 }
-      )
+      throw new ApiError(`Connection not found with ID: ${id}`, {
+        statusCode: 404,
+        code: "CONNECTION_NOT_FOUND",
+        details: { connectionId: id },
+        context: { operation: "test_connection" },
+      })
     }
 
     testLog.push(`[${new Date().toISOString()}] Connection found: ${connection.name} (${connection.exchange})`)
@@ -191,7 +183,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     })
   } catch (error) {
     const duration = Date.now() - startTime
+    
+    if (error instanceof ApiError) {
+      // Already an API error, log and return
+      await SystemLogger.logError(error, "api", "POST /api/settings/connections/[id]/test")
+      return await apiErrorHandler.handleError(error, {
+        endpoint: "/api/settings/connections/[id]/test",
+        method: "POST",
+        operation: "test_connection",
+        severity: error.severity,
+      })
+    }
+
     const errorMessage = error instanceof Error ? error.message : "Unknown error"
+    testLog.push(`[${new Date().toISOString()}] Test failed: ${errorMessage}`)
 
     let userFriendlyError = errorMessage
     if (errorMessage.includes("JSON")) {
@@ -204,18 +209,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       userFriendlyError = "Network error. Check your internet connection."
     }
 
-    testLog.push(`[${new Date().toISOString()}] Test failed: ${errorMessage}`)
-
     console.error("[v0] Connection test failed:", error)
-    await SystemLogger.logError(error, "api", "POST /api/settings/connections/[id]/test")
+    await SystemLogger.logError(error instanceof Error ? error : new Error(String(error)), "api", "POST /api/settings/connections/[id]/test")
 
+    // Try to update connection with error status
     try {
       const existingConnection = await getConnection(id)
       if (existingConnection) {
         await updateConnection(id, {
           ...existingConnection,
           last_test_status: "failed",
-          last_test_log: testLog,
+          last_test_log: JSON.stringify(testLog),
           last_test_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
@@ -224,11 +228,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         await manager.markTestFailed(id, userFriendlyError)
       }
     } catch (updateError) {
-      console.error("[v0] Failed to update connection with error status:", updateError)
+      console.error("[v0] Failed to update connection error status:", updateError)
     }
 
     return NextResponse.json(
       {
+        success: false,
         error: "Connection test failed",
         details: userFriendlyError,
         log: testLog,
@@ -236,5 +241,4 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       },
       { status: 500 }
     )
-  }
 }

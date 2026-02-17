@@ -2,6 +2,8 @@ import { type NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import { getSettings, setSettings } from "@/lib/redis-db"
 import { auditLogger } from "@/lib/audit-logger"
+import { apiErrorHandler, ApiError } from "@/lib/api-error-handler"
+import { SystemLogger } from "@/lib/system-logger"
 
 // API Category - used in all responses for type tracking
 const API_CATEGORY = "trading.orders"
@@ -78,25 +80,27 @@ export async function GET(request: NextRequest) {
   try {
     const user = await getSession()
     if (!user) {
-      return NextResponse.json(
-        { success: false, error: "Not authenticated", category: API_CATEGORY },
-        { status: 401 }
-      )
+      throw new ApiError("Not authenticated", {
+        statusCode: 401,
+        code: "UNAUTHORIZED",
+        context: { operation: "get_orders" },
+      })
     }
 
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status")
-    const limit = Math.min(Number.parseInt(searchParams.get("limit") || "50"), 500) // Cap at 500
+    const limit = Math.min(Number.parseInt(searchParams.get("limit") || "50"), 500)
 
     const allOrders = (await getSettings("orders")) || []
     let filtered = allOrders.filter((o: any) => o.user_id === user.id)
 
     if (status) {
       if (!["pending", "filled", "partially_filled", "cancelled", "rejected"].includes(status)) {
-        return NextResponse.json(
-          { success: false, error: "Invalid status filter", category: API_CATEGORY },
-          { status: 400 }
-        )
+        throw new ApiError("Invalid status filter", {
+          statusCode: 400,
+          code: "VALIDATION_ERROR",
+          details: { status },
+        })
       }
       filtered = filtered.filter((o: any) => o.status === status)
     }
