@@ -11,12 +11,12 @@ export async function GET(request: NextRequest) {
     const client = getRedisClient()
 
     // Get all preset type IDs from the index set
-    const typeIds = await (client as any).sMembers("preset_types:all")
+    const typeIds = await (client as any).smembers("preset_types:all")
     const types = []
 
     for (const id of typeIds) {
       if (!id) continue
-      const data = await (client as any).hGetAll(`preset_type:${id}`)
+      const data = await (client as any).hgetall(`preset_type:${id}`)
       if (data && Object.keys(data).length > 0) {
         types.push({
           id,
@@ -78,13 +78,16 @@ export async function POST(request: NextRequest) {
       updated_at: new Date().toISOString(),
     }
 
-    // Store in Redis
+    // Store in Redis as a hash
     const key = `preset_type:${id}`
-    const fields = Object.entries(presetType).flat()
-    await (client as any).hSet(key, ...fields)
+    const hashData: Record<string, string> = {}
+    for (const [k, v] of Object.entries(presetType)) {
+      hashData[k] = String(v ?? "")
+    }
+    await (client as any).hset(key, hashData)
 
     // Add to index
-    await (client as any).sAdd("preset_types:all", id)
+    await (client as any).sadd("preset_types:all", id)
     
     // Set TTL (30 days)
     await (client as any).expire(key, 30 * 24 * 60 * 60)

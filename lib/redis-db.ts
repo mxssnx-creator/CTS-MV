@@ -336,6 +336,25 @@ class InlineLocalRedis {
     if (!existing) return 0
     try { return JSON.parse(existing).length } catch { return 0 }
   }
+
+  // camelCase aliases for compatibility with code using node-redis / ioredis naming conventions
+  async hSet(key: string, fieldOrObj: string | Record<string, any>, value?: string) { return this.hset(key, fieldOrObj, value) }
+  async hGet(key: string, field: string) { return this.hget(key, field) }
+  async hGetAll(key: string) { return this.hgetall(key) }
+  async hDel(key: string, ...fields: string[]) { return this.hdel(key, ...fields) }
+  async sAdd(key: string, ...members: string[]) { return this.sadd(key, ...members) }
+  async sMembers(key: string) { return this.smembers(key) }
+  async sRem(key: string, ...members: string[]) { return this.srem(key, ...members) }
+  async sIsMember(key: string, member: string) { return this.sismember(key, member) }
+  async sCard(key: string) { return this.scard(key) }
+  async hExists(key: string, field: string) { return this.hexists(key, field) }
+  async hLen(key: string) { return this.hlen(key) }
+  async hmSet(key: string, ...args: string[]) { return this.hmset(key, ...args) }
+  async lPush(key: string, ...values: string[]) { return this.lpush(key, ...values) }
+  async rPush(key: string, ...values: string[]) { return this.rpush(key, ...values) }
+  async lRange(key: string, start: number, stop: number) { return this.lrange(key, start, stop) }
+  async lLen(key: string) { return this.llen(key) }
+  async incrBy(key: string, inc: number) { return this.incrby(key, inc) }
 }
 
 // ========== Singleton ==========
