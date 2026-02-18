@@ -108,8 +108,12 @@ export async function GET() {
         globalStatus: globalStatus,
         // Main Trade Engine status - depends on active connections with Live Trade enabled and running without errors
         mainStatus: mainTradeStatus,
+        mainCount: mainEnginesRunningSuccessfully,
+        mainTotal: activeWithLiveTrade.length,
         // Preset Trade Engine status - depends on active connections with Preset Trade enabled and running without errors
         presetStatus: presetTradeStatus,
+        presetCount: presetEnginesRunningSuccessfully,
+        presetTotal: activeWithPresetTrade.length,
         // Count of active+enabled connections actually running successfully
         totalEnabled: mainEnginesRunningSuccessfully + presetEnginesRunningSuccessfully,
       },

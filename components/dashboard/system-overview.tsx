@@ -9,7 +9,11 @@ interface SystemStats {
   tradeEngines: {
     globalStatus: string
     mainStatus: string
+    mainCount?: number
+    mainTotal?: number
     presetStatus: string
+    presetCount?: number
+    presetTotal?: number
     totalEnabled: number
   }
   database: {
@@ -152,21 +156,35 @@ export function SystemOverview() {
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground" title="Enabled when: Active connection with Live Trade slider ON">Main</span>
-                <Badge 
-                  className={`text-[10px] h-5 ${getStatusColor(stats.tradeEngines.mainStatus)}`}
-                  title={`Config: ${stats.tradeEngines.mainStatus} | Active with Live Trade: ${stats.activeConnections.liveTrade}`}
-                >
-                  {stats.tradeEngines.mainStatus}
-                </Badge>
+                <div className="flex items-center gap-2">
+                  {(stats.tradeEngines.mainCount !== undefined && stats.tradeEngines.mainTotal !== undefined) && (
+                    <span className="text-[10px] text-muted-foreground">
+                      {stats.tradeEngines.mainCount}/{stats.tradeEngines.mainTotal}
+                    </span>
+                  )}
+                  <Badge 
+                    className={`text-[10px] h-5 ${getStatusColor(stats.tradeEngines.mainStatus)}`}
+                    title={`Config: ${stats.tradeEngines.mainStatus} | Running: ${stats.tradeEngines.mainCount || 0}/${stats.tradeEngines.mainTotal || 0}`}
+                  >
+                    {stats.tradeEngines.mainStatus}
+                  </Badge>
+                </div>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground" title="Enabled when: Active connection with Preset slider ON">Preset</span>
-                <Badge 
-                  className={`text-[10px] h-5 ${getStatusColor(stats.tradeEngines.presetStatus)}`}
-                  title={`Config: ${stats.tradeEngines.presetStatus} | Active with Preset: ${stats.activeConnections.presetTrade}`}
-                >
-                  {stats.tradeEngines.presetStatus}
-                </Badge>
+                <div className="flex items-center gap-2">
+                  {(stats.tradeEngines.presetCount !== undefined && stats.tradeEngines.presetTotal !== undefined) && (
+                    <span className="text-[10px] text-muted-foreground">
+                      {stats.tradeEngines.presetCount}/{stats.tradeEngines.presetTotal}
+                    </span>
+                  )}
+                  <Badge 
+                    className={`text-[10px] h-5 ${getStatusColor(stats.tradeEngines.presetStatus)}`}
+                    title={`Config: ${stats.tradeEngines.presetStatus} | Running: ${stats.tradeEngines.presetCount || 0}/${stats.tradeEngines.presetTotal || 0}`}
+                  >
+                    {stats.tradeEngines.presetStatus}
+                  </Badge>
+                </div>
               </div>
               <div className="pt-1 border-t mt-2">
                 <div className="text-2xl font-bold">{stats.tradeEngines.totalEnabled}</div>
