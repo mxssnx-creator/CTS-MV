@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -441,12 +441,18 @@ function EditConnectionDialog({ connection, onSave, exchangeName }: { connection
 }
 
 export default function ExchangeConnectionManager() {
+  const mountedRef = useRef(true)
   const [connections, setConnections] = useState<Connection[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [testingId, setTestingId] = useState<string | null>(null)
   const [recentlyInsertedBase, setRecentlyInsertedBase] = useState<Set<string>>(new Set())
+
+  // Track mount/unmount
+  useEffect(() => {
+    return () => { mountedRef.current = false }
+  }, [])
 
   // Default exchanges to display
   const DEFAULT_EXCHANGES = ["bybit", "bingx", "pionex", "orangex"]
@@ -471,7 +477,7 @@ export default function ExchangeConnectionManager() {
 
       if (!Array.isArray(connectionsArray)) {
         console.warn("Invalid connections format:", typeof connectionsArray)
-        setConnections([])
+        if (mountedRef.current) setConnections([])
         return
       }
 
@@ -500,13 +506,15 @@ export default function ExchangeConnectionManager() {
           connection_library: c.connection_library || "library",
         } as Connection))
 
-      setConnections(validConnections)
+      if (mountedRef.current) setConnections(validConnections)
     } catch (err) {
       console.error("[v0] Error loading connections:", err)
-      setError(err instanceof Error ? err.message : "Failed to load connections")
-      setConnections([])
+      if (mountedRef.current) {
+        setError(err instanceof Error ? err.message : "Failed to load connections")
+        setConnections([])
+      }
     } finally {
-      setLoading(false)
+      if (mountedRef.current) setLoading(false)
     }
   }
 
