@@ -104,7 +104,17 @@ export function DashboardActiveConnectionsManager() {
         !currentState ? "Connection enabled" : "Connection disabled",
         { description: `Connection status updated` }
       )
+      
+      // Force system stats refresh to update trade engine status display
+      // The system overview will pick up the change on its next poll (every 2 seconds)
+      // But dispatch an event to trigger immediate refresh if needed
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('connection-toggled', { 
+          detail: { connectionId, newState: !currentState } 
+        }))
+      }
     } catch (error) {
+      console.error("[v0] Toggle error:", error)
       toast.error("Failed to update connection status")
     }
   }

@@ -87,7 +87,23 @@ export function SystemOverview() {
     loadStats()
     // Poll every 2 seconds to match GlobalTradeEngineControls polling
     const interval = setInterval(loadStats, 2000)
-    return () => clearInterval(interval)
+
+    // Listen for connection toggle events and refresh immediately
+    const handleConnectionToggled = () => {
+      console.log("[v0] Connection toggled, refreshing stats...")
+      loadStats()
+    }
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('connection-toggled', handleConnectionToggled)
+    }
+
+    return () => {
+      clearInterval(interval)
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('connection-toggled', handleConnectionToggled)
+      }
+    }
   }, [])
 
   const getStatusColor = (status: string) => {
