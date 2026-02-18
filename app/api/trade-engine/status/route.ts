@@ -28,26 +28,26 @@ export async function GET() {
       connections.map(async (connection: any) => {
         try {
           // Check multiple state keys for running status
-          const engineStateKey = `trade_engine_state:${connection.id}`
-          const engineManagerKey = `engine_manager:${connection.id}`
-          const isRunningKey = `engine_is_running:${connection.id}`
+          const tradeEngineStateKey = `trade_engine_state:${connection.id}`
+          const engineIsRunningKey = `engine_is_running:${connection.id}`
 
-          const engineState = await (client as any).hgetall(engineStateKey)
-          const isRunning = await (client as any).get(isRunningKey)
+          const tradeEngineState = await (client as any).hgetall(tradeEngineStateKey)
+          const isRunningValue = await (client as any).get(engineIsRunningKey)
           const manager = coordinator.getEngineManager(connection.id)
 
-          // Engine is running if:
-          // 1. Manager exists in coordinator AND manager.isRunning is true
-          // 2. OR Redis key says it's running
-          // 3. OR state shows last_indication_run recently
+          // Engine is running if ANY of these indicators show true:
+          // 1. Manager exists in coordinator (in-memory check)
+          // 2. Redis flag says it's running
+          // 3. State shows recent indication activity (within 10 seconds, since heartbeat runs every 2s)
           const managerExists = manager !== undefined
-          const redisRunning = isRunning === "true" || isRunning === "1"
-          const lastIndication = engineState?.last_indication_run ? new Date(engineState.last_indication_run) : null
-          const recentlyActive = lastIndication ? (Date.now() - lastIndication.getTime()) < 60000 : false // Last minute
+          const redisRunning = isRunningValue === "true" || isRunningValue === "1"
+          
+          const lastIndication = tradeEngineState?.last_indication_run ? new Date(tradeEngineState.last_indication_run) : null
+          const recentlyActive = lastIndication ? (Date.now() - lastIndication.getTime()) < 10000 : false
 
           const actuallyRunning = managerExists || redisRunning || recentlyActive
 
-          console.log(`[v0] [Status] Connection ${connection.id}: managerExists=${managerExists}, redisRunning=${redisRunning}, recentlyActive=${recentlyActive}, actuallyRunning=${actuallyRunning}`)
+          console.log(`[v0] [Status] ${connection.id}: managerExists=${managerExists}, redisRunning=${redisRunning}, recentlyActive=${recentlyActive} (lastIndication=${lastIndication?.toISOString()}), result=${actuallyRunning}`)
 
           if (actuallyRunning) running++
 
@@ -70,7 +70,7 @@ export async function GET() {
             status: actuallyRunning ? "running" : "stopped",
             trades: trades.length,
             positions: positions.length,
-            state: engineState || {},
+            state: tradeEngineState || {},
             progression: {
               cycles_completed: progression.cyclesCompleted,
               successful_cycles: progression.successfulCycles,

@@ -31,6 +31,7 @@ export class TradeEngineManager {
   private strategyTimer?: NodeJS.Timeout
   private realtimeTimer?: NodeJS.Timeout
   private healthCheckTimer?: NodeJS.Timeout
+  private heartbeatTimer?: NodeJS.Timeout
 
   private indicationProcessor: IndicationProcessor
   private strategyProcessor: StrategyProcessor
@@ -71,8 +72,9 @@ export class TradeEngineManager {
     console.log("[v0] Starting trade engine for connection:", this.connectionId)
 
     try {
-      // Update engine state
+      // Update engine state IMMEDIATELY and set running flag
       await this.updateEngineState("running")
+      await this.setRunningFlag(true)
 
       // Load prehistoric data first
       await this.loadPrehistoricData()
@@ -82,12 +84,16 @@ export class TradeEngineManager {
       this.startStrategyProcessor(config.strategyInterval)
       this.startRealtimeProcessor(config.realtimeInterval)
       this.startHealthMonitoring()
+      
+      // Start heartbeat to keep running state active
+      this.startHeartbeat()
 
       this.isRunning = true
       console.log("[v0] Trade engine started successfully")
     } catch (error) {
       console.error("[v0] Failed to start trade engine:", error)
       await this.updateEngineState("error", error instanceof Error ? error.message : "Unknown error")
+      await this.setRunningFlag(false)
       throw error
     }
   }
@@ -115,11 +121,13 @@ export class TradeEngineManager {
     if (this.strategyTimer) clearInterval(this.strategyTimer)
     if (this.realtimeTimer) clearInterval(this.realtimeTimer)
     if (this.healthCheckTimer) clearInterval(this.healthCheckTimer)
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer)
 
     this.isRunning = false
 
-    // Update engine state
+    // Update engine state and clear running flag
     await this.updateEngineState("stopped")
+    await this.setRunningFlag(false)
 
     console.log("[v0] Trade engine stopped")
   }
@@ -460,20 +468,69 @@ export class TradeEngineManager {
 
   /**
    * Update engine state (Redis-based)
+   * Uses consistent key naming for status endpoint compatibility
    */
   private async updateEngineState(status: string, errorMessage?: string): Promise<void> {
     try {
-      const stateKey = `engine_state:${this.connectionId}`
+      // Use trade_engine_state prefix for consistency with status endpoint
+      const stateKey = `trade_engine_state:${this.connectionId}`
       const currentState = (await getSettings(stateKey)) || {}
       await setSettings(stateKey, {
         ...currentState,
         status,
         error_message: errorMessage || null,
         updated_at: new Date().toISOString(),
+        last_indication_run: new Date().toISOString(),
       })
+      
+      console.log(`[v0] [Engine State] Updated ${stateKey}: status=${status}`)
     } catch (error) {
       console.error("[v0] Failed to update engine state:", error)
     }
+  }
+
+  /**
+   * Set running flag in Redis for active status detection
+   */
+  private async setRunningFlag(isRunning: boolean): Promise<void> {
+    try {
+      const flagKey = `engine_is_running:${this.connectionId}`
+      if (isRunning) {
+        await setSettings(flagKey, "true")
+      } else {
+        await setSettings(flagKey, "false")
+      }
+      console.log(`[v0] [Engine Flag] ${flagKey}: ${isRunning ? "true" : "false"}`)
+    } catch (error) {
+      console.error("[v0] Failed to set running flag:", error)
+    }
+  }
+
+  /**
+   * Start heartbeat to keep running state active
+   * Prevents timeout detection during normal operation
+   */
+  private startHeartbeat(): void {
+    // Send heartbeat every 2 seconds to keep engine state fresh
+    this.heartbeatTimer = setInterval(async () => {
+      if (!this.isRunning) {
+        if (this.heartbeatTimer) clearInterval(this.heartbeatTimer)
+        return
+      }
+
+      try {
+        const stateKey = `trade_engine_state:${this.connectionId}`
+        const currentState = (await getSettings(stateKey)) || {}
+        
+        // Update last_indication_run timestamp to show activity
+        await setSettings(stateKey, {
+          ...currentState,
+          last_indication_run: new Date().toISOString(),
+        })
+      } catch (error) {
+        console.warn("[v0] Heartbeat update failed:", error)
+      }
+    }, 2000)
   }
 
   /**
