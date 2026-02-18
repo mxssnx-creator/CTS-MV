@@ -2,6 +2,41 @@ import crypto from "crypto"
 import { BaseExchangeConnector, type ExchangeConnectorResult } from "./base-connector"
 import { safeParseResponse } from "@/lib/safe-response-parser"
 
+/**
+ * Bybit Exchange Connector (V5 Unified API)
+ * 
+ * Supported API Types (Contract Types):
+ * - "unified": Unified Trading Account (default) - all contract types in one wallet
+ * - "contract": Contract Trading Account - derivatives/futures only
+ * - "spot": Spot Trading Account - spot trading only
+ * - "inverse": Inverse perpetual contracts (deprecated in V5, use unified)
+ * 
+ * Documentation: https://bybit-exchange.github.io/docs/v5/intro
+ * 
+ * IMPORTANT: API Types are mapped to Bybit's accountType parameter:
+ * - "unified" → accountType: UNIFIED (all trading in one account)
+ * - "perpetual_futures"/"futures" → accountType: CONTRACT (derivatives only)
+ * - "spot" → accountType: SPOT (spot trading only)
+ * 
+ * Balance Fields (all types use same structure):
+ * - walletBalance: Total balance
+ * - availableToWithdraw: Available balance
+ * - locked: Frozen balance
+ * 
+ * Error Handling:
+ * - Validates credentials (API key and secret required)
+ * - Checks HTTP response status and retCode
+ * - Catches JSON parsing errors
+ * - Logs detailed error messages for debugging
+ * 
+ * Features:
+ * - Unified trading account support
+ * - Perpetual futures (up to 125x leverage)
+ * - Spot trading
+ * - Cross and isolated margin
+ * - Hedge and one-way position modes
+ * - Testnet support
+ */
 export class BybitConnector extends BaseExchangeConnector {
   private getBaseUrl(): string {
     return this.credentials.isTestnet ? "https://api-testnet.bybit.com" : "https://api.bybit.com"

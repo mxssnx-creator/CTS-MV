@@ -2,6 +2,31 @@ import crypto from "crypto"
 import { BaseExchangeConnector, type ExchangeConnectorResult } from "./base-connector"
 import { safeParseResponse } from "@/lib/safe-response-parser"
 
+/**
+ * BingX Exchange Connector
+ * 
+ * Supported API Types:
+ * - "spot": Spot trading, uses /openApi/spot/v1/account/balance
+ * - "perpetual_futures": Perpetual futures, uses /openApi/swap/v3/user/balance
+ * - "standard": Standard futures (deprecated, treated as perpetual)
+ * 
+ * Documentation: https://bingx-api.github.io/docs/#/en-us/
+ * 
+ * IMPORTANT: BingX uses different balance field names for different contract types:
+ * - SPOT: free (available), locked (in orders), balance (total)
+ * - PERPETUAL: availableMargin (available), frozenMargin (locked), balance (total)
+ * 
+ * Error Handling:
+ * - Validates credentials before API calls
+ * - Catches and logs all connection errors with descriptive messages
+ * - Returns detailed logs for debugging failed connections
+ * 
+ * Features:
+ * - Futures trading (up to 150x leverage)
+ * - Perpetual swap contracts
+ * - Cross-margin trading
+ * - Hedge position mode
+ */
 export class BingXConnector extends BaseExchangeConnector {
   private getBaseUrl(): string {
     return this.credentials.isTestnet ? "https://testnet-open-api.bingx.com" : "https://open-api.bingx.com"

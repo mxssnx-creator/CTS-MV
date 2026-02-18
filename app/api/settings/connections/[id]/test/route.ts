@@ -128,7 +128,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         apiPassphrase: body.api_passphrase || connection.api_passphrase || "",
         isTestnet: body.is_testnet !== undefined ? body.is_testnet : (connection.is_testnet || false),
         apiType: body.api_type || connection.api_type,
-        apiSubtype: body.api_subtype || connection.api_subtype,
         connectionMethod: body.connection_method || connection.connection_method,
         connectionLibrary: body.connection_library || connection.connection_library,
       })

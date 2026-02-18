@@ -4,14 +4,30 @@
  */
 
 import { getRateLimiter } from "@/lib/rate-limiter"
+import { EXCHANGE_API_TYPES } from "@/lib/connection-predefinitions"
+
+// Supported API types across all exchanges
+export const VALID_API_TYPES = [
+  "spot",
+  "perpetual_futures",
+  "futures",
+  "unified",
+  "contract",
+  "inverse",
+  "margin",
+  "portfolio",
+  "swap",
+  "standard",
+] as const
+
+export type ValidApiType = typeof VALID_API_TYPES[number]
 
 export interface ExchangeCredentials {
   apiKey: string
   apiSecret: string
   apiPassphrase?: string
   isTestnet: boolean
-  apiType?: string
-  apiSubtype?: string
+  apiType?: string // Contract type: spot, perpetual_futures, futures, unified, etc.
   marginType?: string
   positionMode?: string
   connectionMethod?: string
@@ -63,7 +79,7 @@ export abstract class BaseExchangeConnector {
   protected getEffectiveAccountType(): string {
     // CRITICAL: Contract types vs Account types are DIFFERENT concepts
     // 
-    // CONTRACT TYPES (what you trade): spot, perpetual_futures, futures
+    // CONTRACT TYPES (what you trade): spot, perpetual_futures, futures, unified
     //   - Defines the trading section/market you're accessing
     //   - Independent variable that affects API endpoints and base URLs
     //   - Examples: BTC/USDT spot, BTC/USDT perpetual futures
@@ -76,34 +92,19 @@ export abstract class BaseExchangeConnector {
     //
     // This method maps contract types → Bybit accountType parameter
     
-    const apiType = this.credentials.apiType
-    console.log(`[v0] [Connector] getEffectiveAccountType - Contract Type Input: ${apiType}`)
+    const apiType = this.credentials.apiType || "unified"
     
     if (apiType === "unified") {
-      // Unified account can trade spot, perpetual, and derivatives in one wallet
-      console.log(`[v0] [Connector] Contract Type 'unified' → Bybit accountType 'UNIFIED'`)
       return "UNIFIED"
     }
     if (apiType === "perpetual_futures" || apiType === "futures") {
-      // Contract-specific wallet for derivatives/perpetual futures only
-      console.log(`[v0] [Connector] Contract Type '${apiType}' → Bybit accountType 'CONTRACT'`)
       return "CONTRACT"
     }
     if (apiType === "spot") {
-      // Spot-specific wallet for spot trading only
-      console.log(`[v0] [Connector] Contract Type 'spot' → Bybit accountType 'SPOT'`)
       return "SPOT"
     }
-    console.log(`[v0] [Connector] No match for apiType '${apiType}', defaulting to UNIFIED`)
-    return "UNIFIED" // Default fallback for backward compatibility
-  }
-
-  protected getEffectiveSubType(): string | undefined {
-    // Map subtype for unified accounts
-    if (this.credentials.apiType === "unified" && this.credentials.apiSubtype) {
-      return this.credentials.apiSubtype
-    }
-    return undefined
+    // Default to UNIFIED for backward compatibility
+    return "UNIFIED"
   }
 
   protected async rateLimitedFetch(url: string, options?: RequestInit): Promise<Response> {
@@ -128,4 +129,36 @@ export abstract class BaseExchangeConnector {
   abstract testConnection(): Promise<ExchangeConnectorResult>
   abstract getBalance(): Promise<ExchangeConnectorResult>
   abstract getCapabilities(): string[]
+
+  /**
+   * Validate API type is supported for the exchange
+   * @param exchange - Exchange name (e.g., "bybit", "bingx")
+   * @param apiType - API type to validate (e.g., "spot", "perpetual_futures")
+   * @returns true if valid, false if not
+   */
+  static validateApiType(exchange: string, apiType?: string): boolean {
+    if (!apiType) return true // Undefined is OK, will use default
+
+    const supported = EXCHANGE_API_TYPES[exchange.toLowerCase()]
+    if (!supported) {
+      console.warn(`[v0] [Connector] Unknown exchange: ${exchange}`)
+      return false
+    }
+
+    const isValid = supported.includes(apiType)
+    if (!isValid) {
+      console.warn(`[v0] [Connector] Invalid API type '${apiType}' for ${exchange}. Supported: ${supported.join(", ")}`)
+    }
+
+    return isValid
+  }
+
+  /**
+   * Get supported API types for an exchange
+   * @param exchange - Exchange name
+   * @returns Array of supported API types
+   */
+  static getSupportedApiTypes(exchange: string): string[] {
+    return EXCHANGE_API_TYPES[exchange.toLowerCase()] || []
+  }
 }
