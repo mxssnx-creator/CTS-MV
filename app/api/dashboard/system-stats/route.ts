@@ -56,11 +56,6 @@ export async function GET() {
       }
     }
     
-    console.log(`[v0] [System Stats] Total connections: ${allConnections.length}`)
-    console.log(`[v0] [System Stats] Stored (non-predefined): ${storedConnections}, Predefined: ${predefinedCount}`)
-    console.log(`[v0] [System Stats] Exchange Connections - Total: ${storedConnections}, Enabled: ${settingsConnections.filter((c: any) => (c.is_enabled === "1" || c.is_enabled === true) && !c.is_predefined).length}, Working: ${workingConnections}`)
-    console.log(`[v0] [System Stats] Active: ${activeConnections.length}, Enabled: ${enabledActiveConnections.length}, Live Trade: ${activeWithLiveTrade.length}(${mainEnginesRunningSuccessfully} running), Preset: ${activeWithPresetTrade.length}(${presetEnginesRunningSuccessfully} running)`)
-    
     // Count only non-predefined connections as "inserted"
     const predefinedCount = allConnections.filter((c: any) => c.is_predefined).length
     const storedConnections = allConnections.length - predefinedCount
@@ -70,6 +65,11 @@ export async function GET() {
     const workingConnections = allConnections.filter((c: any) => 
       c.last_test_status === "success" && !c.is_predefined
     ).length
+
+    console.log(`[v0] [System Stats] Total connections: ${allConnections.length}`)
+    console.log(`[v0] [System Stats] Stored (non-predefined): ${storedConnections}, Predefined: ${predefinedCount}`)
+    console.log(`[v0] [System Stats] Exchange Connections - Total: ${storedConnections}, Enabled: ${settingsConnections.filter((c: any) => (c.is_enabled === "1" || c.is_enabled === true) && !c.is_predefined).length}, Working: ${workingConnections}`)
+    console.log(`[v0] [System Stats] Active: ${activeConnections.length}, Enabled: ${enabledActiveConnections.length}, Live Trade: ${activeWithLiveTrade.length}(${mainEnginesRunningSuccessfully} running), Preset: ${activeWithPresetTrade.length}(${presetEnginesRunningSuccessfully} running)`)
     
     const exchangeStatus = 
       workingConnections === 0 ? "down" :
