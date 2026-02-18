@@ -456,10 +456,6 @@ export default function ExchangeConnectionManager() {
     DEFAULT_EXCHANGES.some((exchange) => c.exchange?.toLowerCase().includes(exchange.toLowerCase()))
   )
 
-  useEffect(() => {
-    loadConnections()
-  }, [])
-
   const loadConnections = async () => {
     try {
       setLoading(true)
@@ -513,6 +509,10 @@ export default function ExchangeConnectionManager() {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    loadConnections()
+  }, [])
 
   const testConnection = async (id: string) => {
     setTestingId(id)
