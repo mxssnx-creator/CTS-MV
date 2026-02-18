@@ -64,7 +64,7 @@ export function ConnectionStateProvider({ children }: { children: ReactNode }) {
   // Prevent concurrent loads and excessive queries
   const loadingRef = useRef<{ base: boolean; active: boolean }>({ base: false, active: false })
   const lastLoadRef = useRef<{ base: number; active: number }>({ base: 0, active: 0 })
-  const LOAD_COOLDOWN = 30000 // 30 seconds between same-type loads
+  const LOAD_COOLDOWN = 5000 // 5 seconds between same-type loads (reduced from 30s for better UX)
 
   // Load all connections for Settings (single unified function)
   const loadBaseConnections = async () => {

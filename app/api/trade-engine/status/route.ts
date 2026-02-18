@@ -27,20 +27,37 @@ export async function GET() {
     const statuses = await Promise.all(
       connections.map(async (connection: any) => {
         try {
-          const stateKey = `trade_engine_state:${connection.id}`
-          const state = await client.hgetall(stateKey)
+          // Check multiple state keys for running status
+          const engineStateKey = `trade_engine_state:${connection.id}`
+          const engineManagerKey = `engine_manager:${connection.id}`
+          const isRunningKey = `engine_is_running:${connection.id}`
+
+          const engineState = await (client as any).hgetall(engineStateKey)
+          const isRunning = await (client as any).get(isRunningKey)
+          const manager = coordinator.getEngineManager(connection.id)
+
+          // Engine is running if:
+          // 1. Manager exists in coordinator AND manager.isRunning is true
+          // 2. OR Redis key says it's running
+          // 3. OR state shows last_indication_run recently
+          const managerExists = manager !== undefined
+          const redisRunning = isRunning === "true" || isRunning === "1"
+          const lastIndication = engineState?.last_indication_run ? new Date(engineState.last_indication_run) : null
+          const recentlyActive = lastIndication ? (Date.now() - lastIndication.getTime()) < 60000 : false // Last minute
+
+          const actuallyRunning = managerExists || redisRunning || recentlyActive
+
+          console.log(`[v0] [Status] Connection ${connection.id}: managerExists=${managerExists}, redisRunning=${redisRunning}, recentlyActive=${recentlyActive}, actuallyRunning=${actuallyRunning}`)
+
+          if (actuallyRunning) running++
 
           const tradesKey = `trades:${connection.id}`
           const positionsKey = `positions:${connection.id}`
-          const trades = (await client.smembers(tradesKey)) || []
-          const positions = (await client.smembers(positionsKey)) || []
+          const trades = (await (client as any).smembers(tradesKey)) || []
+          const positions = (await (client as any).smembers(positionsKey)) || []
 
           const progression = await ProgressionStateManager.getProgressionState(connection.id)
 
-          const manager = coordinator.getEngineManager(connection.id)
-          const isRunning = manager !== undefined
-
-          if (isRunning) running++
           totalTrades += trades.length
           totalPositions += positions.length
 
@@ -50,14 +67,51 @@ export async function GET() {
             exchange: connection.exchange,
             enabled: connection.is_enabled === true || connection.is_enabled === "true" || connection.is_enabled === "1",
             activelyUsing: connection.is_enabled_dashboard === true || connection.is_enabled_dashboard === "true" || connection.is_enabled_dashboard === "1",
-            status: isRunning ? "running" : "stopped",
+            status: actuallyRunning ? "running" : "stopped",
             trades: trades.length,
             positions: positions.length,
-            state: state || {},
+            state: engineState || {},
             progression: {
               cycles_completed: progression.cyclesCompleted,
               successful_cycles: progression.successfulCycles,
               failed_cycles: progression.failedCycles,
+              last_error: progression.lastError,
+            },
+          }
+        } catch (error) {
+          console.error(`[v0] [Status] Error fetching status for connection ${connection.id}:`, error)
+          totalErrors++
+          return {
+            id: connection.id,
+            name: connection.name,
+            exchange: connection.exchange,
+            status: "error",
+            error: String(error),
+          }
+        }
+      })
+    )
+
+    return NextResponse.json({
+      success: true,
+      connections: statuses,
+      summary: {
+        total: connections.length,
+        running,
+        stopped: connections.length - running,
+        totalTrades,
+        totalPositions,
+        errors: totalErrors,
+      },
+    })
+  } catch (error) {
+    console.error("[v0] [Status] Failed to get trade engine status:", error)
+    return NextResponse.json(
+      { success: false, error: "Failed to get trade engine status", details: String(error) },
+      { status: 500 }
+    )
+  }
+}
               cycle_success_rate: progression.cycleSuccessRate.toFixed(1) + "%",
               total_trades: progression.totalTrades,
               successful_trades: progression.successfulTrades,
