@@ -56,7 +56,7 @@ export function ConnectionCard({
   onTestConnection,
   isNewlyAdded = false,
 }: ConnectionCardProps) {
-  const mountedRef = useRef(false)
+  const mountedRef = useRef(true)
   const [testingConnection, setTestingConnection] = useState(false)
   const [workingStatus, setWorkingStatus] = useState<"idle" | "testing" | "success" | "error">("idle")
   const [testLogs, setTestLogs] = useState<string[]>([])
@@ -83,9 +83,8 @@ export function ConnectionCard({
     order_volume_usdt: 100,
   })
 
-  // Track mount state
+  // Track unmount to prevent state updates after unmount
   useEffect(() => {
-    mountedRef.current = true
     return () => { mountedRef.current = false }
   }, [])
 
