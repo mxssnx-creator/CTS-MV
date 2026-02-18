@@ -57,6 +57,8 @@ export async function GET() {
     }
     
     console.log(`[v0] [System Stats] Total connections: ${allConnections.length}`)
+    console.log(`[v0] [System Stats] Stored (non-predefined): ${storedConnections}, Predefined: ${predefinedCount}`)
+    console.log(`[v0] [System Stats] Exchange Connections - Total: ${storedConnections}, Enabled: ${settingsConnections.filter((c: any) => (c.is_enabled === "1" || c.is_enabled === true) && !c.is_predefined).length}, Working: ${workingConnections}`)
     console.log(`[v0] [System Stats] Active: ${activeConnections.length}, Enabled: ${enabledActiveConnections.length}, Live Trade: ${activeWithLiveTrade.length}(${mainEnginesRunningSuccessfully} running), Preset: ${activeWithPresetTrade.length}(${presetEnginesRunningSuccessfully} running)`)
     
     // Count only non-predefined connections as "inserted"
@@ -123,7 +125,7 @@ export async function GET() {
       },
       exchangeConnections: {
         total: storedConnections, // Only stored connections, not predefined
-        enabled: enabledActiveConnections.filter((c: any) => !c.is_predefined).length, // Enabled stored connections
+        enabled: settingsConnections.filter((c: any) => (c.is_enabled === "1" || c.is_enabled === true) && !c.is_predefined).length, // Enabled stored connections
         // ONLY count as working if test succeeded AND not predefined
         working: workingConnections,
         status: exchangeStatus,
