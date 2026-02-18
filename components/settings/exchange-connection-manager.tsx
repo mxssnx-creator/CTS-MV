@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -441,18 +441,12 @@ function EditConnectionDialog({ connection, onSave, exchangeName }: { connection
 }
 
 export default function ExchangeConnectionManager() {
-  const mountedRef = useRef(true)
   const [connections, setConnections] = useState<Connection[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [testingId, setTestingId] = useState<string | null>(null)
   const [recentlyInsertedBase, setRecentlyInsertedBase] = useState<Set<string>>(new Set())
-
-  // Track mount/unmount
-  useEffect(() => {
-    return () => { mountedRef.current = false }
-  }, [])
 
   // Default exchanges to display
   const DEFAULT_EXCHANGES = ["bybit", "bingx", "pionex", "orangex"]
@@ -477,7 +471,7 @@ export default function ExchangeConnectionManager() {
 
       if (!Array.isArray(connectionsArray)) {
         console.warn("Invalid connections format:", typeof connectionsArray)
-        if (mountedRef.current) setConnections([])
+        setConnections([])
         return
       }
 
@@ -506,15 +500,13 @@ export default function ExchangeConnectionManager() {
           connection_library: c.connection_library || "library",
         } as Connection))
 
-      if (mountedRef.current) setConnections(validConnections)
+      setConnections(validConnections)
     } catch (err) {
       console.error("[v0] Error loading connections:", err)
-      if (mountedRef.current) {
-        setError(err instanceof Error ? err.message : "Failed to load connections")
-        setConnections([])
-      }
+      setError(err instanceof Error ? err.message : "Failed to load connections")
+      setConnections([])
     } finally {
-      if (mountedRef.current) setLoading(false)
+      setLoading(false)
     }
   }
 
@@ -816,8 +808,7 @@ export default function ExchangeConnectionManager() {
                   // Show logs
                 }}
                 onTestConnection={(logs) => {
-                  // Refresh connections after test to show updated balance
-                  loadConnections()
+                  // Connection tested
                 }}
                 isNewlyAdded={recentlyInsertedBase.has(conn.id)}
               />

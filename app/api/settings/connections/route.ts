@@ -66,15 +66,12 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Filter by enabled status for active connections list (INDEPENDENT from Settings)
-    // Show connections that are either enabled in settings OR marked for dashboard
+    // Filter by is_enabled_dashboard for actively using connections (INDEPENDENT from Settings)
     if (dashboard === "true") {
       connections = connections.filter((c) => {
-        // Show connections that are enabled in settings (is_enabled = true)
-        const isEnabled = c.is_enabled === true || c.is_enabled === "1" || c.is_enabled === "true"
-        // OR connections marked specifically for dashboard visibility
+        // Handle both boolean and string representations
         const isEnabledDash = c.is_enabled_dashboard === true || c.is_enabled_dashboard === "1" || c.is_enabled_dashboard === "true"
-        return isEnabled || isEnabledDash
+        return isEnabledDash
       })
     }
 

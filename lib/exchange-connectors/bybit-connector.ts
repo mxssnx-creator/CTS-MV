@@ -59,6 +59,10 @@ export class BybitConnector extends BaseExchangeConnector {
 
       // Bybit V5 API uses accountType parameter: UNIFIED, CONTRACT, SPOT
       // UNIFIED = all contracts in one account, CONTRACT = derivatives only, SPOT = spot only
+      const apiType = this.credentials.apiType || "perpetual_futures"
+      console.log(`[v0] [Bybit] API Type: ${apiType}, Account Type: ${accountType}`)
+      this.log(`Using account type: ${accountType} for API type: ${apiType}`)
+      
       const response = await this.rateLimitedFetch(`${baseUrl}/v5/account/wallet-balance?accountType=${accountType}`, {
         method: "GET",
         headers: {

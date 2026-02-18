@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { Power, Trash2, Settings, ChevronDown, Loader2, AlertCircle, CheckCircle2, Edit2, Lock, Eye, EyeOff } from "lucide-react"
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { toast } from "@/lib/simple-toast"
 import { isHTMLResponse, parseHTMLResponse, parseCloudflareError } from "@/lib/html-response-parser"
 import {
@@ -56,7 +56,6 @@ export function ConnectionCard({
   onTestConnection,
   isNewlyAdded = false,
 }: ConnectionCardProps) {
-  const mountedRef = useRef(true)
   const [testingConnection, setTestingConnection] = useState(false)
   const [workingStatus, setWorkingStatus] = useState<"idle" | "testing" | "success" | "error">("idle")
   const [testLogs, setTestLogs] = useState<string[]>([])
@@ -79,19 +78,12 @@ export function ConnectionCard({
     position_mode: connection.position_mode,
     is_testnet: connection.is_testnet,
     api_passphrase: connection.api_passphrase || "",
-    order_type: "market",
-    order_volume_usdt: 100,
+    order_type: "market", // Market or Limit (default: Market)
+    order_volume_usdt: 100, // Default $100 per order
   })
-
-  // Track unmount to prevent state updates after unmount
-  useEffect(() => {
-    return () => { mountedRef.current = false }
-  }, [])
 
   // Auto-set connection library based on connection method when editFormData changes
   useEffect(() => {
-    if (!mountedRef.current) return
-
     let defaultLibrary = "native"
     if (editFormData.connection_method === "rest") {
       defaultLibrary = "native"
@@ -113,12 +105,17 @@ export function ConnectionCard({
     setTestingConnection(true)
     setWorkingStatus("testing")
 
-    console.log("[v0] [Test Connection] Using configured settings from connection:", {
+    console.log("[v0] [Test Connection] Testing with EDITED form values (not stored connection):", {
       exchange: connection.exchange,
+      api_type: editFormData.api_type,
+      api_subtype: editFormData.api_subtype,
+      connection_method: editFormData.connection_method,
+      connection_library: editFormData.connection_library,
+      is_testnet: editFormData.is_testnet,
+    })
+    console.log("[v0] [Test Connection] Stored connection values (for comparison):", {
       api_type: connection.api_type,
-      connection_method: connection.connection_method,
-      connection_library: connection.connection_library,
-      is_testnet: connection.is_testnet,
+      api_subtype: connection.api_subtype,
     })
 
     try {

@@ -59,10 +59,6 @@ export async function GET() {
     console.log(`[v0] [System Stats] Total connections: ${allConnections.length}`)
     console.log(`[v0] [System Stats] Active: ${activeConnections.length}, Enabled: ${enabledActiveConnections.length}, Live Trade: ${activeWithLiveTrade.length}(${mainEnginesRunningSuccessfully} running), Preset: ${activeWithPresetTrade.length}(${presetEnginesRunningSuccessfully} running)`)
     
-    // Count only non-predefined connections as "inserted"
-    const predefinedCount = allConnections.filter((c: any) => c.is_predefined).length
-    const storedConnections = allConnections.length - predefinedCount
-
     // Exchange Connections - WORKING status means test succeeded
     // ONLY count from actual stored connections (not predefined templates)
     const workingConnections = allConnections.filter((c: any) => 
@@ -71,25 +67,12 @@ export async function GET() {
     
     const exchangeStatus = 
       workingConnections === 0 ? "down" :
-      workingConnections < storedConnections / 2 ? "partial" :
+      workingConnections < (allConnections.length - predefinedCount) / 2 ? "partial" :
       "healthy"
 
-    // Trade engine statuses
-    const mainTradeStatus = 
-      activeWithLiveTrade.length === 0 ? "idle" :
-      mainEnginesRunningSuccessfully === activeWithLiveTrade.length ? "healthy" :
-      mainEnginesRunningSuccessfully > 0 ? "partial" : "down"
-
-    const presetTradeStatus = 
-      activeWithPresetTrade.length === 0 ? "idle" :
-      presetEnginesRunningSuccessfully === activeWithPresetTrade.length ? "healthy" :
-      presetEnginesRunningSuccessfully > 0 ? "partial" : "down"
-
-    const globalStatus = 
-      mainTradeStatus === "down" || presetTradeStatus === "down" ? "down" :
-      mainTradeStatus === "partial" || presetTradeStatus === "partial" ? "partial" :
-      mainTradeStatus === "idle" && presetTradeStatus === "idle" ? "idle" :
-      "healthy"
+    // Count only non-predefined connections as "inserted"
+    const predefinedCount = allConnections.filter((c: any) => c.is_predefined).length
+    const storedConnections = allConnections.length - predefinedCount
 
     // Database stats
     const dbStatus = "healthy"
@@ -102,6 +85,23 @@ export async function GET() {
     }))
     const topConnections = tradesByConnection.sort((a: any, b: any) => b.count - a.count).slice(0, 5)
     const totalTrades = tradesByConnection.reduce((sum: number, c: any) => sum + c.count, 0)
+
+    // Derive trade engine statuses from computed data
+    const mainTradeStatus: "healthy" | "partial" | "down" | "idle" =
+      activeWithLiveTrade.length === 0 ? "idle" :
+      mainEnginesRunningSuccessfully === activeWithLiveTrade.length ? "healthy" :
+      mainEnginesRunningSuccessfully > 0 ? "partial" : "down"
+
+    const presetTradeStatus: "healthy" | "partial" | "down" | "idle" =
+      activeWithPresetTrade.length === 0 ? "idle" :
+      presetEnginesRunningSuccessfully === activeWithPresetTrade.length ? "healthy" :
+      presetEnginesRunningSuccessfully > 0 ? "partial" : "down"
+
+    const globalStatus: "healthy" | "partial" | "down" | "idle" =
+      mainTradeStatus === "down" && presetTradeStatus === "down" ? "down" :
+      mainTradeStatus === "idle" && presetTradeStatus === "idle" ? "idle" :
+      mainTradeStatus === "healthy" && presetTradeStatus !== "down" ? "healthy" :
+      presetTradeStatus === "healthy" && mainTradeStatus !== "down" ? "healthy" : "partial"
 
     const stats = {
       tradeEngines: {

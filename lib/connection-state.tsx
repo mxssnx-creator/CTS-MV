@@ -61,13 +61,6 @@ export function ConnectionStateProvider({ children }: { children: ReactNode }) {
   // Trade Engine Status - independent from connections
   const [tradeEngineStatuses, setTradeEngineStatuses] = useState<Map<string, TradeEngineStatus>>(new Map())
   
-  // Track mount status to prevent state updates after unmount
-  // Initialize to true since useEffect callbacks run after mount
-  const mountedRef = useRef(true)
-  useEffect(() => {
-    return () => { mountedRef.current = false }
-  }, [])
-
   // Prevent concurrent loads and excessive queries
   const loadingRef = useRef<{ base: boolean; active: boolean }>({ base: false, active: false })
   const lastLoadRef = useRef<{ base: number; active: number }>({ base: 0, active: 0 })
@@ -82,14 +75,12 @@ export function ConnectionStateProvider({ children }: { children: ReactNode }) {
     if (Date.now() - lastLoadRef.current.base < LOAD_COOLDOWN) return
 
     loadingRef.current.base = true
-    if (mountedRef.current) setIsBaseLoading(true)
+    setIsBaseLoading(true)
     try {
       console.log("[v0] [ConnectionState] Loading base connections (all)")
       const response = await fetch("/api/settings/connections")
-      if (!mountedRef.current) return
       if (response.ok) {
         const data = await response.json()
-        if (!mountedRef.current) return
         console.log("[v0] [ConnectionState] Loaded", data.connections?.length || 0, "base connections")
         setBaseConnections(data.connections || [])
         
@@ -122,7 +113,7 @@ export function ConnectionStateProvider({ children }: { children: ReactNode }) {
       console.error("[v0] [ConnectionState] Failed to load base connections:", error)
     } finally {
       loadingRef.current.base = false
-      if (mountedRef.current) setIsBaseLoading(false)
+      setIsBaseLoading(false)
       lastLoadRef.current.base = Date.now()
     }
   }
@@ -136,18 +127,18 @@ export function ConnectionStateProvider({ children }: { children: ReactNode }) {
     if (Date.now() - lastLoadRef.current.active < LOAD_COOLDOWN) return
 
     loadingRef.current.active = true
-    if (mountedRef.current) setIsExchangeConnectionsActiveLoading(true)
+    setIsExchangeConnectionsActiveLoading(true)
     try {
       console.log("[v0] [ConnectionState] Loading Active Connections (independent from Settings)")
+      // Load connections that are visible on active list (is_enabled_dashboard = true)
       const response = await fetch("/api/settings/connections?dashboard=true")
-      if (!mountedRef.current) return
       if (response.ok) {
         const data = await response.json()
-        if (!mountedRef.current) return
         const connections = data.connections || []
         console.log("[v0] [ConnectionState] Loaded", connections.length, "Active Connections")
         setExchangeConnectionsActive(connections)
         
+        // Initialize status map - use is_enabled from connection as initial state (INDEPENDENT from Settings)
         const statusMap = new Map<string, boolean>()
         connections.forEach((conn: ExchangeConnection) => {
           statusMap.set(conn.id, conn.is_enabled === true || conn.is_enabled === "1")
@@ -158,7 +149,7 @@ export function ConnectionStateProvider({ children }: { children: ReactNode }) {
       console.error("[v0] [ConnectionState] Failed to load Active Connections:", error)
     } finally {
       loadingRef.current.active = false
-      if (mountedRef.current) setIsExchangeConnectionsActiveLoading(false)
+      setIsExchangeConnectionsActiveLoading(false)
       lastLoadRef.current.active = Date.now()
     }
   }

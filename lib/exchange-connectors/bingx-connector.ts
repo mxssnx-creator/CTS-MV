@@ -146,10 +146,14 @@ export class BingXConnector extends BaseExchangeConnector {
 
       // Map all balances with proper field extraction
       // IMPORTANT: BingX uses different field names for SPOT vs PERPETUAL
+      const isFutures = apiType === "perpetual_futures" || apiType === "futures"
+      
+      console.log(`[v0] [BingX] Balance parsing - API Type: ${apiType}, isFutures: ${isFutures}`)
+      console.log(`[v0] [BingX] Sample balance entry fields:`, balanceData.length > 0 ? Object.keys(balanceData[0]) : "no data")
+      
       const balances = balanceData.map((b: any) => {
         // For SPOT: availableMargin/frozenMargin are futures-only fields
         // Use free/locked for spot, availableMargin/frozenMargin for perpetual
-        const isFutures = apiType === "perpetual_futures" || apiType === "futures"
         
         if (isFutures) {
           // Perpetual Futures: availableMargin = available, frozenMargin = locked
@@ -169,6 +173,8 @@ export class BingXConnector extends BaseExchangeConnector {
           }
         }
       })
+      
+      console.log(`[v0] [BingX] Parsed ${balances.length} balances, USDT balance: ${usdtBalance}`)
 
       this.log(`✓ Account balance: ${usdtBalance.toFixed(4)} USDT`)
       this.log(`✓ Total assets: ${balances.length}`)
