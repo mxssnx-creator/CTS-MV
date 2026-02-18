@@ -143,4 +143,526 @@ export class BinanceConnector extends BaseExchangeConnector {
       throw error
     }
   }
+
+  async placeOrder(
+    symbol: string,
+    side: "buy" | "sell",
+    quantity: number,
+    price?: number,
+    orderType: "limit" | "market" = "limit"
+  ): Promise<{ success: boolean; orderId?: string; error?: string }> {
+    try {
+      this.log(`Placing ${orderType} ${side} order: ${quantity} ${symbol}`)
+
+      const baseUrl = this.getBaseUrl()
+      const timestamp = Date.now()
+      const apiType = this.credentials.apiType || "perpetual_futures"
+      
+      const params: Record<string, any> = {
+        symbol,
+        side: side.toUpperCase(),
+        type: orderType === "market" ? "MARKET" : "LIMIT",
+        quantity: String(quantity),
+        timestamp,
+      }
+
+      if (price && orderType === "limit") {
+        params.price = String(price)
+        params.timeInForce = "GTC"
+      }
+
+      const queryString = new URLSearchParams(params).toString()
+      const signature = crypto.createHmac("sha256", this.credentials.apiSecret).update(queryString).digest("hex")
+      
+      let endpoint = ""
+      if (apiType === "spot") {
+        endpoint = "/api/v3/order"
+      } else {
+        endpoint = "/fapi/v1/order"
+      }
+
+      const response = await this.rateLimitedFetch(`${baseUrl}${endpoint}?${queryString}&signature=${signature}`, {
+        method: "POST",
+        headers: { "X-MBX-APIKEY": this.credentials.apiKey },
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || data.code !== 0) {
+        throw new Error(`Binance API error: ${data.msg || "Unknown error"}`)
+      }
+
+      const orderId = data.orderId
+      this.log(`✓ Order placed successfully: ${orderId}`)
+      return { success: true, orderId }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to place order: ${errorMsg}`)
+      return { success: false, error: errorMsg }
+    }
+  }
+
+  async cancelOrder(symbol: string, orderId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      this.log(`Cancelling order ${orderId} for ${symbol}`)
+
+      const baseUrl = this.getBaseUrl()
+      const timestamp = Date.now()
+      const apiType = this.credentials.apiType || "perpetual_futures"
+      
+      const params = {
+        symbol,
+        orderId,
+        timestamp,
+      }
+
+      const queryString = new URLSearchParams(params).toString()
+      const signature = crypto.createHmac("sha256", this.credentials.apiSecret).update(queryString).digest("hex")
+      
+      let endpoint = ""
+      if (apiType === "spot") {
+        endpoint = "/api/v3/order"
+      } else {
+        endpoint = "/fapi/v1/order"
+      }
+
+      const response = await this.rateLimitedFetch(`${baseUrl}${endpoint}?${queryString}&signature=${signature}`, {
+        method: "DELETE",
+        headers: { "X-MBX-APIKEY": this.credentials.apiKey },
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || data.code !== 0) {
+        throw new Error(`Binance API error: ${data.msg || "Unknown error"}`)
+      }
+
+      this.log(`✓ Order cancelled successfully`)
+      return { success: true }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to cancel order: ${errorMsg}`)
+      return { success: false, error: errorMsg }
+    }
+  }
+
+  async getOrder(symbol: string, orderId: string): Promise<any> {
+    try {
+      this.log(`Fetching order ${orderId} for ${symbol}`)
+
+      const baseUrl = this.getBaseUrl()
+      const timestamp = Date.now()
+      const apiType = this.credentials.apiType || "perpetual_futures"
+      
+      const params = {
+        symbol,
+        orderId,
+        timestamp,
+      }
+
+      const queryString = new URLSearchParams(params).toString()
+      const signature = crypto.createHmac("sha256", this.credentials.apiSecret).update(queryString).digest("hex")
+      
+      let endpoint = ""
+      if (apiType === "spot") {
+        endpoint = "/api/v3/order"
+      } else {
+        endpoint = "/fapi/v1/orders"
+      }
+
+      const response = await this.rateLimitedFetch(`${baseUrl}${endpoint}?${queryString}&signature=${signature}`, {
+        headers: { "X-MBX-APIKEY": this.credentials.apiKey },
+      })
+
+      const data = await response.json()
+      
+      if (!response.ok) {
+        return null
+      }
+
+      return Array.isArray(data) ? data[0] : data
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to fetch order: ${errorMsg}`)
+      return null
+    }
+  }
+
+  async getOpenOrders(symbol?: string): Promise<any[]> {
+    try {
+      this.log(`Fetching open orders${symbol ? ` for ${symbol}` : ""}`)
+
+      const baseUrl = this.getBaseUrl()
+      const timestamp = Date.now()
+      const apiType = this.credentials.apiType || "perpetual_futures"
+      
+      const params: Record<string, any> = { timestamp }
+      if (symbol) params.symbol = symbol
+
+      const queryString = new URLSearchParams(params).toString()
+      const signature = crypto.createHmac("sha256", this.credentials.apiSecret).update(queryString).digest("hex")
+      
+      let endpoint = ""
+      if (apiType === "spot") {
+        endpoint = "/api/v3/openOrders"
+      } else {
+        endpoint = "/fapi/v1/openOrders"
+      }
+
+      const response = await this.rateLimitedFetch(`${baseUrl}${endpoint}?${queryString}&signature=${signature}`, {
+        headers: { "X-MBX-APIKEY": this.credentials.apiKey },
+      })
+
+      const data = await response.json()
+      return Array.isArray(data) ? data : []
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to fetch open orders: ${errorMsg}`)
+      return []
+    }
+  }
+
+  async getOrderHistory(symbol?: string, limit: number = 50): Promise<any[]> {
+    try {
+      this.log(`Fetching order history${symbol ? ` for ${symbol}` : ""} (limit: ${limit})`)
+
+      const baseUrl = this.getBaseUrl()
+      const timestamp = Date.now()
+      const apiType = this.credentials.apiType || "perpetual_futures"
+      
+      const params: Record<string, any> = { timestamp, limit }
+      if (symbol) params.symbol = symbol
+
+      const queryString = new URLSearchParams(params).toString()
+      const signature = crypto.createHmac("sha256", this.credentials.apiSecret).update(queryString).digest("hex")
+      
+      let endpoint = ""
+      if (apiType === "spot") {
+        endpoint = "/api/v3/allOrders"
+      } else {
+        endpoint = "/fapi/v1/allOrders"
+      }
+
+      const response = await this.rateLimitedFetch(`${baseUrl}${endpoint}?${queryString}&signature=${signature}`, {
+        headers: { "X-MBX-APIKEY": this.credentials.apiKey },
+      })
+
+      const data = await response.json()
+      return Array.isArray(data) ? data : []
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to fetch order history: ${errorMsg}`)
+      return []
+    }
+  }
+
+  async getPositions(symbol?: string): Promise<any[]> {
+    if (this.credentials.apiType === "spot") {
+      this.log("Positions not available for spot trading")
+      return []
+    }
+
+    try {
+      this.log(`Fetching positions${symbol ? ` for ${symbol}` : ""}`)
+
+      const baseUrl = this.getBaseUrl()
+      const timestamp = Date.now()
+      
+      const params: Record<string, any> = { timestamp }
+      if (symbol) params.symbol = symbol
+
+      const queryString = new URLSearchParams(params).toString()
+      const signature = crypto.createHmac("sha256", this.credentials.apiSecret).update(queryString).digest("hex")
+
+      const response = await this.rateLimitedFetch(`${baseUrl}/fapi/v2/positionRisk?${queryString}&signature=${signature}`, {
+        headers: { "X-MBX-APIKEY": this.credentials.apiKey },
+      })
+
+      const data = await response.json()
+      return Array.isArray(data) ? data : []
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to fetch positions: ${errorMsg}`)
+      return []
+    }
+  }
+
+  async getPosition(symbol: string): Promise<any> {
+    const positions = await this.getPositions(symbol)
+    return positions.length > 0 ? positions[0] : null
+  }
+
+  async modifyPosition(
+    symbol: string,
+    leverage?: number,
+    marginType?: "cross" | "isolated"
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      this.log(`Modifying position ${symbol}${leverage ? ` leverage=${leverage}` : ""}${marginType ? ` marginType=${marginType}` : ""}`)
+
+      const baseUrl = this.getBaseUrl()
+      const timestamp = Date.now()
+      
+      const params: Record<string, any> = { symbol, timestamp }
+      if (leverage) params.leverage = leverage
+      if (marginType) params.marginType = marginType === "cross" ? "CROSSED" : "ISOLATED"
+
+      const queryString = new URLSearchParams(params).toString()
+      const signature = crypto.createHmac("sha256", this.credentials.apiSecret).update(queryString).digest("hex")
+
+      const response = await this.rateLimitedFetch(`${baseUrl}/fapi/v1/positionSide/dual?${queryString}&signature=${signature}`, {
+        method: "POST",
+        headers: { "X-MBX-APIKEY": this.credentials.apiKey },
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || data.code !== 0) {
+        throw new Error(`Binance API error: ${data.msg || "Unknown error"}`)
+      }
+
+      this.log(`✓ Position modified successfully`)
+      return { success: true }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to modify position: ${errorMsg}`)
+      return { success: false, error: errorMsg }
+    }
+  }
+
+  async closePosition(symbol: string, positionSide?: "long" | "short"): Promise<{ success: boolean; error?: string }> {
+    try {
+      this.log(`Closing position ${symbol}${positionSide ? ` (${positionSide})` : ""}`)
+
+      const position = await this.getPosition(symbol)
+      if (!position) {
+        return { success: false, error: "Position not found" }
+      }
+
+      const side = position.positionSide === "LONG" ? "sell" : "buy"
+      const result = await this.placeOrder(symbol, side as "buy" | "sell", Math.abs(parseFloat(position.positionAmt)), undefined, "market")
+
+      if (!result.success) {
+        return result
+      }
+
+      this.log(`✓ Position closed successfully`)
+      return { success: true }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to close position: ${errorMsg}`)
+      return { success: false, error: errorMsg }
+    }
+  }
+
+  async getDepositAddress(coin: string): Promise<{ address?: string; error?: string }> {
+    try {
+      this.log(`Fetching deposit address for ${coin}`)
+
+      const baseUrl = "https://api.binance.com"
+      const timestamp = Date.now()
+      
+      const params = {
+        coin,
+        timestamp,
+      }
+
+      const queryString = new URLSearchParams(params).toString()
+      const signature = crypto.createHmac("sha256", this.credentials.apiSecret).update(queryString).digest("hex")
+
+      const response = await this.rateLimitedFetch(`${baseUrl}/sapi/v1/capital/deposit/address?${queryString}&signature=${signature}`, {
+        headers: { "X-MBX-APIKEY": this.credentials.apiKey },
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || data.code !== 0) {
+        throw new Error(`Binance API error: ${data.msg || "Unknown error"}`)
+      }
+
+      const address = data.address
+      this.log(`✓ Deposit address retrieved: ${address?.slice(0, 10)}...`)
+
+      return { address }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to fetch deposit address: ${errorMsg}`)
+      return { error: errorMsg }
+    }
+  }
+
+  async withdraw(coin: string, address: string, amount: number): Promise<{ success: boolean; txId?: string; error?: string }> {
+    try {
+      this.log(`Withdrawing ${amount} ${coin} to ${address.slice(0, 10)}...`)
+
+      const baseUrl = "https://api.binance.com"
+      const timestamp = Date.now()
+      
+      const params = {
+        coin,
+        withdrawOrderId: `withdraw_${Date.now()}`,
+        address,
+        amount: String(amount),
+        timestamp,
+      }
+
+      const queryString = new URLSearchParams(params).toString()
+      const signature = crypto.createHmac("sha256", this.credentials.apiSecret).update(queryString).digest("hex")
+
+      const response = await this.rateLimitedFetch(`${baseUrl}/sapi/v1/capital/withdraw/apply?${queryString}&signature=${signature}`, {
+        method: "POST",
+        headers: { "X-MBX-APIKEY": this.credentials.apiKey },
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || data.code !== 0) {
+        throw new Error(`Binance API error: ${data.msg || "Unknown error"}`)
+      }
+
+      const txId = data.id
+      this.log(`✓ Withdrawal initiated: ${txId}`)
+
+      return { success: true, txId }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to withdraw: ${errorMsg}`)
+      return { success: false, error: errorMsg }
+    }
+  }
+
+  async getTransferHistory(limit: number = 50): Promise<any[]> {
+    try {
+      this.log(`Fetching transfer history (limit: ${limit})`)
+
+      const baseUrl = "https://api.binance.com"
+      const timestamp = Date.now()
+      
+      const params = {
+        timestamp,
+        limit,
+      }
+
+      const queryString = new URLSearchParams(params).toString()
+      const signature = crypto.createHmac("sha256", this.credentials.apiSecret).update(queryString).digest("hex")
+
+      const response = await this.rateLimitedFetch(`${baseUrl}/sapi/v1/capital/withdraw/history?${queryString}&signature=${signature}`, {
+        headers: { "X-MBX-APIKEY": this.credentials.apiKey },
+      })
+
+      const data = await response.json()
+      return Array.isArray(data) ? data : []
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to fetch transfer history: ${errorMsg}`)
+      return []
+    }
+  }
+
+  async setLeverage(symbol: string, leverage: number): Promise<{ success: boolean; error?: string }> {
+    try {
+      this.log(`Setting leverage to ${leverage}x for ${symbol}`)
+
+      const baseUrl = this.getBaseUrl()
+      const timestamp = Date.now()
+      
+      const params = {
+        symbol,
+        leverage: String(leverage),
+        timestamp,
+      }
+
+      const queryString = new URLSearchParams(params).toString()
+      const signature = crypto.createHmac("sha256", this.credentials.apiSecret).update(queryString).digest("hex")
+
+      const response = await this.rateLimitedFetch(`${baseUrl}/fapi/v1/leverage?${queryString}&signature=${signature}`, {
+        method: "POST",
+        headers: { "X-MBX-APIKEY": this.credentials.apiKey },
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || data.code !== 0) {
+        throw new Error(`Binance API error: ${data.msg || "Unknown error"}`)
+      }
+
+      this.log(`✓ Leverage set to ${leverage}x`)
+      return { success: true }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to set leverage: ${errorMsg}`)
+      return { success: false, error: errorMsg }
+    }
+  }
+
+  async setMarginType(symbol: string, marginType: "cross" | "isolated"): Promise<{ success: boolean; error?: string }> {
+    try {
+      this.log(`Setting margin type to ${marginType} for ${symbol}`)
+
+      const baseUrl = this.getBaseUrl()
+      const timestamp = Date.now()
+      
+      const params = {
+        symbol,
+        marginType: marginType === "cross" ? "CROSSED" : "ISOLATED",
+        timestamp,
+      }
+
+      const queryString = new URLSearchParams(params).toString()
+      const signature = crypto.createHmac("sha256", this.credentials.apiSecret).update(queryString).digest("hex")
+
+      const response = await this.rateLimitedFetch(`${baseUrl}/fapi/v1/marginType?${queryString}&signature=${signature}`, {
+        method: "POST",
+        headers: { "X-MBX-APIKEY": this.credentials.apiKey },
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || data.code !== 0) {
+        throw new Error(`Binance API error: ${data.msg || "Unknown error"}`)
+      }
+
+      this.log(`✓ Margin type set to ${marginType}`)
+      return { success: true }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to set margin type: ${errorMsg}`)
+      return { success: false, error: errorMsg }
+    }
+  }
+
+  async setPositionMode(hedgeMode: boolean): Promise<{ success: boolean; error?: string }> {
+    try {
+      this.log(`Setting position mode to ${hedgeMode ? "hedge" : "one-way"}`)
+
+      const baseUrl = this.getBaseUrl()
+      const timestamp = Date.now()
+      
+      const params = {
+        dualSidePosition: hedgeMode ? "true" : "false",
+        timestamp,
+      }
+
+      const queryString = new URLSearchParams(params).toString()
+      const signature = crypto.createHmac("sha256", this.credentials.apiSecret).update(queryString).digest("hex")
+
+      const response = await this.rateLimitedFetch(`${baseUrl}/fapi/v1/positionSide/dual?${queryString}&signature=${signature}`, {
+        method: "POST",
+        headers: { "X-MBX-APIKEY": this.credentials.apiKey },
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || data.code !== 0) {
+        throw new Error(`Binance API error: ${data.msg || "Unknown error"}`)
+      }
+
+      this.log(`✓ Position mode set to ${hedgeMode ? "hedge" : "one-way"}`)
+      return { success: true }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to set position mode: ${errorMsg}`)
+      return { success: false, error: errorMsg }
+    }
+  }
 }

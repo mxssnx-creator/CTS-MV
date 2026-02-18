@@ -219,4 +219,523 @@ export class BingXConnector extends BaseExchangeConnector {
       throw error
     }
   }
+
+  async placeOrder(
+    symbol: string,
+    side: "buy" | "sell",
+    quantity: number,
+    price?: number,
+    orderType: "limit" | "market" = "limit"
+  ): Promise<{ success: boolean; orderId?: string; error?: string }> {
+    try {
+      this.log(`Placing ${orderType} ${side} order: ${quantity} ${symbol}`)
+
+      const endpoint = this.credentials.apiType === "spot" ? "/openApi/spot/v1/trade/order" : "/openApi/swap/v3/trade/order"
+
+      const params: Record<string, any> = {
+        symbol,
+        side: side.toUpperCase(),
+        type: orderType === "market" ? "MARKET" : "LIMIT",
+        quantity: String(quantity),
+        timestamp: Date.now(),
+      }
+
+      if (price && orderType === "limit") {
+        params.price = String(price)
+      }
+
+      const signature = this.getSignature(params)
+      const queryString = `${new URLSearchParams(params).toString()}&signature=${signature}`
+      const url = `${this.baseUrl}${endpoint}?${queryString}`
+
+      const response = await this.rateLimitedFetch(url, {
+        method: "POST",
+        headers: { "X-BX-APIKEY": this.credentials.apiKey },
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+
+      const data = await response.json()
+
+      if (data.code !== "0") {
+        throw new Error(`BingX API error: ${data.msg || "Unknown error"}`)
+      }
+
+      const orderId = data.data?.orderId || data.data?.id
+      this.log(`✓ Order placed successfully: ${orderId}`)
+
+      return { success: true, orderId }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to place order: ${errorMsg}`)
+      return { success: false, error: errorMsg }
+    }
+  }
+
+  async cancelOrder(symbol: string, orderId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      this.log(`Cancelling order ${orderId} for ${symbol}`)
+
+      const endpoint = this.credentials.apiType === "spot" ? "/openApi/spot/v1/trade/cancel_order" : "/openApi/swap/v3/trade/cancel_order"
+
+      const params = {
+        symbol,
+        orderId,
+        timestamp: Date.now(),
+      }
+
+      const signature = this.getSignature(params)
+      const queryString = `${new URLSearchParams(params).toString()}&signature=${signature}`
+      const url = `${this.baseUrl}${endpoint}?${queryString}`
+
+      const response = await this.rateLimitedFetch(url, {
+        method: "POST",
+        headers: { "X-BX-APIKEY": this.credentials.apiKey },
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+
+      const data = await response.json()
+
+      if (data.code !== "0") {
+        throw new Error(`BingX API error: ${data.msg || "Unknown error"}`)
+      }
+
+      this.log(`✓ Order cancelled successfully`)
+      return { success: true }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to cancel order: ${errorMsg}`)
+      return { success: false, error: errorMsg }
+    }
+  }
+
+  async getOrder(symbol: string, orderId: string): Promise<any> {
+    try {
+      this.log(`Fetching order ${orderId} for ${symbol}`)
+
+      const endpoint = this.credentials.apiType === "spot" ? "/openApi/spot/v1/trade/query_order" : "/openApi/swap/v3/trade/query_order"
+
+      const params = {
+        symbol,
+        orderId,
+        timestamp: Date.now(),
+      }
+
+      const signature = this.getSignature(params)
+      const queryString = `${new URLSearchParams(params).toString()}&signature=${signature}`
+      const url = `${this.baseUrl}${endpoint}?${queryString}`
+
+      const response = await this.rateLimitedFetch(url, {
+        headers: { "X-BX-APIKEY": this.credentials.apiKey },
+      })
+
+      const data = await response.json()
+
+      if (data.code !== "0") {
+        return null
+      }
+
+      return data.data
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to fetch order: ${errorMsg}`)
+      return null
+    }
+  }
+
+  async getOpenOrders(symbol?: string): Promise<any[]> {
+    try {
+      this.log(`Fetching open orders${symbol ? ` for ${symbol}` : ""}`)
+
+      const endpoint = this.credentials.apiType === "spot" ? "/openApi/spot/v1/trade/openOrders" : "/openApi/swap/v3/trade/openOrders"
+
+      const params: Record<string, any> = {
+        timestamp: Date.now(),
+      }
+
+      if (symbol) {
+        params.symbol = symbol
+      }
+
+      const signature = this.getSignature(params)
+      const queryString = `${new URLSearchParams(params).toString()}&signature=${signature}`
+      const url = `${this.baseUrl}${endpoint}?${queryString}`
+
+      const response = await this.rateLimitedFetch(url, {
+        headers: { "X-BX-APIKEY": this.credentials.apiKey },
+      })
+
+      const data = await response.json()
+
+      if (data.code !== "0") {
+        return []
+      }
+
+      return data.data || []
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to fetch open orders: ${errorMsg}`)
+      return []
+    }
+  }
+
+  async getOrderHistory(symbol?: string, limit: number = 50): Promise<any[]> {
+    try {
+      this.log(`Fetching order history${symbol ? ` for ${symbol}` : ""} (limit: ${limit})`)
+
+      const endpoint = this.credentials.apiType === "spot" ? "/openApi/spot/v1/trade/allOrders" : "/openApi/swap/v3/trade/allOrders"
+
+      const params: Record<string, any> = {
+        limit,
+        timestamp: Date.now(),
+      }
+
+      if (symbol) {
+        params.symbol = symbol
+      }
+
+      const signature = this.getSignature(params)
+      const queryString = `${new URLSearchParams(params).toString()}&signature=${signature}`
+      const url = `${this.baseUrl}${endpoint}?${queryString}`
+
+      const response = await this.rateLimitedFetch(url, {
+        headers: { "X-BX-APIKEY": this.credentials.apiKey },
+      })
+
+      const data = await response.json()
+
+      if (data.code !== "0") {
+        return []
+      }
+
+      return data.data || []
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to fetch order history: ${errorMsg}`)
+      return []
+    }
+  }
+
+  async getPositions(symbol?: string): Promise<any[]> {
+    if (this.credentials.apiType === "spot") {
+      this.log("Positions not available for spot trading")
+      return []
+    }
+
+    try {
+      this.log(`Fetching positions${symbol ? ` for ${symbol}` : ""}`)
+
+      const params: Record<string, any> = {
+        timestamp: Date.now(),
+      }
+
+      if (symbol) {
+        params.symbol = symbol
+      }
+
+      const signature = this.getSignature(params)
+      const queryString = `${new URLSearchParams(params).toString()}&signature=${signature}`
+      const url = `${this.baseUrl}/openApi/swap/v3/user/positions?${queryString}`
+
+      const response = await this.rateLimitedFetch(url, {
+        headers: { "X-BX-APIKEY": this.credentials.apiKey },
+      })
+
+      const data = await response.json()
+
+      if (data.code !== "0") {
+        return []
+      }
+
+      return data.data || []
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to fetch positions: ${errorMsg}`)
+      return []
+    }
+  }
+
+  async getPosition(symbol: string): Promise<any> {
+    const positions = await this.getPositions(symbol)
+    return positions.length > 0 ? positions[0] : null
+  }
+
+  async modifyPosition(
+    symbol: string,
+    leverage?: number,
+    marginType?: "cross" | "isolated"
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      this.log(`Modifying position ${symbol}${leverage ? ` leverage=${leverage}` : ""}${marginType ? ` marginType=${marginType}` : ""}`)
+
+      const params: Record<string, any> = {
+        symbol,
+        timestamp: Date.now(),
+      }
+
+      if (leverage) {
+        params.leverage = String(leverage)
+      }
+
+      if (marginType) {
+        params.marginType = marginType === "cross" ? "CROSSED" : "ISOLATED"
+      }
+
+      const signature = this.getSignature(params)
+      const queryString = `${new URLSearchParams(params).toString()}&signature=${signature}`
+      const url = `${this.baseUrl}/openApi/swap/v3/trade/positionSide/set?${queryString}`
+
+      const response = await this.rateLimitedFetch(url, {
+        method: "POST",
+        headers: { "X-BX-APIKEY": this.credentials.apiKey },
+      })
+
+      const data = await response.json()
+
+      if (data.code !== "0") {
+        throw new Error(`BingX API error: ${data.msg || "Unknown error"}`)
+      }
+
+      this.log(`✓ Position modified successfully`)
+      return { success: true }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to modify position: ${errorMsg}`)
+      return { success: false, error: errorMsg }
+    }
+  }
+
+  async closePosition(symbol: string, positionSide?: "long" | "short"): Promise<{ success: boolean; error?: string }> {
+    try {
+      this.log(`Closing position ${symbol}${positionSide ? ` (${positionSide})` : ""}`)
+
+      const position = await this.getPosition(symbol)
+      if (!position) {
+        return { success: false, error: "Position not found" }
+      }
+
+      // Place opposite order to close
+      const side = position.side === "LONG" ? "sell" : "buy"
+      const result = await this.placeOrder(symbol, side as "buy" | "sell", position.contracts, position.currentPrice, "market")
+
+      if (!result.success) {
+        return result
+      }
+
+      this.log(`✓ Position closed successfully`)
+      return { success: true }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to close position: ${errorMsg}`)
+      return { success: false, error: errorMsg }
+    }
+  }
+
+  async getDepositAddress(coin: string): Promise<{ address?: string; error?: string }> {
+    try {
+      this.log(`Fetching deposit address for ${coin}`)
+
+      const params = {
+        coin,
+        timestamp: Date.now(),
+      }
+
+      const signature = this.getSignature(params)
+      const queryString = `${new URLSearchParams(params).toString()}&signature=${signature}`
+      const url = `${this.baseUrl}/openApi/wallet/v1/query_address?${queryString}`
+
+      const response = await this.rateLimitedFetch(url, {
+        headers: { "X-BX-APIKEY": this.credentials.apiKey },
+      })
+
+      const data = await response.json()
+
+      if (data.code !== "0") {
+        throw new Error(`BingX API error: ${data.msg || "Unknown error"}`)
+      }
+
+      const address = data.data?.address
+      this.log(`✓ Deposit address retrieved: ${address?.slice(0, 10)}...`)
+
+      return { address }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to fetch deposit address: ${errorMsg}`)
+      return { error: errorMsg }
+    }
+  }
+
+  async withdraw(coin: string, address: string, amount: number): Promise<{ success: boolean; txId?: string; error?: string }> {
+    try {
+      this.log(`Withdrawing ${amount} ${coin} to ${address.slice(0, 10)}...`)
+
+      const params = {
+        coin,
+        address,
+        amount: String(amount),
+        timestamp: Date.now(),
+      }
+
+      const signature = this.getSignature(params)
+      const queryString = `${new URLSearchParams(params).toString()}&signature=${signature}`
+      const url = `${this.baseUrl}/openApi/wallet/v1/withdraw?${queryString}`
+
+      const response = await this.rateLimitedFetch(url, {
+        method: "POST",
+        headers: { "X-BX-APIKEY": this.credentials.apiKey },
+      })
+
+      const data = await response.json()
+
+      if (data.code !== "0") {
+        throw new Error(`BingX API error: ${data.msg || "Unknown error"}`)
+      }
+
+      const txId = data.data?.txId
+      this.log(`✓ Withdrawal initiated: ${txId}`)
+
+      return { success: true, txId }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to withdraw: ${errorMsg}`)
+      return { success: false, error: errorMsg }
+    }
+  }
+
+  async getTransferHistory(limit: number = 50): Promise<any[]> {
+    try {
+      this.log(`Fetching transfer history (limit: ${limit})`)
+
+      const params = {
+        limit,
+        timestamp: Date.now(),
+      }
+
+      const signature = this.getSignature(params)
+      const queryString = `${new URLSearchParams(params).toString()}&signature=${signature}`
+      const url = `${this.baseUrl}/openApi/wallet/v1/query_withdraw_list?${queryString}`
+
+      const response = await this.rateLimitedFetch(url, {
+        headers: { "X-BX-APIKEY": this.credentials.apiKey },
+      })
+
+      const data = await response.json()
+
+      if (data.code !== "0") {
+        return []
+      }
+
+      return data.data || []
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to fetch transfer history: ${errorMsg}`)
+      return []
+    }
+  }
+
+  async setLeverage(symbol: string, leverage: number): Promise<{ success: boolean; error?: string }> {
+    try {
+      this.log(`Setting leverage to ${leverage}x for ${symbol}`)
+
+      const params = {
+        symbol,
+        leverage: String(leverage),
+        timestamp: Date.now(),
+      }
+
+      const signature = this.getSignature(params)
+      const queryString = `${new URLSearchParams(params).toString()}&signature=${signature}`
+      const url = `${this.baseUrl}/openApi/swap/v3/trade/leverage?${queryString}`
+
+      const response = await this.rateLimitedFetch(url, {
+        method: "POST",
+        headers: { "X-BX-APIKEY": this.credentials.apiKey },
+      })
+
+      const data = await response.json()
+
+      if (data.code !== "0") {
+        throw new Error(`BingX API error: ${data.msg || "Unknown error"}`)
+      }
+
+      this.log(`✓ Leverage set to ${leverage}x`)
+      return { success: true }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to set leverage: ${errorMsg}`)
+      return { success: false, error: errorMsg }
+    }
+  }
+
+  async setMarginType(symbol: string, marginType: "cross" | "isolated"): Promise<{ success: boolean; error?: string }> {
+    try {
+      this.log(`Setting margin type to ${marginType} for ${symbol}`)
+
+      const params = {
+        symbol,
+        marginType: marginType === "cross" ? "CROSSED" : "ISOLATED",
+        timestamp: Date.now(),
+      }
+
+      const signature = this.getSignature(params)
+      const queryString = `${new URLSearchParams(params).toString()}&signature=${signature}`
+      const url = `${this.baseUrl}/openApi/swap/v3/trade/marginType?${queryString}`
+
+      const response = await this.rateLimitedFetch(url, {
+        method: "POST",
+        headers: { "X-BX-APIKEY": this.credentials.apiKey },
+      })
+
+      const data = await response.json()
+
+      if (data.code !== "0") {
+        throw new Error(`BingX API error: ${data.msg || "Unknown error"}`)
+      }
+
+      this.log(`✓ Margin type set to ${marginType}`)
+      return { success: true }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to set margin type: ${errorMsg}`)
+      return { success: false, error: errorMsg }
+    }
+  }
+
+  async setPositionMode(hedgeMode: boolean): Promise<{ success: boolean; error?: string }> {
+    try {
+      this.log(`Setting position mode to ${hedgeMode ? "hedge" : "one-way"}`)
+
+      const params = {
+        dualSidePosition: hedgeMode,
+        timestamp: Date.now(),
+      }
+
+      const signature = this.getSignature(params)
+      const queryString = `${new URLSearchParams(params).toString()}&signature=${signature}`
+      const url = `${this.baseUrl}/openApi/swap/v3/trade/positionSide/set?${queryString}`
+
+      const response = await this.rateLimitedFetch(url, {
+        method: "POST",
+        headers: { "X-BX-APIKEY": this.credentials.apiKey },
+      })
+
+      const data = await response.json()
+
+      if (data.code !== "0") {
+        throw new Error(`BingX API error: ${data.msg || "Unknown error"}`)
+      }
+
+      this.log(`✓ Position mode set to ${hedgeMode ? "hedge" : "one-way"}`)
+      return { success: true }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to set position mode: ${errorMsg}`)
+      return { success: false, error: errorMsg }
+    }
+  }
 }

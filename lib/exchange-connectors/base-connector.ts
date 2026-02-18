@@ -41,6 +41,36 @@ export interface ExchangeBalance {
   total: number
 }
 
+export interface ExchangePosition {
+  symbol: string
+  side: "long" | "short"
+  contracts: number
+  contractSize: number
+  currentPrice: number
+  markPrice: number
+  entryPrice: number
+  leverage: number
+  marginType: "cross" | "isolated"
+  unrealizedPnl: number
+  realizedPnl: number
+  liquidationPrice: number
+  timestamp: number
+}
+
+export interface ExchangeOrder {
+  orderId: string
+  symbol: string
+  side: "buy" | "sell"
+  type: "limit" | "market"
+  quantity: number
+  price: number
+  status: "pending" | "filled" | "partially_filled" | "cancelled"
+  filledQty: number
+  filledPrice: number
+  timestamp: number
+  updateTime: number
+}
+
 export interface ExchangeConnectorResult {
   success: boolean
   balance: number // USDT balance
@@ -129,6 +159,50 @@ export abstract class BaseExchangeConnector {
   abstract testConnection(): Promise<ExchangeConnectorResult>
   abstract getBalance(): Promise<ExchangeConnectorResult>
   abstract getCapabilities(): string[]
+
+  // Trading Methods (Order Management)
+  abstract placeOrder(
+    symbol: string,
+    side: "buy" | "sell",
+    quantity: number,
+    price?: number,
+    orderType?: "limit" | "market"
+  ): Promise<{ success: boolean; orderId?: string; error?: string }>
+
+  abstract cancelOrder(symbol: string, orderId: string): Promise<{ success: boolean; error?: string }>
+
+  abstract getOrder(symbol: string, orderId: string): Promise<ExchangeOrder | null>
+
+  abstract getOpenOrders(symbol?: string): Promise<ExchangeOrder[]>
+
+  abstract getOrderHistory(symbol?: string, limit?: number): Promise<ExchangeOrder[]>
+
+  // Position Methods (Perpetual/Futures Only)
+  abstract getPositions(symbol?: string): Promise<ExchangePosition[]>
+
+  abstract getPosition(symbol: string): Promise<ExchangePosition | null>
+
+  abstract modifyPosition(
+    symbol: string,
+    leverage?: number,
+    marginType?: "cross" | "isolated"
+  ): Promise<{ success: boolean; error?: string }>
+
+  abstract closePosition(symbol: string, positionSide?: "long" | "short"): Promise<{ success: boolean; error?: string }>
+
+  // Funding Methods (Deposits/Withdrawals)
+  abstract getDepositAddress(coin: string): Promise<{ address?: string; error?: string }>
+
+  abstract withdraw(coin: string, address: string, amount: number): Promise<{ success: boolean; txId?: string; error?: string }>
+
+  abstract getTransferHistory(limit?: number): Promise<Array<{ type: string; coin: string; amount: number; timestamp: number }>>
+
+  // Risk Management Methods
+  abstract setLeverage(symbol: string, leverage: number): Promise<{ success: boolean; error?: string }>
+
+  abstract setMarginType(symbol: string, marginType: "cross" | "isolated"): Promise<{ success: boolean; error?: string }>
+
+  abstract setPositionMode(hedgeMode: boolean): Promise<{ success: boolean; error?: string }>
 
   /**
    * Validate API type is supported for the exchange

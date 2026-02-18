@@ -116,4 +116,357 @@ export class PionexConnector extends BaseExchangeConnector {
       throw error
     }
   }
+
+  async placeOrder(
+    symbol: string,
+    side: "buy" | "sell",
+    quantity: number,
+    price?: number,
+    orderType: "limit" | "market" = "limit"
+  ): Promise<{ success: boolean; orderId?: string; error?: string }> {
+    try {
+      this.log(`Placing ${orderType} ${side} order: ${quantity} ${symbol}`)
+
+      const baseUrl = this.getBaseUrl()
+      const timestamp = Date.now().toString()
+      const method = "POST"
+      const path = "/api/v1/trade/order"
+      
+      const body = {
+        symbol,
+        side: side.toUpperCase(),
+        type: orderType === "market" ? "MARKET" : "LIMIT",
+        quantity: String(quantity),
+      } as any
+
+      if (price && orderType === "limit") {
+        body.price = String(price)
+      }
+
+      const bodyStr = JSON.stringify(body)
+      const params = { timestamp }
+      const signature = this.generateSignature(method, path, params, bodyStr)
+
+      const sortedKeys = Object.keys(params).sort()
+      const queryString = sortedKeys.map((k) => `${k}=${params[k]}`).join("&")
+
+      const response = await this.rateLimitedFetch(`${baseUrl}${path}?${queryString}&signature=${signature}`, {
+        method: "POST",
+        headers: {
+          "PIONEX-KEY": this.credentials.apiKey,
+          "Content-Type": "application/json",
+        },
+        body: bodyStr,
+      })
+
+      const data = await safeParseResponse(response)
+
+      if (data.error || data.result === false) {
+        throw new Error(`Pionex API error: ${data.error || "Unknown error"}`)
+      }
+
+      const orderId = data.data?.orderId
+      this.log(`✓ Order placed successfully: ${orderId}`)
+      return { success: true, orderId }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to place order: ${errorMsg}`)
+      return { success: false, error: errorMsg }
+    }
+  }
+
+  async cancelOrder(symbol: string, orderId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      this.log(`Cancelling order ${orderId} for ${symbol}`)
+
+      const baseUrl = this.getBaseUrl()
+      const timestamp = Date.now().toString()
+      const method = "DELETE"
+      const path = "/api/v1/trade/order"
+      
+      const body = {
+        orderId,
+      }
+
+      const bodyStr = JSON.stringify(body)
+      const params = { timestamp }
+      const signature = this.generateSignature(method, path, params, bodyStr)
+
+      const sortedKeys = Object.keys(params).sort()
+      const queryString = sortedKeys.map((k) => `${k}=${params[k]}`).join("&")
+
+      const response = await this.rateLimitedFetch(`${baseUrl}${path}?${queryString}&signature=${signature}`, {
+        method: "DELETE",
+        headers: {
+          "PIONEX-KEY": this.credentials.apiKey,
+          "Content-Type": "application/json",
+        },
+        body: bodyStr,
+      })
+
+      const data = await safeParseResponse(response)
+
+      if (data.error || data.result === false) {
+        throw new Error(`Pionex API error: ${data.error || "Unknown error"}`)
+      }
+
+      this.log(`✓ Order cancelled successfully`)
+      return { success: true }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to cancel order: ${errorMsg}`)
+      return { success: false, error: errorMsg }
+    }
+  }
+
+  async getOrder(symbol: string, orderId: string): Promise<any> {
+    try {
+      this.log(`Fetching order ${orderId} for ${symbol}`)
+
+      const baseUrl = this.getBaseUrl()
+      const timestamp = Date.now().toString()
+      const method = "GET"
+      const path = `/api/v1/trade/order?orderId=${orderId}`
+      const params = { timestamp }
+      const signature = this.generateSignature(method, path, params)
+
+      const sortedKeys = Object.keys(params).sort()
+      const queryString = sortedKeys.map((k) => `${k}=${params[k]}`).join("&")
+
+      const response = await this.rateLimitedFetch(`${baseUrl}${path}&${queryString}&signature=${signature}`, {
+        headers: { "PIONEX-KEY": this.credentials.apiKey },
+      })
+
+      const data = await safeParseResponse(response)
+
+      if (data.error || data.result === false) {
+        return null
+      }
+
+      return data.data
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to fetch order: ${errorMsg}`)
+      return null
+    }
+  }
+
+  async getOpenOrders(symbol?: string): Promise<any[]> {
+    try {
+      this.log(`Fetching open orders${symbol ? ` for ${symbol}` : ""}`)
+
+      const baseUrl = this.getBaseUrl()
+      const timestamp = Date.now().toString()
+      const method = "GET"
+      let path = "/api/v1/trade/openOrders"
+      if (symbol) {
+        path += `?symbol=${symbol}`
+      }
+      const params = { timestamp }
+      const signature = this.generateSignature(method, path, params)
+
+      const sortedKeys = Object.keys(params).sort()
+      const queryString = sortedKeys.map((k) => `${k}=${params[k]}`).join("&")
+
+      const response = await this.rateLimitedFetch(`${baseUrl}${path}${symbol ? "&" : "?"}${queryString}&signature=${signature}`, {
+        headers: { "PIONEX-KEY": this.credentials.apiKey },
+      })
+
+      const data = await safeParseResponse(response)
+
+      if (data.error || data.result === false) {
+        return []
+      }
+
+      return data.data || []
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to fetch open orders: ${errorMsg}`)
+      return []
+    }
+  }
+
+  async getOrderHistory(symbol?: string, limit: number = 50): Promise<any[]> {
+    try {
+      this.log(`Fetching order history${symbol ? ` for ${symbol}` : ""} (limit: ${limit})`)
+
+      const baseUrl = this.getBaseUrl()
+      const timestamp = Date.now().toString()
+      const method = "GET"
+      let path = `/api/v1/trade/allOrders?limit=${limit}`
+      if (symbol) {
+        path += `&symbol=${symbol}`
+      }
+      const params = { timestamp }
+      const signature = this.generateSignature(method, path, params)
+
+      const sortedKeys = Object.keys(params).sort()
+      const queryString = sortedKeys.map((k) => `${k}=${params[k]}`).join("&")
+
+      const response = await this.rateLimitedFetch(`${baseUrl}${path}&${queryString}&signature=${signature}`, {
+        headers: { "PIONEX-KEY": this.credentials.apiKey },
+      })
+
+      const data = await safeParseResponse(response)
+
+      if (data.error || data.result === false) {
+        return []
+      }
+
+      return data.data || []
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to fetch order history: ${errorMsg}`)
+      return []
+    }
+  }
+
+  async getPositions(symbol?: string): Promise<any[]> {
+    // Pionex only supports spot trading, no positions/futures
+    this.log("Positions not available for Pionex (spot trading only)")
+    return []
+  }
+
+  async getPosition(symbol: string): Promise<any> {
+    return null
+  }
+
+  async modifyPosition(
+    symbol: string,
+    leverage?: number,
+    marginType?: "cross" | "isolated"
+  ): Promise<{ success: boolean; error?: string }> {
+    return { success: false, error: "Positions not supported on Pionex" }
+  }
+
+  async closePosition(symbol: string, positionSide?: "long" | "short"): Promise<{ success: boolean; error?: string }> {
+    return { success: false, error: "Positions not supported on Pionex" }
+  }
+
+  async getDepositAddress(coin: string): Promise<{ address?: string; error?: string }> {
+    try {
+      this.log(`Fetching deposit address for ${coin}`)
+
+      const baseUrl = this.getBaseUrl()
+      const timestamp = Date.now().toString()
+      const method = "GET"
+      const path = `/api/v1/account/depositAddress?coin=${coin}`
+      const params = { timestamp }
+      const signature = this.generateSignature(method, path, params)
+
+      const sortedKeys = Object.keys(params).sort()
+      const queryString = sortedKeys.map((k) => `${k}=${params[k]}`).join("&")
+
+      const response = await this.rateLimitedFetch(`${baseUrl}${path}&${queryString}&signature=${signature}`, {
+        headers: { "PIONEX-KEY": this.credentials.apiKey },
+      })
+
+      const data = await safeParseResponse(response)
+
+      if (data.error || data.result === false) {
+        throw new Error(`Pionex API error: ${data.error || "Unknown error"}`)
+      }
+
+      const address = data.data?.address
+      this.log(`✓ Deposit address retrieved: ${address?.slice(0, 10)}...`)
+
+      return { address }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to fetch deposit address: ${errorMsg}`)
+      return { error: errorMsg }
+    }
+  }
+
+  async withdraw(coin: string, address: string, amount: number): Promise<{ success: boolean; txId?: string; error?: string }> {
+    try {
+      this.log(`Withdrawing ${amount} ${coin} to ${address.slice(0, 10)}...`)
+
+      const baseUrl = this.getBaseUrl()
+      const timestamp = Date.now().toString()
+      const method = "POST"
+      const path = "/api/v1/account/withdraw"
+      
+      const body = {
+        coin,
+        address,
+        amount: String(amount),
+      }
+
+      const bodyStr = JSON.stringify(body)
+      const params = { timestamp }
+      const signature = this.generateSignature(method, path, params, bodyStr)
+
+      const sortedKeys = Object.keys(params).sort()
+      const queryString = sortedKeys.map((k) => `${k}=${params[k]}`).join("&")
+
+      const response = await this.rateLimitedFetch(`${baseUrl}${path}?${queryString}&signature=${signature}`, {
+        method: "POST",
+        headers: {
+          "PIONEX-KEY": this.credentials.apiKey,
+          "Content-Type": "application/json",
+        },
+        body: bodyStr,
+      })
+
+      const data = await safeParseResponse(response)
+
+      if (data.error || data.result === false) {
+        throw new Error(`Pionex API error: ${data.error || "Unknown error"}`)
+      }
+
+      const txId = data.data?.withdrawId
+      this.log(`✓ Withdrawal initiated: ${txId}`)
+
+      return { success: true, txId }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to withdraw: ${errorMsg}`)
+      return { success: false, error: errorMsg }
+    }
+  }
+
+  async getTransferHistory(limit: number = 50): Promise<any[]> {
+    try {
+      this.log(`Fetching transfer history (limit: ${limit})`)
+
+      const baseUrl = this.getBaseUrl()
+      const timestamp = Date.now().toString()
+      const method = "GET"
+      const path = `/api/v1/account/withdrawHistory?limit=${limit}`
+      const params = { timestamp }
+      const signature = this.generateSignature(method, path, params)
+
+      const sortedKeys = Object.keys(params).sort()
+      const queryString = sortedKeys.map((k) => `${k}=${params[k]}`).join("&")
+
+      const response = await this.rateLimitedFetch(`${baseUrl}${path}&${queryString}&signature=${signature}`, {
+        headers: { "PIONEX-KEY": this.credentials.apiKey },
+      })
+
+      const data = await safeParseResponse(response)
+
+      if (data.error || data.result === false) {
+        return []
+      }
+
+      return data.data || []
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      this.logError(`✗ Failed to fetch transfer history: ${errorMsg}`)
+      return []
+    }
+  }
+
+  async setLeverage(symbol: string, leverage: number): Promise<{ success: boolean; error?: string }> {
+    return { success: false, error: "Leverage not supported on Pionex (spot trading only)" }
+  }
+
+  async setMarginType(symbol: string, marginType: "cross" | "isolated"): Promise<{ success: boolean; error?: string }> {
+    return { success: false, error: "Margin trading not supported on Pionex (spot trading only)" }
+  }
+
+  async setPositionMode(hedgeMode: boolean): Promise<{ success: boolean; error?: string }> {
+    return { success: false, error: "Position mode not supported on Pionex (spot trading only)" }
+  }
 }
