@@ -48,20 +48,36 @@ export function AddActiveConnectionDialog({
       }
 
       const data = await response.json()
-      const allConnections = Array.isArray(data) ? data : (data?.connections || [])
+      console.log("[v0] [Add Dialog] Loaded connections response:", data)
+      
+      // Handle both array and object response formats
+      let allConnections = Array.isArray(data) ? data : (data?.connections || data?.data || [])
+      
+      if (!Array.isArray(allConnections)) {
+        console.error("[v0] [Add Dialog] Invalid connections format:", typeof allConnections)
+        toast.error("Invalid connections format received")
+        return
+      }
+
+      console.log("[v0] [Add Dialog] Total connections loaded:", allConnections.length)
 
       // Filter to ONLY show connections that are:
       // 1. NOT predefined (inserted connections only)
-      // 2. Enabled (is_enabled = true)
-      // 3. Have valid credentials (not placeholders)
-      // 4. NOT already active in dashboard (is_enabled_dashboard = false)
+      // 2. Have valid credentials (api_key exists and is not placeholder)
+      // 3. NOT already active in dashboard (is_enabled_dashboard = false or not set)
       const availableForAdd = allConnections.filter((c: any) => {
-        const isPredefined = c.is_predefined === true || c.is_predefined === "1"
-        const isEnabled = c.is_enabled === true || c.is_enabled === "1"
-        const hasValidCredentials = c.api_key && c.api_key.length > 20 && !c.api_key.includes("PLACEHOLDER")
-        const notAlreadyActive = !(c.is_enabled_dashboard === true || c.is_enabled_dashboard === "1")
+        const isPredefined = c.is_predefined === true || c.is_predefined === "1" || c.is_predefined === "true"
+        const hasValidCredentials = c.api_key && typeof c.api_key === "string" && c.api_key.length > 0 && !c.api_key.includes("PLACEHOLDER")
+        const notAlreadyActive = !(c.is_enabled_dashboard === true || c.is_enabled_dashboard === "1" || c.is_enabled_dashboard === "true")
         
-        return !isPredefined && isEnabled && hasValidCredentials && notAlreadyActive
+        console.log(`[v0] [Add Dialog] Connection ${c.id || c.name}: isPredefined=${isPredefined}, hasCredentials=${hasValidCredentials}, notActive=${notAlreadyActive}`)
+        
+        return !isPredefined && hasValidCredentials && notAlreadyActive
+      })
+
+      console.log("[v0] [Add Dialog] Available connections after filtering:", availableForAdd.length)
+      availableForAdd.forEach((c: any) => {
+        console.log(`[v0] [Add Dialog]   - ${c.id || c.name}: ${c.exchange}`)
       })
 
       setAvailableConnections(availableForAdd)
@@ -157,8 +173,9 @@ export function AddActiveConnectionDialog({
                     <CardTitle className="text-sm">Connection Details</CardTitle>
                   </CardHeader>
                   <CardContent className="text-xs space-y-1">
-                    <div><strong>Name:</strong> {selectedConn.name}</div>
-                    <div><strong>Exchange:</strong> {selectedConn.exchange}</div>
+                    <div><strong>ID:</strong> {selectedConn.id || "—"}</div>
+                    <div><strong>Name:</strong> {selectedConn.name || "—"}</div>
+                    <div><strong>Exchange:</strong> {selectedConn.exchange || "—"}</div>
                     <div><strong>API Type:</strong> {selectedConn.api_type || "perpetual_futures"}</div>
                     <div><strong>Test Status:</strong> {selectedConn.last_test_status === "success" ? "✓ Passed" : "— Not tested"}</div>
                   </CardContent>
