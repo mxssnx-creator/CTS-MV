@@ -90,7 +90,6 @@ export function SystemOverview() {
 
     // Listen for connection toggle events and refresh immediately
     const handleConnectionToggled = () => {
-      console.log("[v0] Connection toggled, refreshing stats...")
       loadStats()
     }
 

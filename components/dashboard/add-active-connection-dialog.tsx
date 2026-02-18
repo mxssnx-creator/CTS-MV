@@ -48,18 +48,14 @@ export function AddActiveConnectionDialog({
       }
 
       const data = await response.json()
-      console.log("[v0] [Add Dialog] Loaded connections response:", data)
       
       // Handle both array and object response formats
       let allConnections = Array.isArray(data) ? data : (data?.connections || data?.data || [])
       
       if (!Array.isArray(allConnections)) {
-        console.error("[v0] [Add Dialog] Invalid connections format:", typeof allConnections)
         toast.error("Invalid connections format received")
         return
       }
-
-      console.log("[v0] [Add Dialog] Total connections loaded:", allConnections.length)
 
       // Filter to ONLY show connections that are:
       // 1. NOT predefined (inserted connections only)
@@ -70,14 +66,7 @@ export function AddActiveConnectionDialog({
         const hasValidCredentials = c.api_key && typeof c.api_key === "string" && c.api_key.length > 0 && !c.api_key.includes("PLACEHOLDER")
         const notAlreadyActive = !(c.is_enabled_dashboard === true || c.is_enabled_dashboard === "1" || c.is_enabled_dashboard === "true")
         
-        console.log(`[v0] [Add Dialog] Connection ${c.id || c.name}: isPredefined=${isPredefined}, hasCredentials=${hasValidCredentials}, notActive=${notAlreadyActive}`)
-        
         return !isPredefined && hasValidCredentials && notAlreadyActive
-      })
-
-      console.log("[v0] [Add Dialog] Available connections after filtering:", availableForAdd.length)
-      availableForAdd.forEach((c: any) => {
-        console.log(`[v0] [Add Dialog]   - ${c.id || c.name}: ${c.exchange}`)
       })
 
       setAvailableConnections(availableForAdd)
