@@ -59,6 +59,10 @@ export async function GET() {
     console.log(`[v0] [System Stats] Total connections: ${allConnections.length}`)
     console.log(`[v0] [System Stats] Active: ${activeConnections.length}, Enabled: ${enabledActiveConnections.length}, Live Trade: ${activeWithLiveTrade.length}(${mainEnginesRunningSuccessfully} running), Preset: ${activeWithPresetTrade.length}(${presetEnginesRunningSuccessfully} running)`)
     
+    // Count only non-predefined connections as "inserted"
+    const predefinedCount = allConnections.filter((c: any) => c.is_predefined).length
+    const storedConnections = allConnections.length - predefinedCount
+
     // Exchange Connections - WORKING status means test succeeded
     // ONLY count from actual stored connections (not predefined templates)
     const workingConnections = allConnections.filter((c: any) => 
@@ -67,12 +71,8 @@ export async function GET() {
     
     const exchangeStatus = 
       workingConnections === 0 ? "down" :
-      workingConnections < (allConnections.length - predefinedCount) / 2 ? "partial" :
+      workingConnections < storedConnections / 2 ? "partial" :
       "healthy"
-
-    // Count only non-predefined connections as "inserted"
-    const predefinedCount = allConnections.filter((c: any) => c.is_predefined).length
-    const storedConnections = allConnections.length - predefinedCount
 
     // Database stats
     const dbStatus = "healthy"
