@@ -13,6 +13,7 @@ import {
   toggleActiveConnection,
   type ActiveConnection 
 } from "@/lib/active-connections"
+import { AddActiveConnectionDialog } from "./add-active-connection-dialog"
 import { Switch } from "@/components/ui/switch"
 import { 
   AlertDialog,
@@ -39,6 +40,7 @@ export function DashboardActiveConnectionsManager() {
   const [settingsConnections, setSettingsConnections] = useState<Record<string, Connection>>({})
   const [loading, setLoading] = useState(true)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [addDialogOpen, setAddDialogOpen] = useState(false)
 
   useEffect(() => {
     loadConnections()
@@ -129,11 +131,32 @@ export function DashboardActiveConnectionsManager() {
 
   return (
     <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="font-semibold text-sm">Active Connections</h3>
+          <p className="text-xs text-muted-foreground">Manage connections actively in use for trading</p>
+        </div>
+        <Button
+          onClick={() => setAddDialogOpen(true)}
+          size="sm"
+          className="gap-1"
+        >
+          <Plus className="h-4 w-4" />
+          Add Connection
+        </Button>
+      </div>
+
+      <AddActiveConnectionDialog
+        open={addDialogOpen}
+        onOpenChange={setAddDialogOpen}
+        onConnectionAdded={() => loadConnections()}
+      />
+
       {activeConnections.length === 0 ? (
         <Card>
           <CardContent className="pt-6 text-center text-muted-foreground">
             <p className="mb-3">No active connections</p>
-            <p className="text-sm text-muted-foreground">Add connections from Settings to start using them.</p>
+            <p className="text-sm text-muted-foreground">Click "Add Connection" to activate connections from Settings.</p>
           </CardContent>
         </Card>
       ) : (
