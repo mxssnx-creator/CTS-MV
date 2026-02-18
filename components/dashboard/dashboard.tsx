@@ -251,6 +251,25 @@ export function Dashboard() {
     }
   }
 
+  const handleDeleteConnection = async (id: string) => {
+    try {
+      const response = await fetch(`/api/settings/connections/${id}`, {
+        method: "DELETE",
+      })
+
+      if (response.ok) {
+        toast.success("Connection deleted successfully")
+        await loadExchangeConnectionsActive()
+      } else {
+        const error = await response.json()
+        toast.error(error.details || error.error || "Failed to delete connection")
+      }
+    } catch (error) {
+      console.error("[v0] Failed to delete connection:", error)
+      toast.error("Failed to delete connection")
+    }
+  }
+
   return (
     <div className="flex-1 space-y-6 p-6">
       {/* Header */}
