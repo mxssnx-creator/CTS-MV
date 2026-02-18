@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, AlertCircle } from "lucide-react"
 import { toast } from "@/lib/simple-toast"
+import { addActiveConnection } from "@/lib/active-connections"
 
 interface AddActiveConnectionDialogProps {
   open: boolean
@@ -24,7 +25,7 @@ export function AddActiveConnectionDialog({
   onSuccess,
 }: AddActiveConnectionDialogProps) {
   const [selectedConnection, setSelectedConnection] = useState<string>("")
-  const [enabledConnections, setEnabledConnections] = useState<any[]>([])
+  const [availableConnections, setAvailableConnections] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [adding, setAdding] = useState(false)
 
@@ -47,23 +48,26 @@ export function AddActiveConnectionDialog({
       }
 
       const data = await response.json()
-      const allConnections = data.connections || []
+      const allConnections = Array.isArray(data) ? data : (data?.connections || [])
 
       // Filter to ONLY show connections that are:
-      // 1. Enabled (is_enabled = true)
-      // 2. Have REAL credentials (not placeholders)
-      // 3. NOT already active on dashboard
-      const configuredConnections = allConnections.filter((c: any) => {
-        const isEnabled = c.is_enabled === "1" || c.is_enabled === true
-        const hasRealCredentials = c.api_key && c.api_key.length > 0 && !c.api_key.includes("PLACEHOLDER")
-        const isAlreadyActive = c.is_enabled_dashboard === "1" || c.is_enabled_dashboard === true
-        return isEnabled && hasRealCredentials && !isAlreadyActive
+      // 1. NOT predefined (inserted connections only)
+      // 2. Enabled (is_enabled = true)
+      // 3. Have valid credentials (not placeholders)
+      // 4. NOT already active in dashboard (is_enabled_dashboard = false)
+      const availableForAdd = allConnections.filter((c: any) => {
+        const isPredefined = c.is_predefined === true || c.is_predefined === "1"
+        const isEnabled = c.is_enabled === true || c.is_enabled === "1"
+        const hasValidCredentials = c.api_key && c.api_key.length > 20 && !c.api_key.includes("PLACEHOLDER")
+        const notAlreadyActive = !(c.is_enabled_dashboard === true || c.is_enabled_dashboard === "1")
+        
+        return !isPredefined && isEnabled && hasValidCredentials && notAlreadyActive
       })
 
-      setEnabledConnections(configuredConnections)
+      setAvailableConnections(availableForAdd)
 
-      if (configuredConnections.length > 0 && !selectedConnection) {
-        setSelectedConnection(configuredConnections[0].id || "")
+      if (availableForAdd.length > 0 && !selectedConnection) {
+        setSelectedConnection(availableForAdd[0].id || "")
       }
     } catch (error) {
       console.error("[v0] Error loading connections:", error)
@@ -79,7 +83,7 @@ export function AddActiveConnectionDialog({
       return
     }
 
-    const connection = enabledConnections.find((c: any) => c.id === selectedConnection)
+    const connection = availableConnections.find((c: any) => c.id === selectedConnection)
     if (!connection) {
       toast.error("Connection not found")
       return
@@ -87,17 +91,8 @@ export function AddActiveConnectionDialog({
 
     setAdding(true)
     try {
-      // Add to active connections via the active endpoint
-      const response = await fetch(`/api/settings/connections/${selectedConnection}/active`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      })
-
-      if (!response.ok) {
-        const err = await response.json()
-        toast.error(err.error || "Failed to add connection")
-        return
-      }
+      // Use the active-connections library function instead of API endpoint
+      await addActiveConnection(selectedConnection, connection.exchange)
 
       toast.success(`${connection.name} added to active list`)
 
@@ -110,15 +105,15 @@ export function AddActiveConnectionDialog({
 
       onOpenChange(false)
       setSelectedConnection("")
-    } catch (error) {
+    } catch (error: any) {
       console.error("[v0] Error adding connection:", error)
-      toast.error("Failed to add connection")
+      toast.error(error.message || "Failed to add connection")
     } finally {
       setAdding(false)
     }
   }
 
-  const selectedConn = enabledConnections.find((c: any) => c.id === selectedConnection)
+  const selectedConn = availableConnections.find((c: any) => c.id === selectedConnection)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -126,7 +121,7 @@ export function AddActiveConnectionDialog({
         <DialogHeader>
           <DialogTitle>Add Connection to Active List</DialogTitle>
           <DialogDescription>
-            Select an enabled connection with valid credentials to add to your active trading dashboard.
+            Select an inserted and enabled connection with valid credentials to add to your active trading dashboard.
           </DialogDescription>
         </DialogHeader>
 
@@ -136,18 +131,18 @@ export function AddActiveConnectionDialog({
               <Loader2 className="h-4 w-4 animate-spin mr-2" />
               Loading connections...
             </div>
-          ) : enabledConnections.length > 0 ? (
+          ) : availableConnections.length > 0 ? (
             <>
               <div className="space-y-2">
                 <Label htmlFor="connection-select" className="font-medium text-sm">
-                  Available Connections
+                  Available Connections (Inserted & Enabled)
                 </Label>
                 <Select value={selectedConnection} onValueChange={setSelectedConnection}>
                   <SelectTrigger id="connection-select">
                     <SelectValue placeholder="Select a connection..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {enabledConnections.map((conn: any) => (
+                    {availableConnections.map((conn: any) => (
                       <SelectItem key={conn.id} value={conn.id || ""}>
                         {conn.name} ({conn.exchange})
                       </SelectItem>
@@ -164,7 +159,8 @@ export function AddActiveConnectionDialog({
                   <CardContent className="text-xs space-y-1">
                     <div><strong>Name:</strong> {selectedConn.name}</div>
                     <div><strong>Exchange:</strong> {selectedConn.exchange}</div>
-                    <div><strong>Test Status:</strong> {selectedConn.last_test_status === "success" ? "Passed" : "Not tested"}</div>
+                    <div><strong>API Type:</strong> {selectedConn.api_type || "perpetual_futures"}</div>
+                    <div><strong>Test Status:</strong> {selectedConn.last_test_status === "success" ? "✓ Passed" : "— Not tested"}</div>
                   </CardContent>
                 </Card>
               )}
@@ -173,9 +169,9 @@ export function AddActiveConnectionDialog({
                 <CardContent className="pt-4 text-xs">
                   <p className="text-blue-900 font-semibold mb-2">About Active List:</p>
                   <ul className="text-blue-800 space-y-1">
-                    <li>Added in inactive state (toggle off)</li>
-                    <li>Enable Live Trade toggle to start Main Engine</li>
-                    <li>Enable Preset Trade toggle to start Preset Engine</li>
+                    <li>• Added in inactive state (toggle off)</li>
+                    <li>• Enable Live Trade toggle to start Main Engine</li>
+                    <li>• Enable Preset Trade toggle to start Preset Engine</li>
                   </ul>
                 </CardContent>
               </Card>
@@ -188,7 +184,7 @@ export function AddActiveConnectionDialog({
                   <div className="text-sm text-yellow-800">
                     <p className="font-medium mb-1">No Available Connections</p>
                     <p className="text-xs">
-                      All enabled connections are already active, or no connections have been configured with credentials in Settings.
+                      Only inserted connections (not predefined templates) that are enabled with valid credentials can be added.
                     </p>
                   </div>
                 </div>
@@ -203,7 +199,7 @@ export function AddActiveConnectionDialog({
           </Button>
           <Button
             onClick={handleAdd}
-            disabled={!selectedConnection || adding || enabledConnections.length === 0}
+            disabled={!selectedConnection || adding || availableConnections.length === 0}
           >
             {adding ? (
               <>
