@@ -808,7 +808,8 @@ export default function ExchangeConnectionManager() {
                   // Show logs
                 }}
                 onTestConnection={(logs) => {
-                  // Connection tested
+                  // Refresh connections after test to show updated balance
+                  loadConnections()
                 }}
                 isNewlyAdded={recentlyInsertedBase.has(conn.id)}
               />
