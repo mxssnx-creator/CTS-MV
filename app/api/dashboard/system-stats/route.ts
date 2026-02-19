@@ -30,16 +30,23 @@ export async function GET() {
     const activeWithPresetTrade = enabledActiveConnections.filter((c: any) => c.is_preset_trade === "1" || c.is_preset_trade === true)
     
     // Check actual engine status for active connections with Live Trade
+    // Uses 3 detection methods: in-memory manager, Redis running flag, recent heartbeat
     let mainEnginesRunningSuccessfully = 0
     for (const conn of activeWithLiveTrade) {
       const manager = coordinator.getEngineManager(conn.id)
-      if (manager) {
-        // Check if there are any errors
-        const stateKey = `trade_engine_state:${conn.id}`
-        const state = await client.hgetall(stateKey)
-        if (!state?.error) {
-          mainEnginesRunningSuccessfully++
-        }
+      const isRunningFlag = await client.get(`engine_is_running:${conn.id}`)
+      const stateKey = `trade_engine_state:${conn.id}`
+      const state = await client.hgetall(stateKey)
+      
+      const managerExists = !!manager
+      const redisRunning = isRunningFlag === "true" || isRunningFlag === "1"
+      const lastIndication = state?.last_indication_run ? new Date(state.last_indication_run) : null
+      const recentlyActive = lastIndication ? (Date.now() - lastIndication.getTime()) < 10000 : false
+      
+      const isActuallyRunning = (managerExists || redisRunning || recentlyActive) && !state?.error_message
+      
+      if (isActuallyRunning) {
+        mainEnginesRunningSuccessfully++
       }
     }
     
@@ -47,12 +54,19 @@ export async function GET() {
     let presetEnginesRunningSuccessfully = 0
     for (const conn of activeWithPresetTrade) {
       const manager = coordinator.getEngineManager(conn.id)
-      if (manager) {
-        const stateKey = `trade_engine_state:${conn.id}`
-        const state = await client.hgetall(stateKey)
-        if (!state?.error) {
-          presetEnginesRunningSuccessfully++
-        }
+      const isRunningFlag = await client.get(`engine_is_running:${conn.id}`)
+      const stateKey = `trade_engine_state:${conn.id}`
+      const state = await client.hgetall(stateKey)
+      
+      const managerExists = !!manager
+      const redisRunning = isRunningFlag === "true" || isRunningFlag === "1"
+      const lastIndication = state?.last_indication_run ? new Date(state.last_indication_run) : null
+      const recentlyActive = lastIndication ? (Date.now() - lastIndication.getTime()) < 10000 : false
+      
+      const isActuallyRunning = (managerExists || redisRunning || recentlyActive) && !state?.error_message
+      
+      if (isActuallyRunning) {
+        presetEnginesRunningSuccessfully++
       }
     }
     

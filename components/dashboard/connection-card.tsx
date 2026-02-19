@@ -643,13 +643,23 @@ export function ConnectionCard({
     try {
       const response = await fetch(`/api/settings/connections/${connection.id}/test`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          api_type: connection.api_type || "perpetual_futures",
+          api_key: connection.api_key,
+          api_secret: connection.api_secret,
+          api_passphrase: connection.api_passphrase || "",
+          is_testnet: connection.is_testnet || false,
+          connection_method: connection.connection_method,
+          connection_library: connection.connection_library,
+        }),
       })
 
       const data = await response.json()
 
       if (response.ok) {
         setTestResult({ success: true, ...data })
-        toast.success(`Connection successful! Balance: ${data.balance?.toFixed(2)} USDT`)
+        toast.success(`Connection successful! Balance: ${data.balance?.toFixed(2)} USDT (${data.apiType || connection.api_type || "futures"})`)
       } else {
         setTestResult({ success: false, error: data.details || data.error })
         toast.error(data.details || data.error || "Connection test failed")
@@ -749,7 +759,12 @@ export function ConnectionCard({
 
           <div className="text-center shrink-0">
             <div className="text-xs text-muted-foreground">Balance</div>
-            <div className="text-sm font-bold">${balance.toFixed(2)}</div>
+            <div className="text-sm font-bold">
+              ${(testResult?.balance ?? balance ?? parseFloat(connection.last_test_balance as any) || 0).toFixed(2)}
+            </div>
+            {connection.api_type && (
+              <div className="text-[10px] text-muted-foreground uppercase">{connection.api_type}</div>
+            )}
           </div>
 
           <div className="flex gap-1 shrink-0">

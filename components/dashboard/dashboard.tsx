@@ -316,12 +316,15 @@ export function Dashboard() {
                   onDelete={handleDeleteConnection}
                   isActive={exchangeConnectionsActiveStatus.get(connection.id) ?? false}
                   onToggleActive={() => toggleExchangeConnectionsActiveStatus(connection.id)}
+                  balance={parseFloat(connection.last_test_balance as any) || 0}
                   status={
-                    !connection.is_enabled
+                    !(connection.is_enabled === true || (connection.is_enabled as any) === "1" || (connection.is_enabled as any) === "true")
                       ? "disabled"
-                      : connection.is_live_trade
+                      : connection.last_test_status === "success"
                         ? "connected"
-                        : "connecting"
+                        : connection.last_test_status === "failed"
+                          ? "error"
+                          : "connecting"
                   }
                 />
               ))}

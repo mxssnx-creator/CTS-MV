@@ -153,12 +153,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       testLog.push(`[${new Date().toISOString()}] BTC Price: $${result.btcPrice.toFixed(2)}`)
     }
 
+    const testedApiType = body.api_type || connection.api_type || "perpetual_futures"
     await updateConnection(id, {
       ...connection,
       last_test_status: "success",
-      last_test_balance: result.balance,
+      last_test_balance: String(result.balance),
       last_test_log: JSON.stringify(testLog),
       last_test_at: new Date().toISOString(),
+      api_type: testedApiType,
       api_capabilities: JSON.stringify(result.capabilities || []),
       updated_at: new Date().toISOString(),
     })
