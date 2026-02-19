@@ -31,9 +31,11 @@ export async function GET(request: NextRequest) {
             margin_type: predefined.marginType || "cross",
             position_mode: predefined.positionMode || "hedge",
             is_testnet: false,
-            is_enabled: true,
-            is_enabled_dashboard: false,
+            is_enabled: false, // Disabled by default (user must enable in Settings)
+            is_enabled_dashboard: false, // Not in active connections by default
             is_predefined: true,
+            is_live_trade: false, // Main engine disabled by default
+            is_preset_trade: false, // Preset engine disabled by default
             api_key: predefined.apiKey || "",
             api_secret: predefined.apiSecret || "",
             api_passphrase: "",
