@@ -760,10 +760,14 @@ export function ConnectionCard({
           <div className="text-center shrink-0">
             <div className="text-xs text-muted-foreground">Balance</div>
             <div className="text-sm font-bold">
-              ${(testResult?.balance ?? balance ?? parseFloat(connection.last_test_balance as any) || 0).toFixed(2)}
+              {"$"}{(() => {
+                const bal = testResult?.balance ?? (balance || 0);
+                const parsed = typeof bal === "number" ? bal : (parseFloat(String(connection.last_test_balance)) || 0);
+                return parsed.toFixed(2);
+              })()}
             </div>
             {connection.api_type && (
-              <div className="text-[10px] text-muted-foreground uppercase">{connection.api_type}</div>
+              <div className="text-[10px] text-muted-foreground uppercase">{String(connection.api_type).replace(/_/g, " ")}</div>
             )}
           </div>
 
