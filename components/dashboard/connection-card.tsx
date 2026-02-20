@@ -283,10 +283,10 @@ export function ConnectionCard({
       }
     }
 
-    if (showPresetConfig) {
+    if (showSettings || showPresetConfig) {
       loadPresetConfig()
     }
-  }, [showPresetConfig, selectedPresetType])
+  }, [showSettings, showPresetConfig, selectedPresetType])
 
   useEffect(() => {
     const loadVolumeFactors = async () => {
@@ -748,7 +748,7 @@ export function ConnectionCard({
             </div>
 
             <div className="flex items-center gap-2">
-              <span className="text-xs font-medium whitespace-nowrap">Preset Trade</span>
+              <span className="text-xs font-medium whitespace-nowrap">Preset Mode</span>
               <Switch
                 checked={presetTradeEnabled}
                 onCheckedChange={handlePresetTradeToggle}
@@ -772,16 +772,17 @@ export function ConnectionCard({
           </div>
 
           <div className="flex gap-1 shrink-0">
-            <Dialog open={showSettings} onOpenChange={setShowSettings}>
+            {/* Info Button - shows connection details */}
+            <Dialog open={showInfo} onOpenChange={setShowInfo}>
               <DialogTrigger asChild>
-                <Button variant="outline" size="sm" className="h-8 w-8 p-0 bg-transparent">
-                  <Settings className="h-3.5 w-3.5 text-blue-600" />
+                <Button variant="outline" size="sm" className="h-8 w-8 p-0 bg-transparent" title="Connection Info">
+                  <Info className="h-3.5 w-3.5 text-muted-foreground" />
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle className="text-base">Settings - {connection.name}</DialogTitle>
-                  <DialogDescription>View and configure connection parameters and trading settings.</DialogDescription>
+                  <DialogTitle className="text-base">Connection Info - {connection.name}</DialogTitle>
+                  <DialogDescription>Connection parameters and current trading configuration.</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-3">
@@ -840,7 +841,7 @@ export function ConnectionCard({
                         <span className="text-xs font-semibold">{connectionInfo.liveTradeVolumeFactor.toFixed(1)}</span>
                       </div>
                       <div className="flex items-center justify-between p-1.5 bg-muted rounded">
-                        <span className="text-xs">Preset Trade</span>
+                        <span className="text-xs">Preset Mode</span>
                         <span className="text-xs font-semibold">{connectionInfo.presetTradeVolumeFactor.toFixed(1)}</span>
                       </div>
                     </div>
@@ -894,77 +895,81 @@ export function ConnectionCard({
                   </div>
                 </div>
                 <div className="flex gap-2 mt-4">
-                  <Button variant="outline" className="flex-1" onClick={() => setShowSettings(false)}>
+                  <Button variant="outline" className="flex-1" onClick={() => setShowInfo(false)}>
                     Close
                   </Button>
                 </div>
               </DialogContent>
             </Dialog>
 
-            <Dialog open={showPresetConfig} onOpenChange={setShowPresetConfig}>
+            {/* Settings Button - configurable parameters */}
+            <Dialog open={showSettings} onOpenChange={setShowSettings}>
               <DialogTrigger asChild>
-                <Button variant="outline" size="sm" className="h-8 w-8 p-0 bg-transparent">
+                <Button variant="outline" size="sm" className="h-8 w-8 p-0 bg-transparent" title="Connection Settings">
                   <Settings className="h-3.5 w-3.5 text-blue-600" />
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-md">
+              <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle className="text-base">Preset Configuration</DialogTitle>
-                  <DialogDescription>Configure volume factor, risk level, and trading preset parameters.</DialogDescription>
+                  <DialogTitle className="text-base">Settings - {connection.name}</DialogTitle>
+                  <DialogDescription>Configure volume factor, risk level, and trading parameters.</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Volume Factor</label>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      min="0.1"
-                      max="10"
-                      value={presetConfig.volumeFactor}
-                      onChange={(e) =>
-                        setPresetConfig({ ...presetConfig, volumeFactor: Number.parseFloat(e.target.value) })
-                      }
-                      className="h-9"
-                    />
-                    <p className="text-xs text-muted-foreground">Multiplier for trade volume (0.1 - 10.0)</p>
-                  </div>
+                  {/* Preset Configuration Section (when preset is active) */}
+                  {presetTradeEnabled && (
+                    <div className="space-y-3 p-3 border rounded-lg bg-muted/30">
+                      <div className="text-sm font-medium">Preset Mode Configuration</div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium">Volume Factor</label>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          min="0.1"
+                          max="10"
+                          value={presetConfig.volumeFactor}
+                          onChange={(e) =>
+                            setPresetConfig({ ...presetConfig, volumeFactor: Number.parseFloat(e.target.value) })
+                          }
+                          className="h-9"
+                        />
+                        <p className="text-[10px] text-muted-foreground">Multiplier for trade volume (0.1 - 10.0)</p>
+                      </div>
 
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Profit Factor Minimum</label>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      min="0.1"
-                      max="5"
-                      value={presetConfig.profitFactorMin}
-                      onChange={(e) =>
-                        setPresetConfig({ ...presetConfig, profitFactorMin: Number.parseFloat(e.target.value) })
-                      }
-                      className="h-9"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Minimum profit factor required for trades (0.1 - 5.0)
-                    </p>
-                  </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium">Profit Factor Minimum</label>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          min="0.1"
+                          max="5"
+                          value={presetConfig.profitFactorMin}
+                          onChange={(e) =>
+                            setPresetConfig({ ...presetConfig, profitFactorMin: Number.parseFloat(e.target.value) })
+                          }
+                          className="h-9"
+                        />
+                      </div>
 
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Max Drawdown Time (hours)</label>
-                    <Input
-                      type="number"
-                      step="1"
-                      min="1"
-                      max="168"
-                      value={presetConfig.maxDrawdownTime}
-                      onChange={(e) =>
-                        setPresetConfig({ ...presetConfig, maxDrawdownTime: Number.parseInt(e.target.value) })
-                      }
-                      className="h-9"
-                    />
-                    <p className="text-xs text-muted-foreground">Maximum time allowed in drawdown (1 - 168 hours)</p>
-                  </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium">Max Drawdown Time (hours)</label>
+                        <Input
+                          type="number"
+                          step="1"
+                          min="1"
+                          max="168"
+                          value={presetConfig.maxDrawdownTime}
+                          onChange={(e) =>
+                            setPresetConfig({ ...presetConfig, maxDrawdownTime: Number.parseInt(e.target.value) })
+                          }
+                          className="h-9"
+                        />
+                      </div>
+                    </div>
+                  )}
 
+                  {/* Strategy Toggles */}
                   <div className="space-y-3">
-                    <label className="text-sm font-medium">Strategy Toggles</label>
+                    <div className="text-sm font-medium">Strategy Toggles</div>
 
                     <div className="flex items-center justify-between p-2 bg-muted rounded">
                       <span className="text-sm">Trailing Stop</span>
@@ -995,12 +1000,12 @@ export function ConnectionCard({
                     <Button
                       variant="outline"
                       className="flex-1 bg-transparent"
-                      onClick={() => setShowPresetConfig(false)}
+                      onClick={() => setShowSettings(false)}
                     >
                       Cancel
                     </Button>
-                    <Button className="flex-1" onClick={savePresetConfig}>
-                      Save Configuration
+                    <Button className="flex-1" onClick={() => { savePresetConfig(); setShowSettings(false) }}>
+                      Save Settings
                     </Button>
                   </div>
                 </div>
@@ -1010,18 +1015,9 @@ export function ConnectionCard({
             <Button
               variant="outline"
               size="sm"
-              className="h-8 w-8 p-0 bg-transparent"
-              title="Edit settings in Settings > Overall > Connection"
-              disabled
-            >
-              <Settings className="h-3.5 w-3.5" />
-            </Button>
-
-            <Button
-              variant="outline"
-              size="sm"
               onClick={() => onDelete(connection.id)}
               className="text-red-600 hover:text-red-700 h-8 w-8 p-0"
+              title="Delete connection"
             >
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
@@ -1050,7 +1046,7 @@ export function ConnectionCard({
 
             <div className="space-y-2">
               <Label htmlFor={`volume-preset-${connection.id}`} className="text-xs font-medium">
-                Preset Trade Volume Factor
+                Preset Mode Volume Factor
               </Label>
               <div className="flex items-center gap-3">
                 <Slider

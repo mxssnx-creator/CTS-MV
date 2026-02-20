@@ -41,13 +41,13 @@ interface SystemStats {
 export function SystemOverview() {
   const [stats, setStats] = useState<SystemStats>({
     tradeEngines: {
-      globalStatus: "running",
-      mainStatus: "running",
+      globalStatus: "idle",
+      mainStatus: "idle",
       presetStatus: "idle",
-      totalEnabled: 2,
+      totalEnabled: 0,
     },
     database: {
-      status: "healthy",
+      status: "loading",
       requestsPerSecond: 0,
     },
     exchangeConnections: {
@@ -116,7 +116,12 @@ export function SystemOverview() {
         return "bg-gray-100 text-gray-600 border-gray-200"
       case "failed":
       case "error":
+      case "down":
         return "bg-red-100 text-red-900 border-red-200"
+      case "loading":
+        return "bg-blue-50 text-blue-600 border-blue-200"
+      case "partial":
+        return "bg-yellow-100 text-yellow-800 border-yellow-200"
       default:
         return "bg-blue-100 text-blue-900 border-blue-200"
     }
@@ -133,7 +138,12 @@ export function SystemOverview() {
         return "border-l-gray-400"
       case "failed":
       case "error":
+      case "down":
         return "border-l-red-500"
+      case "loading":
+        return "border-l-blue-400"
+      case "partial":
+        return "border-l-yellow-500"
       default:
         return "border-l-blue-500"
     }
@@ -275,7 +285,7 @@ export function SystemOverview() {
                 <span className="font-semibold text-blue-600">{stats.activeConnections.liveTrade}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Preset</span>
+                <span className="text-muted-foreground">Preset Mode</span>
                 <span className="font-semibold text-purple-600">{stats.activeConnections.presetTrade}</span>
               </div>
             </div>
