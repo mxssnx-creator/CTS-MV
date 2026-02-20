@@ -37,22 +37,16 @@ export async function initializeTradeEngineAutoStart(): Promise<void> {
       return
     }
 
-    // Log connection details for debugging
-    console.log("[v0] [Auto-Start] Connection Status Summary:")
-    connections.forEach(conn => {
-      const enabled = conn.is_enabled === true || conn.is_enabled === "true" || conn.is_enabled === "1"
-      const activelyUsing = conn.is_enabled_dashboard === true || conn.is_enabled_dashboard === "1"
-      console.log(`  → ${conn.name}: enabled=${enabled}, activelyUsing=${activelyUsing}`)
-    })
-
-    // Filter for ENABLED connections (independent from Active list)
-    // Trade engines run based on Settings enabled status, not active list visibility
+    // Filter for connections that are INSERTED (user-configured) AND ENABLED
+    // Predefined connections are just templates and must NOT be auto-started
     const enabledConnections = connections.filter((c) => {
+      const isInserted = c.is_inserted === true || c.is_inserted === "true" || c.is_inserted === "1"
       const isEnabled = c.is_enabled === true || c.is_enabled === "true" || c.is_enabled === "1"
-      return isEnabled
+      const hasValidKey = c.api_key && c.api_key.length >= 20 && !c.api_key.includes("PLACEHOLDER")
+      return isInserted && isEnabled && hasValidKey
     })
 
-    console.log(`[v0] [Auto-Start] Found ${enabledConnections.length} ENABLED connections (ready for trade engines)`)
+    console.log(`[v0] [Auto-Start] Found ${enabledConnections.length} eligible connections (inserted + enabled + valid keys) out of ${connections.length} total`)
 
     if (enabledConnections.length === 0) {
       console.log("[v0] [Auto-Start] No enabled connections - monitoring for changes...")
@@ -62,9 +56,9 @@ export async function initializeTradeEngineAutoStart(): Promise<void> {
     }
 
     const settings = await loadSettingsAsync()
-    const indicationInterval = settings.mainEngineIntervalMs ? settings.mainEngineIntervalMs / 1000 : 5
-    const strategyInterval = settings.strategyUpdateIntervalMs ? settings.strategyUpdateIntervalMs / 1000 : 10
-    const realtimeInterval = settings.realtimeIntervalMs ? settings.realtimeIntervalMs / 1000 : 3
+    const indicationInterval = settings.mainEngineIntervalMs ? settings.mainEngineIntervalMs / 1000 : 1
+    const strategyInterval = settings.strategyUpdateIntervalMs ? settings.strategyUpdateIntervalMs / 1000 : 1
+    const realtimeInterval = settings.realtimeIntervalMs ? settings.realtimeIntervalMs / 1000 : 0.2
 
     let successCount = 0
 
@@ -111,10 +105,12 @@ function startConnectionMonitoring(): void {
         return
       }
 
-      // Filter by ENABLED status (Settings) - independent from Active list
+      // Filter for INSERTED + ENABLED + valid API keys only
       const enabledConnections = connections.filter((c) => {
+        const isInserted = c.is_inserted === true || c.is_inserted === "true" || c.is_inserted === "1"
         const isEnabled = c.is_enabled === true || c.is_enabled === "true" || c.is_enabled === "1"
-        return isEnabled
+        const hasValidKey = c.api_key && c.api_key.length >= 20 && !c.api_key.includes("PLACEHOLDER")
+        return isInserted && isEnabled && hasValidKey
       })
 
       // If enabled connection count changed, log it
@@ -144,9 +140,9 @@ function startConnectionMonitoring(): void {
             if (connection.api_key && connection.api_secret) {
               await coordinator.startEngine(connection.id, {
                 connectionId: connection.id,
-                indicationInterval: settings.mainEngineIntervalMs ? settings.mainEngineIntervalMs / 1000 : 5,
-                strategyInterval: settings.strategyUpdateIntervalMs ? settings.strategyUpdateIntervalMs / 1000 : 10,
-                realtimeInterval: settings.realtimeIntervalMs ? settings.realtimeIntervalMs / 1000 : 3,
+                indicationInterval: settings.mainEngineIntervalMs ? settings.mainEngineIntervalMs / 1000 : 1,
+                strategyInterval: settings.strategyUpdateIntervalMs ? settings.strategyUpdateIntervalMs / 1000 : 1,
+                realtimeInterval: settings.realtimeIntervalMs ? settings.realtimeIntervalMs / 1000 : 0.2,
               })
 
               console.log(`[v0] [Monitor] ✓ Trade engine auto-started: ${connection.name}`)

@@ -9,7 +9,16 @@ export async function GET() {
 
     const client = getRedisClient()
     const coordinator = getGlobalTradeEngineCoordinator()
-    const connections = await getAllConnections()
+    const allConnections = await getAllConnections()
+
+    // Only process connections that are NOT predefined AND are inserted by the user
+    // Predefined template connections must NEVER appear as running engines
+    const connections = allConnections.filter((c: any) => {
+      const isPredefined = c.is_predefined === true || c.is_predefined === "true" || c.is_predefined === "1" || c.is_predefined === 1
+      if (isPredefined) return false
+      const isInserted = c.is_inserted === true || c.is_inserted === "true" || c.is_inserted === "1" || c.is_inserted === 1
+      return isInserted
+    })
 
     let running = 0
     let totalTrades = 0
@@ -77,8 +86,14 @@ export async function GET() {
       })
     )
 
+    const isGloballyRunning = coordinator.isRunning()
+    const isGloballyPaused = coordinator.isPausedState()
+
     return NextResponse.json({
       success: true,
+      running: isGloballyRunning,
+      paused: isGloballyPaused,
+      status: isGloballyRunning ? (isGloballyPaused ? "paused" : "running") : "stopped",
       connections: statuses,
       summary: {
         total: connections.length,

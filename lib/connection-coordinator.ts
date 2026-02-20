@@ -153,23 +153,35 @@ export class ConnectionCoordinator {
   }
 
   /**
-   * Check if a connection has valid (non-placeholder) API credentials
+   * Check if a connection has valid (non-placeholder) API credentials.
+   * Predefined connections are ALWAYS considered invalid for API calls
+   * unless they have been explicitly inserted by the user.
    */
-  private hasValidCredentials(conn: Connection): boolean {
+  private hasValidCredentials(conn: any): boolean {
+    // Predefined connections never have real API keys - always skip
+    const isPredefined = conn.is_predefined === true || conn.is_predefined === "true" || conn.is_predefined === "1" || conn.is_predefined === 1
+    if (isPredefined) return false
+
+    // Must be explicitly inserted by the user
+    const isInserted = conn.is_inserted === true || conn.is_inserted === "true" || conn.is_inserted === "1" || conn.is_inserted === 1
+    if (!isInserted) return false
+
     const key = conn.api_key
-    if (!key || key === "" || key.length < 20) return false
+    if (!key || key === "" || key.length < 16) return false
     if (key.includes("PLACEHOLDER") || key.includes("00998877") || key.startsWith("test")) return false
-    if (conn.is_predefined && !conn.is_enabled) return false
     return true
   }
 
   /**
    * Perform health checks on all active connections
-   * Only checks connections that are inserted, enabled, AND have valid API credentials
+   * Only checks connections that are user-inserted, enabled, AND have valid API credentials
    */
   private async performHealthChecks(): Promise<void> {
     const eligible = Array.from(this.connections.values())
-      .filter((conn) => conn.is_enabled && this.hasValidCredentials(conn))
+      .filter((conn: any) => {
+        const isEnabled = conn.is_enabled === true || conn.is_enabled === "true" || conn.is_enabled === "1"
+        return isEnabled && this.hasValidCredentials(conn)
+      })
 
     if (eligible.length === 0) return
 
