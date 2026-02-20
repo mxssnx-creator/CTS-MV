@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { getRedisClient, initRedis, getAllConnections } from "@/lib/redis-db"
+import { getRedisClient, initRedis, getInsertedAndEnabledConnections } from "@/lib/redis-db"
 import { getGlobalTradeEngineCoordinator } from "@/lib/trade-engine"
 import { ProgressionStateManager } from "@/lib/progression-state-manager"
 
@@ -9,15 +9,11 @@ export async function GET() {
 
     const client = getRedisClient()
     const coordinator = getGlobalTradeEngineCoordinator()
-    const allConnections = await getAllConnections()
+    
+    // ONLY process connections that are BOTH inserted AND enabled
+    const connections = await getInsertedAndEnabledConnections()
 
-    // ONLY return status for connections that are ACTIVE on dashboard
-    const connections = allConnections.filter((c: any) => {
-      const isActive = c.is_enabled_dashboard === true || c.is_enabled_dashboard === "true" || c.is_enabled_dashboard === "1"
-      return isActive
-    })
-
-    console.log(`[v0] [Status] Filtering from ${allConnections.length} total to ${connections.length} active connections on dashboard`)
+    console.log(`[v0] [Status] Processing ${connections.length} eligible (inserted + enabled) connections`)
 
     let running = 0
     let totalTrades = 0
@@ -27,7 +23,6 @@ export async function GET() {
     const statuses = await Promise.all(
       connections.map(async (connection: any) => {
         try {
-          // Check multiple state keys for running status
           const tradeEngineStateKey = `trade_engine_state:${connection.id}`
           const engineIsRunningKey = `engine_is_running:${connection.id}`
 
@@ -35,10 +30,6 @@ export async function GET() {
           const isRunningValue = await (client as any).get(engineIsRunningKey)
           const manager = coordinator.getEngineManager(connection.id)
 
-          // Engine is running if ANY of these indicators show true:
-          // 1. Manager exists in coordinator (in-memory check)
-          // 2. Redis flag says it's running
-          // 3. State shows recent indication activity (within 10 seconds, since heartbeat runs every 2s)
           const managerExists = manager !== undefined
           const redisRunning = isRunningValue === "true" || isRunningValue === "1"
           
@@ -46,8 +37,6 @@ export async function GET() {
           const recentlyActive = lastIndication ? (Date.now() - lastIndication.getTime()) < 10000 : false
 
           const actuallyRunning = managerExists || redisRunning || recentlyActive
-
-          console.log(`[v0] [Status] ${connection.id}: managerExists=${managerExists}, redisRunning=${redisRunning}, recentlyActive=${recentlyActive} (lastIndication=${lastIndication?.toISOString()}), result=${actuallyRunning}`)
 
           if (actuallyRunning) running++
 
@@ -65,8 +54,8 @@ export async function GET() {
             id: connection.id,
             name: connection.name,
             exchange: connection.exchange,
-            enabled: connection.is_enabled === true || connection.is_enabled === "true" || connection.is_enabled === "1",
-            activelyUsing: connection.is_enabled_dashboard === true || connection.is_enabled_dashboard === "true" || connection.is_enabled_dashboard === "1",
+            enabled: connection.is_enabled === true || (connection.is_enabled as any) === "1" || (connection.is_enabled as any) === "true",
+            activelyUsing: connection.is_enabled_dashboard === true || (connection.is_enabled_dashboard as any) === "1" || (connection.is_enabled_dashboard as any) === "true",
             status: actuallyRunning ? "running" : "stopped",
             trades: trades.length,
             positions: positions.length,
@@ -79,7 +68,7 @@ export async function GET() {
             },
           }
         } catch (error) {
-          console.error(`[v0] [Status] Error fetching status for connection ${connection.id}:`, error)
+          console.error(`[v0] [Status] Error for ${connection.id}:`, error)
           totalErrors++
           return {
             id: connection.id,
@@ -105,7 +94,7 @@ export async function GET() {
       },
     })
   } catch (error) {
-    console.error("[v0] [Status] Failed to get trade engine status:", error)
+    console.error("[v0] [Status] Failed:", error)
     return NextResponse.json(
       { success: false, error: "Failed to get trade engine status", details: String(error) },
       { status: 500 }

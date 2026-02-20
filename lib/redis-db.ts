@@ -602,6 +602,25 @@ export async function getEnabledConnections(): Promise<any[]> {
   return all.filter(c => c.is_enabled === true)
 }
 
+/**
+ * Get ONLY connections that are both inserted AND enabled
+ * These are the only connections that should be processed by the trade engine
+ */
+export async function getInsertedAndEnabledConnections(): Promise<any[]> {
+  const all = await getAllConnections()
+  const filtered = all.filter((c: any) => {
+    const isInserted = c.is_inserted === true || c.is_inserted === "1" || c.is_inserted === "true"
+    const isEnabled = c.is_enabled === true || c.is_enabled === "1" || c.is_enabled === "true"
+    return isInserted && isEnabled
+  })
+  
+  if (filtered.length > 0) {
+    console.log(`[v0] [DB] getInsertedAndEnabledConnections: ${filtered.length} eligible connections for processing (out of ${all.length} total)`)
+  }
+  
+  return filtered
+}
+
 export async function createConnection(connection: any): Promise<any> {
   await saveConnection(connection)
   return connection
