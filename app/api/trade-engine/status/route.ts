@@ -11,29 +11,13 @@ export async function GET() {
     const coordinator = getGlobalTradeEngineCoordinator()
     const allConnections = await getAllConnections()
 
-    console.log(`[v0] [Status] Raw getAllConnections returned ${allConnections.length} connections`)
-
-    // Only process connections that are NOT predefined AND are inserted by the user
-    // Predefined template connections must NEVER appear as running engines
+    // Only process connections that are user-inserted (not predefined templates)
+    // Predefined connections have is_predefined=true or no is_inserted flag
     const connections = allConnections.filter((c: any) => {
       const isPredefined = c.is_predefined === true || c.is_predefined === "true" || c.is_predefined === "1" || c.is_predefined === 1
       const isInserted = c.is_inserted === true || c.is_inserted === "true" || c.is_inserted === "1" || c.is_inserted === 1
-      
-      console.log(`[v0] [Status Filter] ${c.id}: is_predefined=${c.is_predefined} (${typeof c.is_predefined}), is_inserted=${c.is_inserted} (${typeof c.is_inserted}) -> include=${isInserted && !isPredefined}`)
-      
-      if (isPredefined) {
-        console.log(`[v0] [Status Filter] ${c.id} FILTERED OUT: is_predefined=true`)
-        return false
-      }
-      if (!isInserted) {
-        console.log(`[v0] [Status Filter] ${c.id} FILTERED OUT: is_inserted=false`)
-        return false
-      }
-      console.log(`[v0] [Status Filter] ${c.id} INCLUDED: user-inserted and not predefined`)
-      return true
+      return !isPredefined && isInserted
     })
-
-    console.log(`[v0] [Status] After filtering: ${connections.length} connections to process`)
 
     let running = 0
     let totalTrades = 0
