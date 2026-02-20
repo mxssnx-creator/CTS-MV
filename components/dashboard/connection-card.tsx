@@ -78,6 +78,8 @@ export function ConnectionCard({
   const [showInfo, setShowInfo] = useState(false)
   const [showPresetConfig, setShowPresetConfig] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false)
+  const [advancedTab, setAdvancedTab] = useState("risk")
   const [showPresetDialog, setShowPresetDialog] = useState(false)
   const [showStrategyDialog, setShowStrategyDialog] = useState(false)
   const [showActivateTradeDialog, setShowActivateTradeDialog] = useState(false)
@@ -905,7 +907,7 @@ export function ConnectionCard({
             {/* Settings Button - configurable parameters */}
             <Dialog open={showSettings} onOpenChange={setShowSettings}>
               <DialogTrigger asChild>
-                <Button variant="outline" size="sm" className="h-8 w-8 p-0 bg-transparent" title="Connection Settings">
+                <Button variant="outline" size="sm" className="h-8 w-8 p-0 bg-transparent" title="Quick Settings">
                   <Settings className="h-3.5 w-3.5 text-blue-600" />
                 </Button>
               </DialogTrigger>
@@ -1009,6 +1011,181 @@ export function ConnectionCard({
                     </Button>
                   </div>
                 </div>
+              </DialogContent>
+            </Dialog>
+
+            {/* Advanced Settings Button - with tabs for Risk, Trading, Strategy */}
+            <Dialog open={showAdvancedSettings} onOpenChange={setShowAdvancedSettings}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" className="h-8 w-8 p-0 bg-transparent" title="Advanced Settings">
+                  <Settings className="h-3.5 w-3.5 text-purple-600" />
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+                <DialogHeader>
+                  <DialogTitle className="text-base">Advanced Settings - {connection.name}</DialogTitle>
+                  <DialogDescription>Configure risk management, trading parameters, and strategy options.</DialogDescription>
+                </DialogHeader>
+                
+                <Tabs value={advancedTab} onValueChange={setAdvancedTab} className="flex-1 flex flex-col overflow-hidden">
+                  <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="risk">Risk Management</TabsTrigger>
+                    <TabsTrigger value="trading">Trading Parameters</TabsTrigger>
+                    <TabsTrigger value="strategy">Strategy Config</TabsTrigger>
+                  </TabsList>
+
+                  <div className="flex-1 overflow-y-auto mt-4">
+                    <TabsContent value="risk" className="space-y-4 m-0">
+                      <div className="space-y-3">
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Max Position Size</label>
+                          <Input type="number" step="0.01" placeholder="e.g., 10000" className="h-9" />
+                          <p className="text-xs text-muted-foreground">Maximum position size in quote currency</p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Stop Loss Percentage</label>
+                          <Input type="number" step="0.1" placeholder="e.g., 2.5" className="h-9" />
+                          <p className="text-xs text-muted-foreground">Automatic stop loss trigger (% from entry)</p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Take Profit Percentage</label>
+                          <Input type="number" step="0.1" placeholder="e.g., 5.0" className="h-9" />
+                          <p className="text-xs text-muted-foreground">Automatic take profit trigger (% from entry)</p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Max Daily Loss</label>
+                          <Input type="number" step="0.01" placeholder="e.g., 500" className="h-9" />
+                          <p className="text-xs text-muted-foreground">Stop trading if daily loss exceeds this amount</p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Max Concurrent Positions</label>
+                          <Input type="number" step="1" min="1" placeholder="e.g., 5" className="h-9" />
+                          <p className="text-xs text-muted-foreground">Maximum number of open positions at once</p>
+                        </div>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="trading" className="space-y-4 m-0">
+                      <div className="space-y-3">
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Order Type</label>
+                          <select className="w-full h-9 px-3 rounded-md border border-input bg-background">
+                            <option value="market">Market</option>
+                            <option value="limit">Limit</option>
+                            <option value="stop-market">Stop Market</option>
+                            <option value="stop-limit">Stop Limit</option>
+                          </select>
+                          <p className="text-xs text-muted-foreground">Default order type for new trades</p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Time in Force</label>
+                          <select className="w-full h-9 px-3 rounded-md border border-input bg-background">
+                            <option value="GTC">Good Till Cancel (GTC)</option>
+                            <option value="IOC">Immediate or Cancel (IOC)</option>
+                            <option value="FOK">Fill or Kill (FOK)</option>
+                          </select>
+                          <p className="text-xs text-muted-foreground">Order execution timing preference</p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Slippage Tolerance (%)</label>
+                          <Input type="number" step="0.1" placeholder="e.g., 0.5" className="h-9" />
+                          <p className="text-xs text-muted-foreground">Maximum acceptable price slippage</p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Reduce Only Mode</label>
+                          <div className="flex items-center justify-between p-2 bg-muted rounded">
+                            <span className="text-sm">Enable Reduce Only</span>
+                            <Switch />
+                          </div>
+                          <p className="text-xs text-muted-foreground">Only allow orders that reduce position size</p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Post Only Mode</label>
+                          <div className="flex items-center justify-between p-2 bg-muted rounded">
+                            <span className="text-sm">Enable Post Only</span>
+                            <Switch />
+                          </div>
+                          <p className="text-xs text-muted-foreground">Only submit maker orders (no taker fees)</p>
+                        </div>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="strategy" className="space-y-4 m-0">
+                      <div className="space-y-3">
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Entry Strategy</label>
+                          <select className="w-full h-9 px-3 rounded-md border border-input bg-background">
+                            <option value="signal">Signal Based</option>
+                            <option value="breakout">Breakout</option>
+                            <option value="mean-reversion">Mean Reversion</option>
+                            <option value="grid">Grid Trading</option>
+                          </select>
+                          <p className="text-xs text-muted-foreground">Strategy for entering new positions</p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Exit Strategy</label>
+                          <select className="w-full h-9 px-3 rounded-md border border-input bg-background">
+                            <option value="target">Target Price</option>
+                            <option value="trailing">Trailing Stop</option>
+                            <option value="time">Time Based</option>
+                            <option value="signal">Signal Based</option>
+                          </select>
+                          <p className="text-xs text-muted-foreground">Strategy for exiting positions</p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Position Sizing Method</label>
+                          <select className="w-full h-9 px-3 rounded-md border border-input bg-background">
+                            <option value="fixed">Fixed Size</option>
+                            <option value="percent-balance">Percent of Balance</option>
+                            <option value="kelly">Kelly Criterion</option>
+                            <option value="risk-parity">Risk Parity</option>
+                          </select>
+                          <p className="text-xs text-muted-foreground">How to calculate position sizes</p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Rebalance Interval</label>
+                          <Input type="number" step="1" min="0" placeholder="e.g., 60" className="h-9" />
+                          <p className="text-xs text-muted-foreground">Minutes between position rebalancing (0 = disabled)</p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Pyramid Positions</label>
+                          <div className="flex items-center justify-between p-2 bg-muted rounded">
+                            <span className="text-sm">Allow Pyramiding</span>
+                            <Switch />
+                          </div>
+                          <p className="text-xs text-muted-foreground">Add to winning positions at better prices</p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Max Pyramid Levels</label>
+                          <Input type="number" step="1" min="1" max="10" placeholder="e.g., 3" className="h-9" />
+                          <p className="text-xs text-muted-foreground">Maximum times to add to a position</p>
+                        </div>
+                      </div>
+                    </TabsContent>
+                  </div>
+
+                  <div className="flex gap-2 pt-4 mt-4 border-t">
+                    <Button variant="outline" className="flex-1" onClick={() => setShowAdvancedSettings(false)}>
+                      Cancel
+                    </Button>
+                    <Button className="flex-1" onClick={() => { toast.success("Advanced settings saved"); setShowAdvancedSettings(false) }}>
+                      Save Advanced Settings
+                    </Button>
+                  </div>
+                </Tabs>
               </DialogContent>
             </Dialog>
 
