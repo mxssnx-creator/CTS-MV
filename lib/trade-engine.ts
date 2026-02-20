@@ -126,33 +126,32 @@ export class GlobalTradeEngineCoordinator {
    */
   async startAll(): Promise<void> {
     try {
-      console.log("[v0] [Coordinator] Starting global trade engine (all available connections)...")
+      console.log("[v0] [Coordinator] Starting global trade engine...")
       
       // Import Redis functions
-      const { initRedis, getAllConnections } = await import("@/lib/redis-db")
+      const { initRedis, getInsertedAndEnabledConnections } = await import("@/lib/redis-db")
       const { loadSettingsAsync } = await import("@/lib/settings-storage")
       
-      // Initialize Redis and get connections
+      // Initialize Redis and get ONLY inserted + enabled connections
       await initRedis()
-      const connections = await getAllConnections()
+      const connections = await getInsertedAndEnabledConnections()
       
       if (!Array.isArray(connections)) {
         console.error("[v0] [Coordinator] ERROR: connections is not an array")
         return
       }
       
-      // Get ALL connections (not just enabled) - global engine can start without restrictions
-      // Filter out connections that have no API credentials though
+      // Only process connections that are inserted, enabled, AND have credentials
       const validConnections = connections.filter((c) => {
         const hasCredentials = (c.api_key || c.apiKey) && (c.api_secret || c.apiSecret)
         return hasCredentials
       })
       
-      console.log(`[v0] [Coordinator] Found ${validConnections.length} connections with valid credentials`)
+      console.log(`[v0] [Coordinator] ${validConnections.length} inserted+enabled connections with credentials (skipping ${connections.length - validConnections.length} without credentials)`)
       
       if (validConnections.length === 0) {
-        console.warn("[v0] [Coordinator] WARNING: No connections with valid credentials to start")
-        this.isGloballyRunning = true // Mark as running even with no connections
+        console.log("[v0] [Coordinator] No eligible connections to process. Waiting for user to insert and enable connections.")
+        this.isGloballyRunning = true // Mark as running, ready for connections
         return
       }
       

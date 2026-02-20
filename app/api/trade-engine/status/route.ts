@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { getRedisClient, initRedis, getInsertedAndEnabledConnections } from "@/lib/redis-db"
+import { getRedisClient, initRedis, getAllConnections } from "@/lib/redis-db"
 import { getGlobalTradeEngineCoordinator } from "@/lib/trade-engine"
 import { ProgressionStateManager } from "@/lib/progression-state-manager"
 
@@ -9,11 +9,7 @@ export async function GET() {
 
     const client = getRedisClient()
     const coordinator = getGlobalTradeEngineCoordinator()
-    
-    // ONLY process connections that are BOTH inserted AND enabled
-    const connections = await getInsertedAndEnabledConnections()
-
-    console.log(`[v0] [Status] Processing ${connections.length} eligible (inserted + enabled) connections`)
+    const connections = await getAllConnections()
 
     let running = 0
     let totalTrades = 0

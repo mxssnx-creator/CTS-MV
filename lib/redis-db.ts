@@ -511,10 +511,8 @@ export async function getAllConnections(): Promise<any[]> {
   const client = getClient()
   try {
     const ids = await client.smembers("connections")
-    console.log("[v0] [DB] getAllConnections - retrieved IDs from set:", ids?.length || 0, "IDs")
     
     if (!ids || ids.length === 0) {
-      console.log("[v0] [DB] No connection IDs found in 'connections' set")
       return []
     }
     
@@ -523,12 +521,9 @@ export async function getAllConnections(): Promise<any[]> {
       ids.map(id => client.hgetall(`connection:${id}`))
     )
     
-    console.log("[v0] [DB] Fetched connection data:", results.length, "results")
-    
     const connections = []
     for (let i = 0; i < results.length; i++) {
       const data = results[i]
-      console.log(`[v0] [DB] Processing connection ${i}:`, data ? Object.keys(data).length : 0, "fields")
       
       if (data && Object.keys(data).length > 0) {
         // Helper to convert string booleans to actual booleans
@@ -538,7 +533,6 @@ export async function getAllConnections(): Promise<any[]> {
           return !!val
         }
         
-        // Convert string boolean values to actual booleans
         // Parse test logs from JSON string if needed
         let testLogs: string[] = []
         if (data.last_test_log) {
@@ -570,6 +564,7 @@ export async function getAllConnections(): Promise<any[]> {
           is_enabled_dashboard: toBool(data.is_enabled_dashboard),
           is_active: toBool(data.is_active),
           is_predefined: toBool(data.is_predefined),
+          is_inserted: toBool(data.is_inserted),
           is_live_trade: toBool(data.is_live_trade),
           is_preset_trade: toBool(data.is_preset_trade),
           api_passphrase: data.api_passphrase || "",
@@ -583,7 +578,6 @@ export async function getAllConnections(): Promise<any[]> {
         })
       }
     }
-    console.log("[v0] [DB] getAllConnections - returning", connections.length, "connections")
     return connections
   } catch (error) {
     console.error("[v0] [DB] Failed to get all connections:", error)

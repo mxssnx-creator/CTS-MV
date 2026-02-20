@@ -206,12 +206,15 @@ export class StrategyProcessor {
    */
   private async getActiveIndications(symbol: string): Promise<any[]> {
     try {
-      // For now, indications are not fully implemented in Redis
-      // Return empty array to prevent spam queries
-      console.log(`[v0] No indications configured for ${symbol}`)
+      await initRedis()
+      const indicationsKey = `indications:${this.connectionId}:${symbol}`
+      const indications = await getSettings(indicationsKey)
+      if (indications && Array.isArray(indications) && indications.length > 0) {
+        return indications
+      }
+      // No indications yet - normal during startup, return silently
       return []
-    } catch (error) {
-      console.error(`[v0] Failed to get active indications for ${symbol}:`, error)
+    } catch {
       return []
     }
   }
