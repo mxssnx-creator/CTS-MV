@@ -3,6 +3,10 @@ import { getRedisClient, initRedis, getActiveConnectionsForEngine } from "@/lib/
 import { getGlobalTradeEngineCoordinator } from "@/lib/trade-engine"
 import { ProgressionStateManager } from "@/lib/progression-state-manager"
 // Trade engine status endpoint - returns ONLY active connections (is_enabled_dashboard = true)
+// Updated: 2026-02-20 - Use getActiveConnectionsForEngine() for proper filtering
+
+export const dynamic = "force-dynamic"
+export const revalidate = 0
 
 export async function GET() {
   try {
@@ -11,8 +15,10 @@ export async function GET() {
     const client = getRedisClient()
     const coordinator = getGlobalTradeEngineCoordinator()
     
-    // Get ONLY Active Connections (is_enabled_dashboard = true) - these are what the trade engine processes
+    // Get ONLY Active Connections (is_enabled_dashboard = true) - independent from base connections
     const connections = await getActiveConnectionsForEngine()
+    
+    console.log(`[v0] [Status] Active connections for trade engine: ${connections.length}`)
 
     let running = 0
     let totalTrades = 0
