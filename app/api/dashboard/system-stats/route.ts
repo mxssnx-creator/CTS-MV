@@ -74,20 +74,25 @@ export async function GET() {
     const predefinedCount = allConnections.filter((c: any) => c.is_predefined).length
     const storedConnections = allConnections.length - predefinedCount
 
-    // Exchange Connections - WORKING status means test succeeded
-    // ONLY count from actual stored connections (not predefined templates)
+    // Exchange Connections - show ALL base connections (Settings), including predefined templates
+    // This represents all connections available in Settings > Connections
+    const totalBaseConnections = allConnections.length
+    const enabledBaseConnections = allConnections.filter((c: any) => c.is_enabled === "1" || c.is_enabled === true).length
+    
+    // WORKING status means test succeeded - only count tested connections (not predefined templates with placeholder credentials)
     const workingConnections = allConnections.filter((c: any) => 
-      c.last_test_status === "success" && !c.is_predefined
+      c.last_test_status === "success"
     ).length
 
     console.log(`[v0] [System Stats] Total connections: ${allConnections.length}`)
     console.log(`[v0] [System Stats] Stored (non-predefined): ${storedConnections}, Predefined: ${predefinedCount}`)
-    console.log(`[v0] [System Stats] Exchange Connections - Total: ${storedConnections}, Enabled: ${settingsConnections.filter((c: any) => (c.is_enabled === "1" || c.is_enabled === true) && !c.is_predefined).length}, Working: ${workingConnections}`)
+    console.log(`[v0] [System Stats] Exchange Connections (Base) - Total: ${totalBaseConnections}, Enabled: ${enabledBaseConnections}, Working: ${workingConnections}`)
     console.log(`[v0] [System Stats] Active: ${activeConnections.length}, Enabled: ${enabledActiveConnections.length}, Live Trade: ${activeWithLiveTrade.length}(${mainEnginesRunningSuccessfully} running), Preset: ${activeWithPresetTrade.length}(${presetEnginesRunningSuccessfully} running)`)
     
     const exchangeStatus = 
-      workingConnections === 0 ? "down" :
-      workingConnections < storedConnections / 2 ? "partial" :
+      totalBaseConnections === 0 ? "down" :
+      workingConnections === 0 ? "partial" :
+      workingConnections < totalBaseConnections / 2 ? "partial" :
       "healthy"
 
     // Database stats
@@ -138,10 +143,9 @@ export async function GET() {
         requestsPerSecond: requestsPerSecond,
       },
       exchangeConnections: {
-        total: storedConnections, // Only stored connections, not predefined
-        enabled: settingsConnections.filter((c: any) => (c.is_enabled === "1" || c.is_enabled === true) && !c.is_predefined).length, // Enabled stored connections
-        // ONLY count as working if test succeeded AND not predefined
-        working: workingConnections,
+        total: totalBaseConnections, // All base connections from Settings (including predefined templates)
+        enabled: enabledBaseConnections, // All enabled base connections
+        working: workingConnections, // Connections with successful test results
         status: exchangeStatus,
       },
       activeConnections: {
