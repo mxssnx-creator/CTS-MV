@@ -2,17 +2,16 @@ import { NextResponse } from "next/server"
 import { WorkflowLogger } from "@/lib/workflow-logger"
 import { initRedis } from "@/lib/redis-db"
 
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await initRedis()
 
+    const { id: connectionId } = await params
     const { searchParams } = new URL(request.url)
     const limit = parseInt(searchParams.get("limit") || "100", 10)
     const eventType = searchParams.get("eventType") as any
     const statsOnly = searchParams.get("stats") === "true"
     const timeWindowMs = parseInt(searchParams.get("timeWindow") || "3600000", 10)
-
-    const connectionId = params.id
 
     if (!connectionId) {
       return NextResponse.json(
@@ -55,11 +54,11 @@ export async function GET(request: Request, { params }: { params: { id: string }
   }
 }
 
-export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await initRedis()
 
-    const connectionId = params.id
+    const { id: connectionId } = await params
 
     if (!connectionId) {
       return NextResponse.json(

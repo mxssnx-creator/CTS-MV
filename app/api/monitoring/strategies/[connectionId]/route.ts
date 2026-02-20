@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server"
 import { getSettings } from "@/lib/redis-db"
 
-export async function GET(request: Request, { params }: { params: { connectionId: string } }) {
+export async function GET(request: Request, { params }: { params: Promise<{ connectionId: string }> }) {
   try {
-    const { connectionId } = params
+    const { connectionId } = await params
 
     if (!connectionId) {
       return NextResponse.json({ success: false, error: "Connection ID required" }, { status: 400 })
