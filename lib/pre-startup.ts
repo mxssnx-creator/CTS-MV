@@ -151,13 +151,26 @@ async function initializeDefaultSettings() {
 }
 
 export async function testAllExchangeConnections() {
-  console.log("[v0] [Startup] Testing all exchange connections...")
+  console.log("[v0] [Startup] Testing exchange connections (only user-inserted with valid keys)...")
   try {
     const allConnections = await getAllConnections()
     
-    for (const connection of allConnections) {
+    // Only test connections that are user-inserted with real API keys
+    const testable = allConnections.filter((c: any) => {
+      const isInserted = c.is_inserted === true || c.is_inserted === "true" || c.is_inserted === "1"
+      const hasValidKey = c.api_key && c.api_key.length >= 20 && !c.api_key.includes("PLACEHOLDER") && !c.api_key.includes("00998877")
+      return isInserted && hasValidKey
+    })
+
+    if (testable.length === 0) {
+      console.log(`[v0] [Startup] No user-inserted connections with valid keys to test (${allConnections.length} total, all predefined/placeholder)`)
+      return
+    }
+
+    console.log(`[v0] [Startup] Testing ${testable.length} eligible connections (skipping ${allConnections.length - testable.length} predefined/placeholder)`)
+    
+    for (const connection of testable) {
       try {
-        // Call test connection API for each connection
         const testResponse = await fetch(`${process.env.NEXTURL || "http://localhost:3000"}/api/settings/connections/test`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -174,7 +187,6 @@ export async function testAllExchangeConnections() {
         const testResult = await testResponse.json()
         const testStatus = testResult.success ? "success" : "failed"
         
-        // Update connection with test result
         await updateConnection(connection.id, {
           ...connection,
           last_test_status: testStatus,
@@ -185,7 +197,6 @@ export async function testAllExchangeConnections() {
       } catch (error) {
         console.warn(`[v0] [Startup] Failed to test ${connection.name}:`, error)
         
-        // Mark as failed
         await updateConnection(connection.id, {
           ...connection,
           last_test_status: "error",
@@ -194,7 +205,7 @@ export async function testAllExchangeConnections() {
       }
     }
     
-    console.log(`[v0] [Startup] Completed testing ${allConnections.length} connections`)
+    console.log(`[v0] [Startup] Completed testing ${testable.length} connections`)
   } catch (error) {
     console.error("[v0] [Startup] Failed to test connections:", error)
   }

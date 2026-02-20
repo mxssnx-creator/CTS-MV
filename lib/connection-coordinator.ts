@@ -174,14 +174,11 @@ export class ConnectionCoordinator {
 
   /**
    * Perform health checks on all active connections
-   * Only checks connections that are user-inserted, enabled, AND have valid API credentials
+   * Only checks connections that are inserted, enabled, AND have valid API credentials
    */
   private async performHealthChecks(): Promise<void> {
     const eligible = Array.from(this.connections.values())
-      .filter((conn: any) => {
-        const isEnabled = conn.is_enabled === true || conn.is_enabled === "true" || conn.is_enabled === "1"
-        return isEnabled && this.hasValidCredentials(conn)
-      })
+      .filter((conn) => conn.is_enabled && this.hasValidCredentials(conn))
 
     if (eligible.length === 0) return
 
