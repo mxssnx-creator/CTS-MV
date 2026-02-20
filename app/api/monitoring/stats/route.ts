@@ -3,45 +3,49 @@ import { initRedis, getAllConnections, getRedisClient } from "@/lib/redis-db"
 import { RedisMonitoring, RedisPositions, RedisTrades } from "@/lib/redis-operations"
 
 export const dynamic = "force-dynamic"
+export const fetchCache = "force-no-store"
+
+// Helper: filter to only user-inserted, non-predefined connections
+function filterUserConnections(allConns: any[]) {
+  return allConns.filter((c) => c.is_predefined !== true && c.is_inserted === true)
+}
 
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
     const exchangeFilter = searchParams.get("exchange")
-    
-    await initRedis()
-    const client = getRedisClient()
 
-    // Get all connections, filter out predefined templates
-    let allConnections = await getAllConnections()
-    let connections = allConnections.filter((c: any) => {
-      const isPredefined = c.is_predefined === true || c.is_predefined === "true" || c.is_predefined === "1" || c.is_predefined === 1
-      const isInserted = c.is_inserted === true || c.is_inserted === "true" || c.is_inserted === "1" || c.is_inserted === 1
-      return !isPredefined && isInserted
-    })
+    await initRedis()
+
+    const raw = await getAllConnections()
+    let connections = filterUserConnections(raw)
+
     if (exchangeFilter) {
       connections = connections.filter((c: any) => c.exchange === exchangeFilter)
     }
-    const activeConnections = connections.filter((c: any) => c.is_active === true || c.is_active === "true")
-    
-    // Get positions and trades for user-inserted connections only
+
+    const activeConnections = connections.filter(
+      (c: any) => c.is_active === true || c.is_active === "true",
+    )
+
     let totalPositions = 0
     let openPositions = 0
     let totalTrades = 0
     let dailyPnL = 0
     let unrealizedPnL = 0
-    
+
     for (const conn of connections) {
       const positions = await RedisPositions.getPositionsByConnection(conn.id)
       const trades = await RedisTrades.getTradesByConnection(conn.id)
-      
+
       totalPositions += positions.length
       totalTrades += trades.length
-      
-      const open = positions.filter((p: any) => p.status !== "closed" && p.status !== "CLOSED")
+
+      const open = positions.filter(
+        (p: any) => p.status !== "closed" && p.status !== "CLOSED",
+      )
       openPositions += open.length
-      
-      // Calculate P&L
+
       positions.forEach((pos: any) => {
         if (pos.status === "closed" || pos.status === "CLOSED") {
           dailyPnL += parseFloat(pos.realized_pnl || "0")
@@ -51,12 +55,7 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Get database statistics
     const stats = await RedisMonitoring.getStatistics()
-
-    // Get system metrics
-    const systemLoad = Math.round(Math.random() * 100) // Placeholder
-    const databaseSize = (stats.connections || 0) * 10 // Rough estimate
 
     return NextResponse.json({
       activeConnections: activeConnections.length,
@@ -67,13 +66,11 @@ export async function GET(request: NextRequest) {
       dailyPnL: Number(dailyPnL.toFixed(2)),
       unrealizedPnL: Number(unrealizedPnL.toFixed(2)),
       totalBalance: Number((dailyPnL + unrealizedPnL).toFixed(2)),
-      systemLoad,
-      databaseSize,
       statistics: stats,
       timestamp: new Date().toISOString(),
     })
   } catch (error) {
-    console.error("[v0] [API] Error fetching monitoring stats:", error)
+    console.error("[v0] Error fetching monitoring stats:", error)
     return NextResponse.json(
       {
         activeConnections: 0,
@@ -84,8 +81,6 @@ export async function GET(request: NextRequest) {
         dailyPnL: 0,
         unrealizedPnL: 0,
         totalBalance: 0,
-        systemLoad: 0,
-        databaseSize: 0,
         error: "Failed to fetch stats",
         details: error instanceof Error ? error.message : "Unknown error",
       },
