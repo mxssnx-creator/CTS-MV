@@ -47,10 +47,6 @@ export function GlobalTradeEngineControls() {
       })
       if (response.ok) {
         const data = await response.json()
-        console.log("[v0] [Engine Status] Raw API Response:", data)
-        
-        // Map the API response to EngineStatus interface
-        // The status endpoint returns: running, paused, connectedExchanges, activePositions, totalProfit, uptime
         const statusData: EngineStatus = {
           running: data.running === true || data.running === "true" || data.status === "running",
           paused: data.paused === true || data.paused === "true",
@@ -61,11 +57,7 @@ export function GlobalTradeEngineControls() {
           lastUpdate: new Date(data.lastUpdate || Date.now()),
           cycleStats: data.cycleStats,
         }
-        
-        console.log("[v0] [Engine Status] Transformed Status:", statusData)
         setStatus(statusData)
-      } else {
-        console.warn("[v0] [Engine Status] Failed to load - status:", response.status)
       }
     } catch (error) {
       console.error("[v0] Failed to load engine status:", error)
@@ -73,37 +65,20 @@ export function GlobalTradeEngineControls() {
   }
 
   const handleStart = async () => {
-    console.log("[v0] [Trade Engine] START button clicked")
     setIsStarting(true)
     try {
-      console.log("[v0] [Trade Engine] Sending POST to /api/trade-engine/start")
       const response = await fetch("/api/trade-engine/start", { 
         method: "POST",
         headers: { "Content-Type": "application/json" },
       })
       const data = await response.json()
-      console.log("[v0] [Trade Engine] Start response:", { ok: response.ok, status: response.status, data })
 
       if (response.ok && data.success) {
-        console.log("[v0] [Trade Engine] Start SUCCESS - showing toast")
         toast.success(data.message || "Global Trade Engine started successfully")
-        
-        // Force immediate status refresh with multiple retries to ensure UI updates
-        console.log("[v0] [Trade Engine] Refreshing status immediately...")
         await loadStatus()
-        
-        // Schedule additional refreshes to ensure UI catches the state change
-        setTimeout(() => {
-          console.log("[v0] [Trade Engine] Refreshing status (500ms)...")
-          loadStatus()
-        }, 500)
-        
-        setTimeout(() => {
-          console.log("[v0] [Trade Engine] Refreshing status (1500ms)...")
-          loadStatus()
-        }, 1500)
+        setTimeout(loadStatus, 500)
+        setTimeout(loadStatus, 1500)
       } else {
-        console.log("[v0] [Trade Engine] Start FAILED:", data.error)
         toast.error(data.error || "Failed to start engine")
         // Even on error, refresh status to get accurate state
         await loadStatus()

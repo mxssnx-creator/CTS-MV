@@ -12,14 +12,19 @@ export async function GET(request: NextRequest) {
     await initRedis()
     const client = getRedisClient()
 
-    // Get all connections, optionally filtered by exchange
-    let connections = await getAllConnections()
+    // Get all connections, filter out predefined templates
+    let allConnections = await getAllConnections()
+    let connections = allConnections.filter((c: any) => {
+      const isPredefined = c.is_predefined === true || c.is_predefined === "true" || c.is_predefined === "1" || c.is_predefined === 1
+      const isInserted = c.is_inserted === true || c.is_inserted === "true" || c.is_inserted === "1" || c.is_inserted === 1
+      return !isPredefined && isInserted
+    })
     if (exchangeFilter) {
       connections = connections.filter((c: any) => c.exchange === exchangeFilter)
     }
     const activeConnections = connections.filter((c: any) => c.is_active === true || c.is_active === "true")
     
-    // Get positions and trades for all connections
+    // Get positions and trades for user-inserted connections only
     let totalPositions = 0
     let openPositions = 0
     let totalTrades = 0
