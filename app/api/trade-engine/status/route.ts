@@ -18,21 +18,29 @@ export async function GET() {
     const coordinator = getGlobalTradeEngineCoordinator()
     console.log("[v0] [Status] Got client and coordinator")
     
+    // Check global engine status FIRST - independent of active connections count
+    const isGloballyRunning = coordinator.isRunning()
+    const isGloballyPaused = coordinator.isPausedState()
+    
+    console.log(`[v0] [Status] Global Engine State - Running: ${isGloballyRunning}, Paused: ${isGloballyPaused}`)
+    
     // Get ONLY Active Connections (is_enabled_dashboard = true) - independent from base connections
     console.log("[v0] [Status] Calling getActiveConnectionsForEngine()...")
     const connections = await getActiveConnectionsForEngine()
     
     console.log(`[v0] [Status] *** ACTIVE CONNECTIONS COUNT: ${connections.length} ***`)
     
+    // If no active connections, return status based on global engine state
     if (connections.length === 0) {
-      console.log("[v0] [Status] No active connections - returning empty array")
+      console.log("[v0] [Status] No active connections - returning status based on global engine state")
       return NextResponse.json({
         success: true,
-        running: false,
-        paused: false,
-        status: "stopped",
+        running: isGloballyRunning,
+        paused: isGloballyPaused,
+        status: isGloballyRunning ? "running" : (isGloballyPaused ? "paused" : "stopped"),
         connections: [],
         summary: { total: 0, running: 0, stopped: 0, totalTrades: 0, totalPositions: 0, errors: 0 },
+        message: isGloballyRunning ? "Trade engine running but no active connections to process" : undefined
       })
     }
 
@@ -100,9 +108,6 @@ export async function GET() {
         }
       })
     )
-
-    const isGloballyRunning = coordinator.isRunning()
-    const isGloballyPaused = coordinator.isPausedState()
 
     const responseBody = {
       success: true,
