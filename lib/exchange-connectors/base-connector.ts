@@ -5,6 +5,7 @@
 
 import { getRateLimiter } from "@/lib/rate-limiter"
 import { EXCHANGE_API_TYPES } from "@/lib/connection-predefinitions"
+import { validateApiType, validateContractType, getApiPath } from "@/lib/api-type-validator"
 
 // Supported API types across all exchanges
 export const VALID_API_TYPES = [
@@ -90,6 +91,18 @@ export abstract class BaseExchangeConnector {
   constructor(credentials: ExchangeCredentials, exchange: string) {
     this.credentials = credentials
     this.rateLimiter = getRateLimiter(exchange)
+    
+    // Validate API type on construction
+    const apiValidation = validateApiType(exchange, credentials.apiType || "")
+    if (!apiValidation.isValid) {
+      this.log(`WARNING: Invalid API type - ${apiValidation.error}`)
+    }
+    
+    // Validate contract type on construction
+    const contractValidation = validateContractType(exchange, credentials.apiType || "")
+    if (!contractValidation.isValid) {
+      this.log(`WARNING: Invalid contract type - ${contractValidation.error}`)
+    }
   }
 
   protected log(message: string): void {
@@ -97,6 +110,40 @@ export abstract class BaseExchangeConnector {
     const logMessage = `[${timestamp}] ${message}`
     this.logs.push(logMessage)
     console.log(`[v0] ${logMessage}`)
+  }
+
+  /**
+   * Get the API path for this connection's contract type
+   * Different exchanges use different paths based on api_type
+   */
+  protected getApiPath(): string {
+    return getApiPath(
+      this.credentials.connectionLibrary || "unknown",
+      this.credentials.apiType || "spot"
+    )
+  }
+
+  /**
+   * Validate that this connection can execute an operation for the given contract type
+   */
+  protected canExecuteOperation(operationType: "trading" | "positions" | "funding"): boolean {
+    const apiType = this.credentials.apiType || "spot"
+    
+    // Spot trading: cannot do positions, limited funding
+    if (apiType === "spot") {
+      if (operationType === "positions") {
+        this.log(`WARNING: Cannot fetch positions for spot trading account`)
+        return false
+      }
+    }
+    
+    // Perpetual: can do all operations
+    if (apiType === "perpetual" || apiType === "perpetual_futures") {
+      return true
+    }
+    
+    // All types: can do trading and funding
+    return true
   }
 
   protected logError(message: string): void {

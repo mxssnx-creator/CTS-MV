@@ -170,7 +170,8 @@ export function DashboardActiveConnectionsManager() {
           </CardContent>
         </Card>
       ) : (
-        activeConnections.map((conn) => {
+        <div className="space-y-3">
+          {activeConnections.map((conn) => {
           const details = conn.details
           const status = conn.isActive ? "active" : "disabled"
           const statusVariant = conn.isActive ? "default" : "secondary"
@@ -320,7 +321,8 @@ export function DashboardActiveConnectionsManager() {
               </Card>
             </Collapsible>
           )
-        })
+        })}
+        </div>
       )}
     </div>
   )
