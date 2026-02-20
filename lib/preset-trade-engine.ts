@@ -88,7 +88,7 @@ export class PresetTradeEngine {
     // Get configured interval from settings
     const settings = await this.getSettings()
     const indicationInterval = Number.parseInt(settings.presetIndicationInterval || "1") * 1000
-    const realInterval = Number.parseInt(settings.presetRealInterval || "50")
+    const realInterval = Number.parseInt(settings.presetRealInterval || "200")
 
     const indicationCategory = config.indicationCategory || settings.presetIndicationCategory || "common"
 
