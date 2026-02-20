@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { getGlobalTradeEngineCoordinator } from "@/lib/trade-engine"
-import { initRedis, getAllConnections } from "@/lib/redis-db"
+import { initRedis, getAllConnections, getSettings } from "@/lib/redis-db"
 import { SystemLogger } from "@/lib/system-logger"
 
 export async function GET() {
@@ -8,7 +8,7 @@ export async function GET() {
     const coordinator = getGlobalTradeEngineCoordinator()
     
     if (!coordinator) {
-      console.warn("[v0] [START-ALL] Coordinator is null - engines may not be initialized yet")
+      console.warn("[v0] [START-ALL] Coordinator is null")
       return NextResponse.json({
         success: false,
         error: "Trade engine coordinator not initialized",
@@ -28,24 +28,28 @@ export async function GET() {
       }, { status: 500 })
     }
 
-    // Filter for enabled connections with live trade active
-    const activeConnections = connections.filter((c) => 
-      (c.is_enabled === "1" || c.is_enabled === true) && 
-      (c.is_live_trade === "1" || c.is_live_trade === true)
-    )
+    // Filter for ONLY connections that are BOTH inserted AND enabled
+    // These are the ones displayed in "Active Connections"
+    const activeConnections = connections.filter((c: any) => {
+      const isInserted = c.is_inserted === "1" || c.is_inserted === true
+      const isEnabled = c.is_enabled === "1" || c.is_enabled === true
+      const hasLiveTrade = c.is_live_trade === "1" || c.is_live_trade === true
+      return isInserted && isEnabled && hasLiveTrade
+    })
 
-    console.log(`[v0] [START-ALL] Found ${activeConnections.length} active connections with live trade enabled`)
+    console.log(`[v0] [START-ALL] Total: ${connections.length}, Active: ${activeConnections.length}, With LiveTrade: ${activeConnections.length}`)
 
     if (activeConnections.length === 0) {
       return NextResponse.json({
         success: true,
         message: "No active connections with live trade enabled",
         totalConnections: connections.length,
-        enabledConnections: 0,
+        activeConnections: 0,
         results: [],
       })
     }
 
+    const settings = (await getSettings("trade_engine_settings")) || {}
     const indicationInterval = settings.mainEngineIntervalMs ? settings.mainEngineIntervalMs / 1000 : 5
     const strategyInterval = settings.strategyUpdateIntervalMs ? settings.strategyUpdateIntervalMs / 1000 : 10
     const realtimeInterval = settings.realtimeIntervalMs ? settings.realtimeIntervalMs / 1000 : 3
@@ -53,9 +57,9 @@ export async function GET() {
     const results = []
     let successCount = 0
 
-    for (const connection of enabledConnections) {
+    for (const connection of activeConnections) {
       try {
-        console.log(`[v0] [START-ALL] Starting engine: ${connection.name}`)
+        console.log(`[v0] [START-ALL] Starting engine for: ${connection.name}`)
 
         await coordinator.startEngine(connection.id, {
           connectionId: connection.id,
@@ -73,12 +77,6 @@ export async function GET() {
         })
 
         successCount++
-
-        await SystemLogger.logTradeEngine(
-          `Engine started by start-all endpoint for ${connection.name}`,
-          "info",
-          { connectionId: connection.id, exchange: connection.exchange }
-        )
       } catch (error) {
         console.error(`[v0] [START-ALL] Failed to start ${connection.name}:`, error)
 
@@ -89,33 +87,21 @@ export async function GET() {
           success: false,
           error: error instanceof Error ? error.message : String(error),
         })
-
-        await SystemLogger.logError(
-          error,
-          "trade-engine",
-          `Start-all failed for ${connection.name}`
-        )
       }
     }
 
-    console.log(`[v0] [START-ALL] Complete: ${successCount}/${enabledConnections.length} started`)
+    console.log(`[v0] [START-ALL] Complete: ${successCount}/${activeConnections.length} started`)
 
     return NextResponse.json({
       success: true,
-      message: `Started ${successCount} of ${enabledConnections.length} trade engines`,
+      message: `Started ${successCount} of ${activeConnections.length} trade engines`,
       totalConnections: connections.length,
-      enabledConnections: enabledConnections.length,
+      activeConnections: activeConnections.length,
       successCount,
       results,
     })
   } catch (error) {
     console.error("[v0] [START-ALL] Error:", error)
-
-    await SystemLogger.logError(
-      error,
-      "trade-engine",
-      "Start-all endpoint failed"
-    )
 
     return NextResponse.json(
       {
