@@ -153,23 +153,36 @@ export class ConnectionCoordinator {
   }
 
   /**
+   * Check if a connection has valid (non-placeholder) API credentials
+   */
+  private hasValidCredentials(conn: Connection): boolean {
+    const key = conn.api_key
+    if (!key || key === "" || key.length < 20) return false
+    if (key.includes("PLACEHOLDER") || key.includes("00998877") || key.startsWith("test")) return false
+    if (conn.is_predefined && !conn.is_enabled) return false
+    return true
+  }
+
+  /**
    * Perform health checks on all active connections
+   * Only checks connections that are inserted, enabled, AND have valid API credentials
    */
   private async performHealthChecks(): Promise<void> {
-    console.log("[v0] Starting health checks on all connections")
+    const eligible = Array.from(this.connections.values())
+      .filter((conn) => conn.is_enabled && this.hasValidCredentials(conn))
 
-    const tasks = Array.from(this.connections.values())
-      .filter((conn) => conn.is_enabled)
-      .map((conn) => ({
+    if (eligible.length === 0) return
+
+    console.log(`[v0] Starting health checks on ${eligible.length} eligible connections`)
+
+    const tasks = eligible.map((conn) => ({
         id: `health-${conn.id}`,
         connectionId: conn.id,
         operation: "health-check" as const,
         priority: 5,
       }))
 
-    if (tasks.length > 0) {
-      this.batchProcessor.enqueueBatch(tasks)
-    }
+    this.batchProcessor.enqueueBatch(tasks)
   }
 
   /**
@@ -206,8 +219,8 @@ export class ConnectionCoordinator {
     const startTime = Date.now()
 
     try {
-      if (!connection.api_key) {
-        return { success: false, error: "API credentials not configured" }
+      if (!this.hasValidCredentials(connection)) {
+        return { success: false, error: "API credentials not configured or using placeholder values" }
       }
 
       const connector = await createExchangeConnector(connection.exchange, {
