@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server"
-import { getRedisClient, initRedis, getAllConnections } from "@/lib/redis-db"
+import { getRedisClient, initRedis, getActiveConnectionsForEngine } from "@/lib/redis-db"
 import { getGlobalTradeEngineCoordinator } from "@/lib/trade-engine"
 import { ProgressionStateManager } from "@/lib/progression-state-manager"
-// Trade engine status endpoint - returns only user-inserted connections
+// Trade engine status endpoint - returns ONLY active connections (is_enabled_dashboard = true)
 
 export async function GET() {
   try {
@@ -10,14 +10,9 @@ export async function GET() {
 
     const client = getRedisClient()
     const coordinator = getGlobalTradeEngineCoordinator()
-    const allConnections = await getAllConnections()
-
-    // Only process user-inserted connections (not predefined templates)
-    const connections = allConnections.filter((c: any) => {
-      const isPredefined = c.is_predefined === true || c.is_predefined === "true" || c.is_predefined === "1" || c.is_predefined === 1
-      const isInserted = c.is_inserted === true || c.is_inserted === "true" || c.is_inserted === "1" || c.is_inserted === 1
-      return !isPredefined && isInserted
-    })
+    
+    // Get ONLY Active Connections (is_enabled_dashboard = true) - these are what the trade engine processes
+    const connections = await getActiveConnectionsForEngine()
 
     let running = 0
     let totalTrades = 0

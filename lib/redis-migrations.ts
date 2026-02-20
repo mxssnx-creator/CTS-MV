@@ -320,8 +320,8 @@ const migrations: Migration[] = [
               margin_type: "cross",
               position_mode: "hedge",
               is_testnet: "0",
-              is_enabled: isEnabledSettings ? "1" : "0", // Settings: trade engine enabled by default for all predefined
-              is_enabled_dashboard: isEnabledDashboard ? "1" : "0", // Dashboard: visible for bybit/bingx only
+              is_enabled: isEnabledSettings ? "1" : "0", // Settings: base connection enabled by default
+              is_enabled_dashboard: isEnabledDashboard ? "1" : "0", // Dashboard/Active: disabled by default, bybit/bingx enabled as examples
               is_active: isEnabledSettings ? "1" : "0",
               is_predefined: "1",
               is_live_trade: "0",

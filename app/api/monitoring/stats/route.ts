@@ -1,14 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server"
-import { initRedis, getAllConnections, getRedisClient } from "@/lib/redis-db"
+import { initRedis, getActiveConnectionsForEngine, getRedisClient } from "@/lib/redis-db"
 import { RedisMonitoring, RedisPositions, RedisTrades } from "@/lib/redis-operations"
 
 export const dynamic = "force-dynamic"
 export const fetchCache = "force-no-store"
-
-// Helper: filter to only user-inserted, non-predefined connections
-function filterUserConnections(allConns: any[]) {
-  return allConns.filter((c) => c.is_predefined !== true && c.is_inserted === true)
-}
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,8 +12,8 @@ export async function GET(request: NextRequest) {
 
     await initRedis()
 
-    const raw = await getAllConnections()
-    let connections = filterUserConnections(raw)
+    // Get ONLY active connections (is_enabled_dashboard = true) for monitoring
+    let connections = await getActiveConnectionsForEngine()
 
     if (exchangeFilter) {
       connections = connections.filter((c: any) => c.exchange === exchangeFilter)
