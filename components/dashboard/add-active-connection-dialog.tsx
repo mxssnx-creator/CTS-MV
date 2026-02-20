@@ -57,6 +57,8 @@ export function AddActiveConnectionDialog({
         return
       }
 
+      console.log("[v0] [Add Connection Dialog] Total connections from API:", allConnections.length)
+
       // Filter to ONLY show connections that are:
       // 1. NOT predefined (inserted connections only)
       // 2. Have valid credentials (api_key exists and is not placeholder)
@@ -66,9 +68,14 @@ export function AddActiveConnectionDialog({
         const hasValidCredentials = c.api_key && typeof c.api_key === "string" && c.api_key.length > 0 && !c.api_key.includes("PLACEHOLDER")
         const notAlreadyActive = !(c.is_enabled_dashboard === true || c.is_enabled_dashboard === "1" || c.is_enabled_dashboard === "true")
         
+        if (isPredefined) {
+          console.log("[v0] [Add Connection Dialog] Filtered out predefined:", c.id, c.name)
+        }
+        
         return !isPredefined && hasValidCredentials && notAlreadyActive
       })
 
+      console.log("[v0] [Add Connection Dialog] Available to add:", availableForAdd.length)
       setAvailableConnections(availableForAdd)
 
       if (availableForAdd.length > 0 && !selectedConnection) {
@@ -188,10 +195,20 @@ export function AddActiveConnectionDialog({
                 <div className="flex gap-2">
                   <AlertCircle className="h-4 w-4 text-yellow-600 flex-shrink-0 mt-0.5" />
                   <div className="text-sm text-yellow-800">
-                    <p className="font-medium mb-1">No Available Connections</p>
-                    <p className="text-xs">
-                      Only inserted connections (not predefined templates) that are enabled with valid credentials can be added.
+                    <p className="font-medium mb-2">No Available Connections</p>
+                    <p className="text-xs mb-3">
+                      You need to add a real exchange connection first. The connections shown in Settings are predefined templates.
                     </p>
+                    <div className="text-xs space-y-1">
+                      <p className="font-medium">To add a connection:</p>
+                      <ol className="list-decimal list-inside space-y-0.5 ml-1">
+                        <li>Go to Settings → Overall → Connections</li>
+                        <li>Click "Add Connection"</li>
+                        <li>Enter your real API credentials</li>
+                        <li>Save and test the connection</li>
+                        <li>Return here to add it to Active List</li>
+                      </ol>
+                    </div>
                   </div>
                 </div>
               </CardContent>
