@@ -42,26 +42,30 @@ export function GlobalTradeEngineControls() {
   const loadStatus = async () => {
     try {
       const response = await fetch("/api/trade-engine/status", {
-        cache: "no-store", // Don't cache - always get fresh data
+        cache: "no-store",
         headers: { "Cache-Control": "no-cache" },
       })
       if (response.ok) {
         const data = await response.json()
-        console.log("[v0] [Engine Status] Loaded:", data)
+        console.log("[v0] [Engine Status] Raw API Response:", data)
         
-        // Transform API response to match EngineStatus interface
+        // Map the API response to EngineStatus interface
+        // The status endpoint returns: running, paused, connectedExchanges, activePositions, totalProfit, uptime
         const statusData: EngineStatus = {
-          running: data.running || false,
-          paused: data.paused || false,
-          connectedExchanges: data.connectedExchanges || 0,
-          activePositions: data.activePositions || 0,
+          running: data.running === true || data.running === "true" || data.status === "running",
+          paused: data.paused === true || data.paused === "true",
+          connectedExchanges: data.connectedExchanges || data.summary?.total || 0,
+          activePositions: data.activePositions || data.summary?.totalPositions || 0,
           totalProfit: data.totalProfit || 0,
           uptime: data.uptime || 0,
           lastUpdate: new Date(data.lastUpdate || Date.now()),
           cycleStats: data.cycleStats,
         }
         
+        console.log("[v0] [Engine Status] Transformed Status:", statusData)
         setStatus(statusData)
+      } else {
+        console.warn("[v0] [Engine Status] Failed to load - status:", response.status)
       }
     } catch (error) {
       console.error("[v0] Failed to load engine status:", error)
@@ -83,17 +87,32 @@ export function GlobalTradeEngineControls() {
       if (response.ok && data.success) {
         console.log("[v0] [Trade Engine] Start SUCCESS - showing toast")
         toast.success(data.message || "Global Trade Engine started successfully")
-        // Refresh status immediately and again after 500ms
+        
+        // Force immediate status refresh with multiple retries to ensure UI updates
+        console.log("[v0] [Trade Engine] Refreshing status immediately...")
         await loadStatus()
-        setTimeout(loadStatus, 500)
-        setTimeout(loadStatus, 1500)
+        
+        // Schedule additional refreshes to ensure UI catches the state change
+        setTimeout(() => {
+          console.log("[v0] [Trade Engine] Refreshing status (500ms)...")
+          loadStatus()
+        }, 500)
+        
+        setTimeout(() => {
+          console.log("[v0] [Trade Engine] Refreshing status (1500ms)...")
+          loadStatus()
+        }, 1500)
       } else {
         console.log("[v0] [Trade Engine] Start FAILED:", data.error)
         toast.error(data.error || "Failed to start engine")
+        // Even on error, refresh status to get accurate state
+        await loadStatus()
       }
     } catch (error) {
       console.error("[v0] [Trade Engine] Start EXCEPTION:", error)
       toast.error("Failed to start engine")
+      // Refresh status even on exception to get accurate state
+      await loadStatus()
     } finally {
       setIsStarting(false)
     }
@@ -108,12 +127,15 @@ export function GlobalTradeEngineControls() {
       if (response.ok) {
         toast.success("Global Trade Engine paused")
         await loadStatus()
+        setTimeout(loadStatus, 500)
       } else {
         toast.error(data.error || "Failed to pause engine")
+        await loadStatus()
       }
     } catch (error) {
       toast.error("Failed to pause engine")
       console.error("[v0] Error pausing engine:", error)
+      await loadStatus()
     } finally {
       setIsPausing(false)
     }
@@ -128,12 +150,15 @@ export function GlobalTradeEngineControls() {
       if (response.ok) {
         toast.success("Global Trade Engine resumed")
         await loadStatus()
+        setTimeout(loadStatus, 500)
       } else {
         toast.error(data.error || "Failed to resume engine")
+        await loadStatus()
       }
     } catch (error) {
       toast.error("Failed to resume engine")
       console.error("[v0] Error resuming engine:", error)
+      await loadStatus()
     } finally {
       setIsResuming(false)
     }
@@ -148,12 +173,15 @@ export function GlobalTradeEngineControls() {
       if (response.ok) {
         toast.success("Global Trade Engine stopped")
         await loadStatus()
+        setTimeout(loadStatus, 500)
       } else {
         toast.error(data.error || "Failed to stop engine")
+        await loadStatus()
       }
     } catch (error) {
       toast.error("Failed to stop engine")
       console.error("[v0] Error stopping engine:", error)
+      await loadStatus()
     } finally {
       setIsStopping(false)
     }
