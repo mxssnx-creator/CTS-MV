@@ -9,16 +9,32 @@ export const dynamic = "force-dynamic"
 export const revalidate = 0
 
 export async function GET() {
+  console.log("[v0] [Status] === TRADE ENGINE STATUS ENDPOINT CALLED ===")
   try {
     await initRedis()
+    console.log("[v0] [Status] Redis initialized")
 
     const client = getRedisClient()
     const coordinator = getGlobalTradeEngineCoordinator()
+    console.log("[v0] [Status] Got client and coordinator")
     
     // Get ONLY Active Connections (is_enabled_dashboard = true) - independent from base connections
+    console.log("[v0] [Status] Calling getActiveConnectionsForEngine()...")
     const connections = await getActiveConnectionsForEngine()
     
-    console.log(`[v0] [Status] Active connections for trade engine: ${connections.length}`)
+    console.log(`[v0] [Status] *** ACTIVE CONNECTIONS COUNT: ${connections.length} ***`)
+    
+    if (connections.length === 0) {
+      console.log("[v0] [Status] No active connections - returning empty array")
+      return NextResponse.json({
+        success: true,
+        running: false,
+        paused: false,
+        status: "stopped",
+        connections: [],
+        summary: { total: 0, running: 0, stopped: 0, totalTrades: 0, totalPositions: 0, errors: 0 },
+      })
+    }
 
     let running = 0
     let totalTrades = 0
