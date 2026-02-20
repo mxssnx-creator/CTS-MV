@@ -12,12 +12,22 @@ export async function GET() {
     const coordinator = getGlobalTradeEngineCoordinator()
     const allConnections = await getAllConnections()
 
+    console.log("[v0] [Status] Raw connections count:", allConnections.length)
+    console.log("[v0] [Status] Sample connection:", JSON.stringify(allConnections[0], null, 2))
+
     // Only process connections that are user-inserted (not predefined templates)
+    // Predefined connections are templates with is_predefined=1 and no is_inserted flag
     const connections = allConnections.filter((c: any) => {
       const isPredefined = c.is_predefined === true || c.is_predefined === "true" || c.is_predefined === "1" || c.is_predefined === 1
       const isInserted = c.is_inserted === true || c.is_inserted === "true" || c.is_inserted === "1" || c.is_inserted === 1
-      return !isPredefined && isInserted
+      const shouldInclude = !isPredefined && isInserted
+      if (!shouldInclude) {
+        console.log(`[v0] [Status] Filtered out ${c.id}: isPredefined=${isPredefined}, isInserted=${isInserted}`)
+      }
+      return shouldInclude
     })
+
+    console.log("[v0] [Status] After filter count:", connections.length)
 
     let running = 0
     let totalTrades = 0
@@ -87,7 +97,7 @@ export async function GET() {
     const isGloballyRunning = coordinator.isRunning()
     const isGloballyPaused = coordinator.isPausedState()
 
-    return NextResponse.json({
+    const responseBody = {
       success: true,
       running: isGloballyRunning,
       paused: isGloballyPaused,
@@ -101,7 +111,11 @@ export async function GET() {
         totalPositions,
         errors: totalErrors,
       },
-    })
+    }
+
+    console.log("[v0] [Status] Response summary - connections count:", responseBody.connections.length, "total filtered:", connections.length)
+    
+    return NextResponse.json(responseBody)
   } catch (error) {
     return NextResponse.json(
       { success: false, error: "Failed to get trade engine status", details: String(error) },
