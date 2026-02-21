@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server"
-import { getAllConnections, getSettings, getRedisClient, initRedis } from "@/lib/redis-db"
-import { getGlobalTradeEngineCoordinator } from "@/lib/trade-engine"
+import { initRedis, getAllConnections, getRedisClient } from "@/lib/redis-db"
+import { RedisMonitoring } from "@/lib/redis-operations"
 
 export const dynamic = "force-dynamic"
+export const revalidate = 0
+export const fetchCache = "force-no-store"
+// UPDATED 2026-02-20 v2 - Show all base connections in Exchange Connections section
 
 export async function GET() {
   try {
