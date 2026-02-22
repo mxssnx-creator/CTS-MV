@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server"
 import { initRedis, getAllConnections, getActiveConnectionsForEngine, getRedisClient } from "@/lib/redis-db"
-import { RedisMonitoring } from "@/lib/redis-operations"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
 export const fetchCache = "force-no-store"
 
-// REBUILT 2026-02-20 - Complete rewrite without coordinator dependency
+// REBUILT 2026-02-20 v5 - No coordinator, no RedisMonitoring
 export async function GET() {
-  console.log("[v0] [System Stats REBUILT] === ENDPOINT CALLED ===")
+  console.log("[v0] [System Stats v5] === ENDPOINT CALLED ===")
   
   try {
     await initRedis()
