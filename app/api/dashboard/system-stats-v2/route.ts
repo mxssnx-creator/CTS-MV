@@ -79,10 +79,10 @@ export async function GET() {
     // Database status (always healthy if we got here)
     const dbStatus = "healthy"
     
-    // Live trades in last hour
-    const liveTrades = await RedisMonitoring.getRecentActivity("live_trades", 3600)
+    // Live trades in last hour - TODO: implement proper trade tracking
+    const liveTrades: any[] = []
     
-    console.log(`[v0] [System Stats] Live trades in last hour: ${liveTrades.length}`)
+    console.log(`[v0] [System Stats] Live trades in last hour: ${liveTrades.length} (not implemented yet)`)
     
     const response = {
       success: true,
