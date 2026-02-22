@@ -71,10 +71,10 @@ export function SystemOverview() {
   useEffect(() => {
     const loadStats = async () => {
       try {
-        const response = await fetch("/api/dashboard/system-stats", {
-          cache: "no-store",
-          headers: { "Cache-Control": "no-cache" },
-        })
+    const response = await fetch("/api/dashboard/system-stats-v2", {
+      cache: "no-store",
+      headers: { "Cache-Control": "no-cache" },
+    })
         if (response.ok) {
           const data = await response.json()
           setStats(data)
