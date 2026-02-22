@@ -2,15 +2,13 @@ import { NextResponse } from "next/server"
 import { getRedisClient, initRedis, getActiveConnectionsForEngine } from "@/lib/redis-db"
 import { getGlobalTradeEngineCoordinator } from "@/lib/trade-engine"
 import { ProgressionStateManager } from "@/lib/progression-state-manager"
-// Trade engine status endpoint - returns ONLY active connections (is_enabled_dashboard = true)
-// Updated: 2026-02-20 v3 - Use getActiveConnectionsForEngine() for proper filtering
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
 export const fetchCache = "force-no-store"
 
 export async function GET() {
-  console.log("[v0] [Status] === TRADE ENGINE STATUS ENDPOINT CALLED ===")
+  console.log("[v0] [Status] === TRADE ENGINE STATUS ENDPOINT CALLED (NEW VERSION) ===")
   try {
     await initRedis()
     console.log("[v0] [Status] Redis initialized")
@@ -45,91 +43,91 @@ export async function GET() {
       })
     }
 
-    let running = 0
-    let totalTrades = 0
-    let totalPositions = 0
-    let totalErrors = 0
-
-    const statuses = await Promise.all(
-      connections.map(async (connection: any) => {
+    // Build connection status for ACTIVE connections only
+    const connectionStatuses = await Promise.all(
+      connections.map(async (conn: any) => {
         try {
-          const tradeEngineStateKey = `trade_engine_state:${connection.id}`
-          const engineIsRunningKey = `engine_is_running:${connection.id}`
+          // Get progression state
+          const progressionState = await ProgressionStateManager.getState(client, conn.id)
+          
+          // Get positions and trades counts
+          const positionsKey = `positions:${conn.id}`
+          const tradesKey = `trades:${conn.id}`
+          
+          const positionsCount = await client.scard(positionsKey)
+          const tradesCount = await client.scard(tradesKey)
 
-          const tradeEngineState = await (client as any).hgetall(tradeEngineStateKey)
-          const isRunningValue = await (client as any).get(engineIsRunningKey)
-          const manager = coordinator.getEngineManager(connection.id)
-
-          const managerExists = manager !== undefined
-          const redisRunning = isRunningValue === "true" || isRunningValue === "1"
-
-          const lastIndication = tradeEngineState?.last_indication_run ? new Date(tradeEngineState.last_indication_run) : null
-          const recentlyActive = lastIndication ? (Date.now() - lastIndication.getTime()) < 10000 : false
-
-          const actuallyRunning = managerExists || redisRunning || recentlyActive
-
-          if (actuallyRunning) running++
-
-          const tradesKey = `trades:${connection.id}`
-          const positionsKey = `positions:${connection.id}`
-          const trades = (await (client as any).smembers(tradesKey)) || []
-          const positions = (await (client as any).smembers(positionsKey)) || []
-
-          const progression = await ProgressionStateManager.getProgressionState(connection.id)
-
-          totalTrades += trades.length
-          totalPositions += positions.length
+          // Determine if this connection's engine is actively running
+          const connectionRunning = isGloballyRunning && !isGloballyPaused
 
           return {
-            id: connection.id,
-            name: connection.name,
-            exchange: connection.exchange,
-            enabled: connection.is_enabled === true || (connection.is_enabled as any) === "1" || (connection.is_enabled as any) === "true",
-            activelyUsing: connection.is_enabled_dashboard === true || (connection.is_enabled_dashboard as any) === "1" || (connection.is_enabled_dashboard as any) === "true",
-            status: actuallyRunning ? "running" : "stopped",
-            trades: trades.length,
-            positions: positions.length,
-            state: tradeEngineState || {},
+            id: conn.id,
+            name: conn.name,
+            exchange: conn.exchange,
+            status: connectionRunning ? "running" : "stopped",
+            enabled: conn.is_enabled_dashboard === true || conn.is_enabled_dashboard === "1",
+            activelyUsing: conn.is_enabled_dashboard === true || conn.is_enabled_dashboard === "1",
+            positions: positionsCount,
+            trades: tradesCount,
             progression: {
-              cycles_completed: progression.cyclesCompleted,
-              successful_cycles: progression.successfulCycles,
-              failed_cycles: progression.failedCycles,
-              last_error: progression.lastError,
+              cycles_completed: progressionState.cycles_completed || 0,
+              successful_cycles: progressionState.successful_cycles || 0,
+              failed_cycles: progressionState.failed_cycles || 0,
             },
+            state: progressionState,
           }
         } catch (error) {
-          totalErrors++
+          console.error(`[v0] [Status] Error processing connection ${conn.id}:`, error)
           return {
-            id: connection.id,
-            name: connection.name,
-            exchange: connection.exchange,
+            id: conn.id,
+            name: conn.name,
+            exchange: conn.exchange,
             status: "error",
-            error: String(error),
+            enabled: false,
+            activelyUsing: false,
+            positions: 0,
+            trades: 0,
+            progression: { cycles_completed: 0, successful_cycles: 0, failed_cycles: 0 },
+            state: {},
+            error: error instanceof Error ? error.message : "Unknown error",
           }
         }
       })
     )
 
+    // Calculate summary
+    const summary = {
+      total: connectionStatuses.length,
+      running: connectionStatuses.filter((c: any) => c.status === "running").length,
+      stopped: connectionStatuses.filter((c: any) => c.status === "stopped" || c.status === "error").length,
+      totalTrades: connectionStatuses.reduce((sum: number, c: any) => sum + (c.trades || 0), 0),
+      totalPositions: connectionStatuses.reduce((sum: number, c: any) => sum + (c.positions || 0), 0),
+      errors: connectionStatuses.filter((c: any) => c.error).length,
+    }
+
     const responseBody = {
       success: true,
       running: isGloballyRunning,
       paused: isGloballyPaused,
-      status: isGloballyRunning ? (isGloballyPaused ? "paused" : "running") : "stopped",
-      connections: statuses,
-      summary: {
-        total: connections.length,
-        running,
-        stopped: connections.length - running,
-        totalTrades,
-        totalPositions,
-        errors: totalErrors,
-      },
+      status: isGloballyRunning ? "running" : (isGloballyPaused ? "paused" : "stopped"),
+      connections: connectionStatuses,
+      summary,
     }
 
+    console.log(`[v0] [Status] Returning ${connectionStatuses.length} active connections, global running: ${isGloballyRunning}`)
     return NextResponse.json(responseBody)
   } catch (error) {
+    console.error("[v0] [Status] Error:", error)
     return NextResponse.json(
-      { success: false, error: "Failed to get trade engine status", details: String(error) },
+      {
+        success: false,
+        running: false,
+        paused: false,
+        status: "error",
+        connections: [],
+        summary: { total: 0, running: 0, stopped: 0, totalTrades: 0, totalPositions: 0, errors: 1 },
+        error: error instanceof Error ? error.message : "Failed to fetch trade engine status",
+      },
       { status: 500 }
     )
   }
