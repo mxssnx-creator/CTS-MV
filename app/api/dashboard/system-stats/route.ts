@@ -6,8 +6,9 @@ export const dynamic = "force-dynamic"
 export const revalidate = 0
 export const fetchCache = "force-no-store"
 
+/* v3-rebuild */
 export async function GET() {
-  console.log("[v0] [System Stats] === SYSTEM STATS ENDPOINT CALLED (NEW VERSION) ===")
+  console.log("[v0] [System Stats v3] === SYSTEM STATS ENDPOINT CALLED ===")
   try {
     await initRedis()
     const client = getRedisClient()
