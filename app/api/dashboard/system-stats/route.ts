@@ -6,9 +6,9 @@ export const dynamic = "force-dynamic"
 export const revalidate = 0
 export const fetchCache = "force-no-store"
 
-/* v3-rebuild */
+// Force rebuild timestamp: 2026-02-20T21:15:00Z
 export async function GET() {
-  console.log("[v0] [System Stats v3] === SYSTEM STATS ENDPOINT CALLED ===")
+  console.log("[v0] [System Stats v4-REBUILD] === SYSTEM STATS ENDPOINT CALLED ===")
   try {
     await initRedis()
     const client = getRedisClient()
