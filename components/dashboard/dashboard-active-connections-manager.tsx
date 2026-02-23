@@ -165,15 +165,15 @@ export function DashboardActiveConnectionsManager() {
       {activeConnections.length === 0 ? (
         <Card>
           <CardContent className="pt-6 text-center text-muted-foreground">
-            <p className="mb-3">No active connections</p>
-            <p className="text-sm text-muted-foreground">Click "Add Connection" to activate connections from Settings.</p>
+            <p className="mb-3">No base connections found</p>
+            <p className="text-sm text-muted-foreground">Configure connections in Settings first.</p>
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-3">
+        <div className="flex flex-col gap-3">
           {activeConnections.map((conn) => {
           const details = conn.details
-          const status = conn.isActive ? "active" : "disabled"
+          const status = conn.isActive ? "active" : "inactive"
           const statusVariant = conn.isActive ? "default" : "secondary"
 
           return (

@@ -329,7 +329,7 @@ export const initialSettings: Settings = {
   activeLastPartTo: 5,
   activeLastPartStep: 0.1,
 
-  database_type: "redis",
+  database_type: "sqlite",
   database_url: "",
 }
 

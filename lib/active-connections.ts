@@ -14,15 +14,22 @@
  */
 
 import { initRedis, getAllConnections, getConnection, updateConnection } from "@/lib/redis-db"
+import { BASE_EXCHANGES } from "@/lib/connection-utils"
 
 export interface ActiveConnection {
   id: string
   connectionId: string
   exchangeName: string
-  isActive: boolean
+  isActive: boolean       // Maps to is_enabled_dashboard (Active/Dashboard toggle, INDEPENDENT)
+  isBaseEnabled: boolean  // Maps to is_enabled (Settings base enabled, read-only here)
   addedAt: string
 }
 
+/**
+ * Load ALL base connections (4 primary exchanges) for the Active Connections list.
+ * Always shows all 4 base exchange connections as cards.
+ * isActive = is_enabled_dashboard (the dashboard toggle, independent from Settings)
+ */
 export async function loadActiveConnections(): Promise<ActiveConnection[]> {
   try {
     await initRedis()
@@ -31,17 +38,23 @@ export async function loadActiveConnections(): Promise<ActiveConnection[]> {
     const activeConnections: ActiveConnection[] = []
 
     for (const conn of allConnections) {
-      if (conn.is_enabled_dashboard === true || conn.is_enabled_dashboard === "1") {
+      const exchange = (conn.exchange || "").toLowerCase().trim()
+      // Show ALL base connections (bybit, bingx, pionex, orangex) - always visible
+      if (BASE_EXCHANGES.includes(exchange)) {
+        const isDashboardActive = conn.is_enabled_dashboard === true || conn.is_enabled_dashboard === "1" || conn.is_enabled_dashboard === "true"
+        const isSettingsEnabled = conn.is_enabled === true || conn.is_enabled === "1" || conn.is_enabled === "true"
         activeConnections.push({
           id: `active-${conn.id}`,
           connectionId: conn.id,
           exchangeName: conn.exchange.charAt(0).toUpperCase() + conn.exchange.slice(1),
-          isActive: conn.is_enabled === true || conn.is_enabled === "1",
+          isActive: isDashboardActive,        // Dashboard toggle (independent)
+          isBaseEnabled: isSettingsEnabled,    // Settings enabled (read-only)
           addedAt: conn.created_at || new Date().toISOString(),
         })
       }
     }
 
+    console.log(`[v0] [ActiveConnections] Loaded ${activeConnections.length} base connections (${activeConnections.filter(c => c.isActive).length} active)`)
     return activeConnections
   } catch (error) {
     console.error("[v0] Error loading active connections from Redis:", error)
@@ -57,7 +70,8 @@ export async function saveActiveConnections(connections: ActiveConnection[]): Pr
       try {
         const connection = await getConnection(ac.connectionId)
         if (connection) {
-          connection.is_enabled = ac.isActive ? "1" : "0"
+          // Save is_enabled_dashboard (Dashboard active state) - NOT is_enabled
+          connection.is_enabled_dashboard = ac.isActive ? "1" : "0"
           await updateConnection(ac.connectionId, connection)
         }
       } catch (e) {
@@ -135,6 +149,9 @@ export async function removeActiveConnection(connectionId: string): Promise<void
   }
 }
 
+/**
+ * Toggle is_enabled_dashboard (Active/Dashboard toggle) - INDEPENDENT from Settings is_enabled
+ */
 export async function toggleActiveConnection(connectionId: string, isActive: boolean): Promise<void> {
   try {
     await initRedis()
@@ -145,8 +162,10 @@ export async function toggleActiveConnection(connectionId: string, isActive: boo
       connection = all.find((c: any) => c.id === connectionId)
     }
     if (connection) {
-      connection.is_enabled = isActive ? "1" : "0"
+      // Toggle is_enabled_dashboard (Dashboard active state) - NOT is_enabled (Settings state)
+      connection.is_enabled_dashboard = isActive ? "1" : "0"
       await updateConnection(connectionId, connection)
+      console.log(`[v0] [ActiveConnections] Toggled ${connectionId} dashboard active: ${isActive}`)
     }
   } catch (error) {
     console.error("[v0] Error toggling active connection:", error)
@@ -161,6 +180,7 @@ function getDefaultActiveConnections(): ActiveConnection[] {
       connectionId: "bybit-x03",
       exchangeName: "Bybit",
       isActive: false,
+      isBaseEnabled: false,
       addedAt: new Date().toISOString(),
     },
     {
@@ -168,6 +188,23 @@ function getDefaultActiveConnections(): ActiveConnection[] {
       connectionId: "bingx-x01",
       exchangeName: "BingX",
       isActive: false,
+      isBaseEnabled: false,
+      addedAt: new Date().toISOString(),
+    },
+    {
+      id: "active-pionex",
+      connectionId: "pionex-x01",
+      exchangeName: "Pionex",
+      isActive: false,
+      isBaseEnabled: false,
+      addedAt: new Date().toISOString(),
+    },
+    {
+      id: "active-orangex",
+      connectionId: "orangex-x01",
+      exchangeName: "OrangeX",
+      isActive: false,
+      isBaseEnabled: false,
       addedAt: new Date().toISOString(),
     },
   ]

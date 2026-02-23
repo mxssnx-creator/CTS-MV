@@ -76,13 +76,17 @@ export type InternalCalcType = (typeof INTERNAL_CALC_TYPES)[keyof typeof INTERNA
 // DATABASE TYPES
 // ============================================================================
 export const DATABASE_TYPES = {
-  REDIS: "redis",
+  SQLITE: "sqlite",
+  POSTGRESQL_LOCAL: "postgresql",
+  POSTGRESQL_REMOTE: "remote",
 } as const
 
 export type DatabaseType = (typeof DATABASE_TYPES)[keyof typeof DATABASE_TYPES]
 
 export const DATABASE_TYPE_LABELS: Record<DatabaseType, string> = {
-  [DATABASE_TYPES.REDIS]: "Redis (Upstash)",
+  [DATABASE_TYPES.SQLITE]: "SQLite (Local)",
+  [DATABASE_TYPES.POSTGRESQL_LOCAL]: "PostgreSQL (Local)",
+  [DATABASE_TYPES.POSTGRESQL_REMOTE]: "PostgreSQL (Remote)",
 }
 
 // ============================================================================
