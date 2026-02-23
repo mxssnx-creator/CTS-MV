@@ -17,39 +17,6 @@ interface RedisDataValue {
   expiresAt?: number
 }
 
-// Redis operations counter for tracking req/sec
-const redisOpsTracker = {
-  counts: [] as number[],     // timestamps of recent operations
-  windowMs: 60000,            // 60 second sliding window
-  
-  record() {
-    const now = Date.now()
-    this.counts.push(now)
-    // Keep only last 60 seconds of data
-    const cutoff = now - this.windowMs
-    while (this.counts.length > 0 && this.counts[0] < cutoff) {
-      this.counts.shift()
-    }
-  },
-  
-  getRequestsPerSecond(): number {
-    const now = Date.now()
-    const cutoff = now - this.windowMs
-    // Clean old entries
-    while (this.counts.length > 0 && this.counts[0] < cutoff) {
-      this.counts.shift()
-    }
-    // Calculate ops/sec over the window
-    const elapsed = Math.min(this.windowMs, now - (this.counts[0] || now)) / 1000
-    if (elapsed <= 0) return 0
-    return Math.round((this.counts.length / Math.max(elapsed, 1)) * 10) / 10
-  }
-}
-
-export function getRedisRequestsPerSecond(): number {
-  return redisOpsTracker.getRequestsPerSecond()
-}
-
 class InlineLocalRedis {
   private store = new Map<string, RedisDataValue>()
   private persistenceEnabled = false
@@ -86,13 +53,12 @@ class InlineLocalRedis {
   }
 
   private getEntry(key: string): RedisDataValue | null {
-  redisOpsTracker.record()
-  const entry = this.store.get(key)
-  if (!entry || this.isExpired(entry)) {
-  if (entry) this.store.delete(key)
-  return null
-  }
-  return entry
+    const entry = this.store.get(key)
+    if (!entry || this.isExpired(entry)) {
+      if (entry) this.store.delete(key)
+      return null
+    }
+    return entry
   }
 
   async ping(): Promise<"PONG"> { return "PONG" }
@@ -103,7 +69,6 @@ class InlineLocalRedis {
   }
 
   async set(key: string, value: string, options?: { ex?: number }): Promise<"OK"> {
-    redisOpsTracker.record()
     this.store.set(key, {
       type: "string",
       value,

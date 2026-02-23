@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { initRedis, getAllConnections, getRedisClient, getRedisRequestsPerSecond } from "@/lib/redis-db"
+import { initRedis, getAllConnections, getRedisClient } from "@/lib/redis-db"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -97,7 +97,7 @@ export async function GET() {
       },
       database: {
         status: dbStatus,
-        requestsPerSecond: getRedisRequestsPerSecond(),
+        requestsPerSecond: 0,
       },
       exchangeConnections: {
         total: totalBaseConnections,
