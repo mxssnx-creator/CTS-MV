@@ -31,8 +31,8 @@ export async function GET() {
     })
     const workingConnections = baseConnections.filter((c: any) => c.last_test_status === "success")
     
-    // ACTIVE = dashboard enabled
-    const activeConnections = allConnections.filter((c: any) => {
+    // ACTIVE = connections with is_enabled_dashboard = "1" (independent state)
+    const activeEnabledConnections = allConnections.filter((c: any) => {
       const d = c.is_enabled_dashboard
       return d === true || d === "1" || d === "true"
     })
@@ -41,34 +41,31 @@ export async function GET() {
     const enabledBaseConnections = enabledBase.length
     const workingBaseConnections = workingConnections.length
     
-    console.log(`[v0] [SysStats-v7] Base: ${totalBaseConnections}, Enabled: ${enabledBaseConnections}, Working: ${workingBaseConnections}, Active: ${activeConnections.length}`)
+    // Active Connections section: always show all 4 base as "total", only active-enabled as "active"
+    const totalActiveConnections = baseConnections.length // All 4 base shown in Active section
+    const enabledActiveCount = activeEnabledConnections.length // Only those with is_enabled_dashboard=1
     
-    // Active Connections (Dashboard enabled connections)
-    const totalActiveConnections = activeConnections.length
-    const enabledActiveConnections = activeConnections.filter((c: any) => 
-      c.is_enabled_dashboard === true || c.is_enabled_dashboard === "1"
-    ).length
-    
-    // Live vs Preset from active connections
+    // Live vs Preset from active-enabled connections only
     let liveTradeCount = 0
     let presetTradeCount = 0
     
-    for (const conn of activeConnections) {
-      const liveEnabled = conn.live_trade_enabled === true || conn.live_trade_enabled === "1"
-      const presetEnabled = conn.preset_trade_enabled === true || conn.preset_trade_enabled === "1"
+    for (const conn of activeEnabledConnections) {
+      const liveEnabled = conn.live_trade_enabled === true || conn.live_trade_enabled === "1" || conn.is_live_trade === true || conn.is_live_trade === "1"
+      const presetEnabled = conn.preset_trade_enabled === true || conn.preset_trade_enabled === "1" || conn.is_preset_trade === true || conn.is_preset_trade === "1"
       
       if (liveEnabled) liveTradeCount++
       if (presetEnabled) presetTradeCount++
     }
     
-    console.log(`[v0] [System Stats] Active Connections - Total: ${totalActiveConnections}, Live: ${liveTradeCount}, Preset: ${presetTradeCount}`)
+    console.log(`[v0] [SysStats-v7] Base: ${totalBaseConnections}, Enabled: ${enabledBaseConnections}, Working: ${workingBaseConnections}, Active: ${enabledActiveCount}`)
     
     // Trade Engine Status (read from Redis HASH - start endpoint uses hset)
     const engineStatus = await client.hgetall("trade_engine:global") || {}
     
     const globalStatus = engineStatus.status || "stopped"
-    const mainStatus = engineStatus.mainStatus || "stopped"
-    const presetStatus = engineStatus.presetStatus || "stopped"
+    // Main/Preset derive from active connections: running if global=running AND at least 1 connection has it
+    const mainStatus = globalStatus === "running" && liveTradeCount > 0 ? "running" : liveTradeCount > 0 ? "ready" : "stopped"
+    const presetStatus = globalStatus === "running" && presetTradeCount > 0 ? "running" : presetTradeCount > 0 ? "ready" : "stopped"
     
     console.log(`[v0] [System Stats] Trade Engine - Global: ${globalStatus}, Main: ${mainStatus}, Preset: ${presetStatus}`)
     
@@ -92,7 +89,11 @@ export async function GET() {
       tradeEngines: {
         globalStatus,
         mainStatus,
+        mainCount: liveTradeCount,
+        mainTotal: enabledActiveCount,
         presetStatus,
+        presetCount: presetTradeCount,
+        presetTotal: enabledActiveCount,
         totalEnabled: liveTradeCount + presetTradeCount,
       },
       database: {
@@ -107,7 +108,7 @@ export async function GET() {
       },
       activeConnections: {
         total: totalActiveConnections,
-        enabled: enabledActiveConnections,
+        active: enabledActiveCount,
         liveTrade: liveTradeCount,
         presetTrade: presetTradeCount,
       },
