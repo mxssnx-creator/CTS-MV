@@ -1,48 +1,36 @@
 import { NextResponse } from "next/server"
-import { initRedis, getAllConnections, getActiveConnectionsForEngine, getRedisClient } from "@/lib/redis-db"
+import { initRedis, getAllConnections, getRedisClient } from "@/lib/redis-db"
+import { filterBaseConnections, filterEnabledBaseConnections, filterDashboardActiveConnections } from "@/lib/connection-utils"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
 export const fetchCache = "force-no-store"
 
-// REBUILT 2026-02-20 v5 - No coordinator, no RedisMonitoring
+// REBUILT 2026-02-20 v6 - Uses connection-utils for reliable filtering
 export async function GET() {
-  console.log("[v0] [System Stats v5] === ENDPOINT CALLED ===")
+  console.log("[v0] [System Stats v6] === ENDPOINT CALLED ===")
   
   try {
     await initRedis()
     const client = getRedisClient()
     
-    // Get ALL connections (base connections from Settings)
+    // Get ALL connections from Redis
     const allConnections = await getAllConnections()
-    console.log(`[v0] [System Stats] getAllConnections returned: ${allConnections.length} connections`)
+    console.log(`[v0] [System Stats v6] Total connections in Redis: ${allConnections.length}`)
     
-    // Get ONLY active connections (Dashboard enabled)
-    const activeConnections = await getActiveConnectionsForEngine()
-    console.log(`[v0] [System Stats] getActiveConnectionsForEngine returned: ${activeConnections.length} active connections`)
+    // BASE connections = 4 primary exchanges (bybit, bingx, pionex, orangex)
+    const baseConnections = filterBaseConnections(allConnections)
+    const enabledBase = filterEnabledBaseConnections(allConnections)
+    const workingConnections = baseConnections.filter((c: any) => c.last_test_status === "success")
     
-    // Count INSERTED connections (is_inserted = "1") - these are the real base connections
-    const insertedConnections = allConnections.filter((c: any) => 
-      c.is_inserted === true || c.is_inserted === "1" || c.is_inserted === "true"
-    )
-    const predefinedOnly = allConnections.filter((c: any) => {
-      const isInserted = c.is_inserted === true || c.is_inserted === "1" || c.is_inserted === "true"
-      return !isInserted
-    })
-    const enabledConnections = insertedConnections.filter((c: any) => 
-      c.is_enabled === true || c.is_enabled === "1" || c.is_enabled === "true"
-    )
-    const workingConnections = insertedConnections.filter((c: any) => 
-      c.last_test_status === "success"
-    )
+    // ACTIVE connections = dashboard-enabled (for trade engine)
+    const activeConnections = filterDashboardActiveConnections(allConnections)
     
-    // Exchange Connections = INSERTED base connections only (not template-only ones)
-    const totalBaseConnections = insertedConnections.length
-    const enabledBaseConnections = enabledConnections.length
+    const totalBaseConnections = baseConnections.length
+    const enabledBaseConnections = enabledBase.length
     const workingBaseConnections = workingConnections.length
     
-    console.log(`[v0] [System Stats] Predefined: ${allConnections.length}, Inserted: ${insertedConnections.length}, Templates-only: ${predefinedOnly.length}`)
-    console.log(`[v0] [System Stats] Base Connections - Total: ${totalBaseConnections}, Enabled: ${enabledBaseConnections}, Working: ${workingBaseConnections}`)
+    console.log(`[v0] [System Stats v6] Base: ${totalBaseConnections}, Enabled: ${enabledBaseConnections}, Working: ${workingBaseConnections}, Active(Dashboard): ${activeConnections.length}`)
     
     // Active Connections (Dashboard enabled connections)
     const totalActiveConnections = activeConnections.length
