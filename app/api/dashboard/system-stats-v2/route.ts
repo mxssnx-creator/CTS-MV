@@ -1,36 +1,47 @@
 import { NextResponse } from "next/server"
 import { initRedis, getAllConnections, getRedisClient } from "@/lib/redis-db"
-import { filterBaseConnections, filterEnabledBaseConnections, filterDashboardActiveConnections } from "@/lib/connection-utils"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
 export const fetchCache = "force-no-store"
 
-// REBUILT 2026-02-20 v6 - Uses connection-utils for reliable filtering
+// Inline base exchange list to avoid import caching issues
+const BASE_EXCHANGE_LIST = ["bybit", "bingx", "pionex", "orangex"]
+
+function isBase(c: any): boolean {
+  return BASE_EXCHANGE_LIST.includes((c?.exchange || "").toLowerCase().trim())
+}
+
+// v7 - All logic inlined, no external imports except redis-db
 export async function GET() {
-  console.log("[v0] [System Stats v6] === ENDPOINT CALLED ===")
+  console.log("[v0] [SysStats-v7] === START ===")
   
   try {
     await initRedis()
     const client = getRedisClient()
     
-    // Get ALL connections from Redis
     const allConnections = await getAllConnections()
-    console.log(`[v0] [System Stats v6] Total connections in Redis: ${allConnections.length}`)
+    console.log(`[v0] [SysStats-v7] allConnections: ${allConnections.length}`)
     
-    // BASE connections = 4 primary exchanges (bybit, bingx, pionex, orangex)
-    const baseConnections = filterBaseConnections(allConnections)
-    const enabledBase = filterEnabledBaseConnections(allConnections)
+    // BASE = 4 primary exchanges by exchange name match
+    const baseConnections = allConnections.filter(isBase)
+    const enabledBase = baseConnections.filter((c: any) => {
+      const e = c.is_enabled
+      return e === true || e === "1" || e === "true" || e === undefined || e === null
+    })
     const workingConnections = baseConnections.filter((c: any) => c.last_test_status === "success")
     
-    // ACTIVE connections = dashboard-enabled (for trade engine)
-    const activeConnections = filterDashboardActiveConnections(allConnections)
+    // ACTIVE = dashboard enabled
+    const activeConnections = allConnections.filter((c: any) => {
+      const d = c.is_enabled_dashboard
+      return d === true || d === "1" || d === "true"
+    })
     
     const totalBaseConnections = baseConnections.length
     const enabledBaseConnections = enabledBase.length
     const workingBaseConnections = workingConnections.length
     
-    console.log(`[v0] [System Stats v6] Base: ${totalBaseConnections}, Enabled: ${enabledBaseConnections}, Working: ${workingBaseConnections}, Active(Dashboard): ${activeConnections.length}`)
+    console.log(`[v0] [SysStats-v7] Base: ${totalBaseConnections}, Enabled: ${enabledBaseConnections}, Working: ${workingBaseConnections}, Active: ${activeConnections.length}`)
     
     // Active Connections (Dashboard enabled connections)
     const totalActiveConnections = activeConnections.length

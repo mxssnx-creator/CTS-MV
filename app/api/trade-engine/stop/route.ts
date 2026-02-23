@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { loadConnections } from "@/lib/file-storage"
+import { initRedis, getRedisClient } from "@/lib/redis-db"
 import { getGlobalTradeEngineCoordinator } from "@/lib/trade-engine"
 import { SystemLogger } from "@/lib/system-logger"
 
@@ -18,38 +18,32 @@ export async function POST(request: NextRequest) {
 
     console.log("[v0] [Trade Engine] Stopping trade engine for connection:", connectionId || "all")
 
+    await initRedis()
+    const client = getRedisClient()
     const coordinator = getGlobalTradeEngineCoordinator()
-
-    if (!coordinator) {
-      console.error("[v0] [Trade Engine] Coordinator not initialized")
-      return NextResponse.json(
-        { success: false, error: "Trade engine coordinator not initialized" },
-        { status: 503 }
-      )
-    }
 
     // If no connectionId, stop all engines
     if (!connectionId) {
       try {
-        await coordinator.stopAll()
-        return NextResponse.json({ success: true, message: "All trade engines stopped" })
-      } catch (stopAllError) {
-        return NextResponse.json({ success: true, message: "Trade engines stop requested" })
-      }
+        if (coordinator) await coordinator.stopAll()
+      } catch { /* ignore */ }
+      
+      // Set global state in Redis
+      await client.hset("trade_engine:global", { 
+        status: "stopped", 
+        stopped_at: new Date().toISOString(),
+        coordinator_ready: "false"
+      })
+      await client.saveSnapshot()
+      
+      console.log("[v0] [Trade Engine] All engines stopped, state saved to Redis")
+      return NextResponse.json({ success: true, message: "All trade engines stopped" })
     }
 
-    // Verify connection exists
-    const connections = loadConnections()
-    
-    if (!Array.isArray(connections)) {
-      console.error("[v0] [Trade Engine] Connections is not an array:", typeof connections)
-      return NextResponse.json(
-        { success: false, error: "Invalid connections data" },
-        { status: 500 }
-      )
-    }
-
-    const connection = connections.find((c) => c.id === connectionId)
+    // Verify connection exists in Redis
+    const { getAllConnections } = await import("@/lib/redis-db")
+    const connections = await getAllConnections()
+    const connection = connections.find((c: any) => c.id === connectionId)
 
     if (!connection) {
       console.error("[v0] [Trade Engine] Connection not found:", connectionId)

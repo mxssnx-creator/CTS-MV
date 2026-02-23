@@ -596,15 +596,16 @@ export async function getEnabledConnections(): Promise<any[]> {
   return all.filter(c => c.is_enabled === true)
 }
 
+// Inline base exchange list - no external imports to avoid caching issues
+const _BASE_EXCHANGES = ["bybit", "bingx", "pionex", "orangex"]
+
 /**
  * Get ONLY base connections (4 primary exchanges: bybit, bingx, pionex, orangex)
- * These are the real working connections, not template-only ones
  */
 export async function getBaseConnections(): Promise<any[]> {
-  const { filterBaseConnections } = await import("@/lib/connection-utils")
   const all = await getAllConnections()
-  const filtered = filterBaseConnections(all)
-  console.log(`[v0] [DB] getBaseConnections: ${filtered.length} base connections (out of ${all.length} total)`)
+  const filtered = all.filter((c: any) => _BASE_EXCHANGES.includes((c?.exchange || "").toLowerCase().trim()))
+  console.log(`[v0] [DB] getBaseConnections: ${filtered.length} base (out of ${all.length})`)
   return filtered
 }
 
@@ -612,10 +613,13 @@ export async function getBaseConnections(): Promise<any[]> {
  * Get base connections that are enabled in Settings
  */
 export async function getEnabledBaseConnections(): Promise<any[]> {
-  const { filterEnabledBaseConnections } = await import("@/lib/connection-utils")
   const all = await getAllConnections()
-  const filtered = filterEnabledBaseConnections(all)
-  console.log(`[v0] [DB] getEnabledBaseConnections: ${filtered.length} enabled base connections (out of ${all.length} total)`)
+  const filtered = all.filter((c: any) => {
+    const isBase = _BASE_EXCHANGES.includes((c?.exchange || "").toLowerCase().trim())
+    const isEnabled = c.is_enabled === true || c.is_enabled === "1" || c.is_enabled === "true" || c.is_enabled === undefined || c.is_enabled === null
+    return isBase && isEnabled
+  })
+  console.log(`[v0] [DB] getEnabledBaseConnections: ${filtered.length} enabled base (out of ${all.length})`)
   return filtered
 }
 
@@ -624,10 +628,12 @@ export async function getEnabledBaseConnections(): Promise<any[]> {
  * These are the ONLY connections the trade engine should process
  */
 export async function getActiveConnectionsForEngine(): Promise<any[]> {
-  const { filterDashboardActiveConnections } = await import("@/lib/connection-utils")
   const all = await getAllConnections()
-  const filtered = filterDashboardActiveConnections(all)
-  console.log(`[v0] [DB] getActiveConnectionsForEngine: ${filtered.length} active dashboard connections for trade engine (out of ${all.length} total)`)
+  const filtered = all.filter((c: any) => {
+    const d = c.is_enabled_dashboard
+    return d === true || d === "1" || d === "true"
+  })
+  console.log(`[v0] [DB] getActiveConnectionsForEngine: ${filtered.length} active dashboard (out of ${all.length})`)
   return filtered
 }
 

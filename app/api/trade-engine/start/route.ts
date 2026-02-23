@@ -35,7 +35,11 @@ export async function POST(request: NextRequest) {
       started_at: new Date().toISOString(),
       coordinator_ready: "true"
     })
-
+    
+    // Force immediate persistence so status endpoint sees the change
+    await client.saveSnapshot()
+    
+    console.log("[v0] [Trade Engine] Global Coordinator state saved to Redis: status=running")
     console.log("[v0] [Trade Engine] Global Coordinator is running and ready")
     console.log("[v0] [Trade Engine] Connection-specific engines controlled via:")
     console.log("[v0] [Trade Engine]   - Main Engine: POST /api/settings/connections/[id]/live-trade")
