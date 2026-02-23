@@ -15,12 +15,12 @@ import {
 import { AddActiveConnectionDialog } from "./add-active-connection-dialog"
 import { ActiveConnectionCard } from "./active-connection-card"
 
-interface ActiveDashboardConnection extends ActiveConnection {
+interface ActiveConnectionWithDetails extends ActiveConnection {
   details?: Connection
 }
 
 export function DashboardActiveConnectionsManager() {
-  const [activeConnections, setActiveConnections] = useState<ActiveDashboardConnection[]>([])
+  const [activeConnections, setActiveConnections] = useState<ActiveConnectionWithDetails[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [addDialogOpen, setAddDialogOpen] = useState(false)
@@ -70,7 +70,7 @@ export function DashboardActiveConnectionsManager() {
     setTogglingIds(prev => new Set(prev).add(connectionId))
     
     try {
-      // 1. Toggle is_enabled_dashboard (independent from Settings)
+      // 1. Toggle active state (independent from Settings base connections)
       await toggleActiveConnection(connectionId, newState)
       
       // 2. Update local state immediately for responsiveness
@@ -89,9 +89,9 @@ export function DashboardActiveConnectionsManager() {
         
         if (!startRes.ok) {
           const errorData = await startRes.json().catch(() => ({ error: "Unknown error" }))
-          // If engine start fails, still keep dashboard toggle on but warn user
+          // If engine start fails, still keep active toggle on but warn user
           toast.warning("Connection enabled", {
-            description: `Dashboard active but engine: ${errorData.error || "could not start"}`,
+            description: `Active but engine: ${errorData.error || "could not start"}`,
           })
         } else {
           toast.success("Connection activated", {
