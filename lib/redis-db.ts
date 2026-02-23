@@ -42,7 +42,7 @@ const redisOpsTracker = {
     // Calculate ops/sec over the window
     const elapsed = Math.min(this.windowMs, now - (this.counts[0] || now)) / 1000
     if (elapsed <= 0) return 0
-    return Math.round((this.counts.length / Math.max(elapsed, 1)) * 10) / 10
+    return Math.round(this.counts.length / Math.max(elapsed, 1))
   }
 }
 
