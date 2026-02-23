@@ -50,7 +50,7 @@ export async function GET() {
       connections.map(async (conn: any) => {
         try {
           // Get progression state
-          const progressionState = await ProgressionStateManager.getState(client, conn.id)
+          const progressionState = await ProgressionStateManager.getProgressionState(conn.id)
           
           // Get positions and trades counts
           const positionsKey = `positions:${conn.id}`
