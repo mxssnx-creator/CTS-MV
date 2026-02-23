@@ -92,6 +92,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         updated_at: new Date().toISOString(),
       })
 
+      const manager = getConnectionManager()
+      await manager.markTestFailed(id, "API credentials not configured - using placeholder/test values")
+
       return NextResponse.json(
         {
           error: "Credentials not configured",

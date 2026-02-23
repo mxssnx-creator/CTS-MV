@@ -1,78 +1,42 @@
 import { NextResponse } from "next/server"
-import { query } from "@/lib/db"
+import { initRedis, getRedisClient, isRedisConnected } from "@/lib/redis-db"
 
-export const runtime = "nodejs"
+export const dynamic = "force-dynamic"
 
 export async function GET() {
   try {
-    const databaseUrl = process.env.DATABASE_URL || ""
-    const remotePostgresUrl = process.env.REMOTE_POSTGRES_URL || ""
-    const isConnected = !!(databaseUrl || remotePostgresUrl)
-
-    let dbType = "sqlite"
-    if (databaseUrl.startsWith("postgresql://") || remotePostgresUrl.startsWith("postgresql://")) {
-      dbType = "postgresql"
+    await initRedis()
+    const client = getRedisClient()
+    const connected = isRedisConnected()
+    
+    let connectionCount = 0
+    let schemaVersion = "0"
+    
+    if (connected) {
+      connectionCount = await client.scard("connections")
+      schemaVersion = (await client.get("_schema_version") || "0") as string
     }
 
-    // Test the connection
-    let connectionWorks = false
-    let tableCount = 0
-
-    if (isConnected) {
-      try {
-        if (dbType === "postgresql") {
-          const result = await query<{ count: string }>(
-            `SELECT COUNT(*) as count 
-             FROM information_schema.tables 
-             WHERE table_schema = 'public'`,
-          )
-          tableCount = Number.parseInt(result[0]?.count || "0")
-        } else {
-          const result = await query<{ count: string }>(
-            `SELECT COUNT(*) as count 
-             FROM sqlite_master 
-             WHERE type='table'`,
-          )
-          tableCount = Number.parseInt(result[0]?.count || "0")
-        }
-        connectionWorks = true
-      } catch (error) {
-        console.error("[v0] Database connection test failed:", error)
-      }
-    }
-
-    // Mask the URL for security (show only the host)
-    let maskedUrl = ""
-    const activeUrl = databaseUrl || remotePostgresUrl
-    if (activeUrl) {
-      try {
-        if (activeUrl.startsWith("postgresql://")) {
-          const url = new URL(activeUrl)
-          maskedUrl = `postgresql://*****:*****@${url.host}${url.pathname}`
-        } else {
-          maskedUrl = "sqlite://./data/cts.db"
-        }
-      } catch {
-        maskedUrl = dbType === "postgresql" ? "postgresql://*****:*****@*****/*****" : "sqlite://./data/cts.db"
-      }
-    }
+    const kvUrl = process.env.KV_REST_API_URL || ""
+    const maskedUrl = kvUrl ? `redis://*****@${new URL(kvUrl).host}` : "redis://connected"
 
     return NextResponse.json({
-      type: dbType,
-      isConfigured: isConnected,
-      isConnected: connectionWorks,
+      type: "redis",
+      isConfigured: connected,
+      isConnected: connected,
       url: maskedUrl,
-      tableCount,
+      tableCount: connectionCount,
+      schemaVersion: parseInt(schemaVersion),
       envVars: {
-        DATABASE_URL: !!databaseUrl,
-        REMOTE_POSTGRES_URL: !!remotePostgresUrl,
+        KV_REST_API_URL: !!process.env.KV_REST_API_URL,
+        KV_REST_API_TOKEN: !!process.env.KV_REST_API_TOKEN,
       },
     })
   } catch (error) {
     console.error("[v0] Failed to get database status:", error)
     return NextResponse.json(
       {
-        type: "unknown",
+        type: "redis",
         isConfigured: false,
         isConnected: false,
         error: error instanceof Error ? error.message : "Unknown error",
