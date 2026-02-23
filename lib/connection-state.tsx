@@ -118,7 +118,8 @@ export function ConnectionStateProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // Load ALL inserted connections for Active list (not just enabled ones)
+  // Load ALL INSERTED base connections for Active Connections list
+  // Active connections show ALL inserted connections - the toggle controls is_enabled_dashboard
   const loadExchangeConnectionsActive = async () => {
     // Prevent concurrent requests
     if (loadingRef.current.active) return
@@ -130,26 +131,27 @@ export function ConnectionStateProvider({ children }: { children: ReactNode }) {
     setIsExchangeConnectionsActiveLoading(true)
     try {
       console.log("[v0] [ConnectionState] Loading ALL inserted connections for Active list")
-      // Load ALL connections, then filter to only inserted ones (not predefined)
       const response = await fetch("/api/settings/connections")
       if (response.ok) {
         const data = await response.json()
         const allConnections = data.connections || []
         
-        // Filter to only NON-predefined (inserted) connections
-        const insertedConnections = allConnections.filter((c: any) => {
-          const isPredefined = c.is_predefined === true || c.is_predefined === "1" || c.is_predefined === "true"
-          return !isPredefined
+        // Show ALL connections that have is_inserted = "1" (real base connections, not template-only)
+        // AND is_enabled = "1" (enabled in Settings)
+        const insertedAndEnabled = allConnections.filter((c: any) => {
+          const isInserted = c.is_inserted === true || c.is_inserted === "1" || c.is_inserted === "true"
+          const isEnabled = c.is_enabled === true || c.is_enabled === "1" || c.is_enabled === "true"
+          return isInserted && isEnabled
         })
         
-        console.log("[v0] [ConnectionState] Loaded", insertedConnections.length, "inserted connections for Active list (out of", allConnections.length, "total)")
-        setExchangeConnectionsActive(insertedConnections)
+        console.log("[v0] [ConnectionState] Loaded", insertedAndEnabled.length, "inserted+enabled connections for Active list (out of", allConnections.length, "total)")
+        setExchangeConnectionsActive(insertedAndEnabled)
         
-        // Initialize status map - use is_enabled_dashboard as the active state
+        // Initialize status map - use is_enabled_dashboard for the active toggle (independent)
         const statusMap = new Map<string, boolean>()
-        insertedConnections.forEach((conn: ExchangeConnection) => {
-          const isActiveEnabled = conn.is_enabled_dashboard === true || conn.is_enabled_dashboard === "1" || conn.is_enabled_dashboard === "true"
-          statusMap.set(conn.id, isActiveEnabled)
+        insertedAndEnabled.forEach((conn: ExchangeConnection) => {
+          const isDashboardEnabled = conn.is_enabled_dashboard === true || conn.is_enabled_dashboard === "1" || (conn as any).is_enabled_dashboard === "true"
+          statusMap.set(conn.id, isDashboardEnabled)
         })
         setExchangeConnectionsActiveStatus(statusMap)
       }

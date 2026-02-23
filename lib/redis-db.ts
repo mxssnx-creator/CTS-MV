@@ -618,17 +618,13 @@ export async function getInsertedAndEnabledConnections(): Promise<any[]> {
 /**
  * Get ONLY Active Connections (is_enabled_dashboard = true)
  * These are the ONLY connections the trade engine should process
- * Independent from Settings base connections (is_enabled)
+ * Any connection with is_enabled_dashboard = true is active, regardless of is_predefined
  */
 export async function getActiveConnectionsForEngine(): Promise<any[]> {
   const all = await getAllConnections()
   const filtered = all.filter((c: any) => {
-    const isPredefined = c.is_predefined === true || c.is_predefined === "1" || c.is_predefined === "true"
-    const isInserted = c.is_inserted === true || c.is_inserted === "1" || c.is_inserted === "true"
     const isEnabledDashboard = c.is_enabled_dashboard === true || c.is_enabled_dashboard === "1" || c.is_enabled_dashboard === "true"
-    
-    // Must be: NOT predefined, IS inserted, IS enabled in dashboard (Active List)
-    return !isPredefined && isInserted && isEnabledDashboard
+    return isEnabledDashboard
   })
   
   console.log(`[v0] [DB] getActiveConnectionsForEngine: ${filtered.length} active connections for trade engine (out of ${all.length} total)`)

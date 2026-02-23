@@ -21,21 +21,27 @@ export async function GET() {
     const activeConnections = await getActiveConnectionsForEngine()
     console.log(`[v0] [System Stats] getActiveConnectionsForEngine returned: ${activeConnections.length} active connections`)
     
-    // Count predefined vs inserted
-    const predefinedCount = allConnections.filter((c: any) => c.is_predefined === true || c.is_predefined === "1").length
-    const insertedCount = allConnections.length - predefinedCount
-    
-    console.log(`[v0] [System Stats] Predefined: ${predefinedCount}, Inserted: ${insertedCount}`)
-    
-    // Base Connections (ALL connections in Settings)
-    const totalBaseConnections = allConnections.length
-    const enabledBaseConnections = allConnections.filter((c: any) => 
-      c.is_enabled === true || c.is_enabled === "1"
-    ).length
-    const workingBaseConnections = allConnections.filter((c: any) => 
+    // Count INSERTED connections (is_inserted = "1") - these are the real base connections
+    const insertedConnections = allConnections.filter((c: any) => 
+      c.is_inserted === true || c.is_inserted === "1" || c.is_inserted === "true"
+    )
+    const predefinedOnly = allConnections.filter((c: any) => {
+      const isInserted = c.is_inserted === true || c.is_inserted === "1" || c.is_inserted === "true"
+      return !isInserted
+    })
+    const enabledConnections = insertedConnections.filter((c: any) => 
+      c.is_enabled === true || c.is_enabled === "1" || c.is_enabled === "true"
+    )
+    const workingConnections = insertedConnections.filter((c: any) => 
       c.last_test_status === "success"
-    ).length
+    )
     
+    // Exchange Connections = INSERTED base connections only (not template-only ones)
+    const totalBaseConnections = insertedConnections.length
+    const enabledBaseConnections = enabledConnections.length
+    const workingBaseConnections = workingConnections.length
+    
+    console.log(`[v0] [System Stats] Predefined: ${allConnections.length}, Inserted: ${insertedConnections.length}, Templates-only: ${predefinedOnly.length}`)
     console.log(`[v0] [System Stats] Base Connections - Total: ${totalBaseConnections}, Enabled: ${enabledBaseConnections}, Working: ${workingBaseConnections}`)
     
     // Active Connections (Dashboard enabled connections)
@@ -58,9 +64,8 @@ export async function GET() {
     
     console.log(`[v0] [System Stats] Active Connections - Total: ${totalActiveConnections}, Live: ${liveTradeCount}, Preset: ${presetTradeCount}`)
     
-    // Trade Engine Status (read from Redis key directly)
-    const engineStatusRaw = await client.get("trade_engine:global")
-    const engineStatus = engineStatusRaw ? JSON.parse(engineStatusRaw) : { status: "stopped" }
+    // Trade Engine Status (read from Redis HASH - start endpoint uses hset)
+    const engineStatus = await client.hgetall("trade_engine:global") || {}
     
     const globalStatus = engineStatus.status || "stopped"
     const mainStatus = engineStatus.mainStatus || "stopped"

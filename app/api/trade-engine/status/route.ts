@@ -17,10 +17,12 @@ export async function GET() {
     const coordinator = getGlobalTradeEngineCoordinator()
     console.log("[v0] [Status] Got client and coordinator")
     
-    // Check global engine status FIRST - independent of active connections count
-    const isGloballyRunning = coordinator.isRunning()
-    const isGloballyPaused = coordinator.isPausedState()
+    // Check global engine status from Redis hash (start endpoint writes with hset)
+    const engineHash = await client.hgetall("trade_engine:global") || {}
+    const isGloballyRunning = engineHash.status === "running"
+    const isGloballyPaused = engineHash.status === "paused"
     
+    console.log(`[v0] [Status] Redis Engine Hash:`, JSON.stringify(engineHash))
     console.log(`[v0] [Status] Global Engine State - Running: ${isGloballyRunning}, Paused: ${isGloballyPaused}`)
     
     // Get ONLY Active Connections (is_enabled_dashboard = true) - independent from base connections

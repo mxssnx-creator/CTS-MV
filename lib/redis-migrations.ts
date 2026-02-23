@@ -452,6 +452,54 @@ const migrations: Migration[] = [
       await client.set("_schema_version", "13")
     },
   },
+  {
+    name: "015-fix-connection-inserted-enabled-states",
+    version: 15,
+    up: async (client: any) => {
+      await client.set("_schema_version", "15")
+      
+      // The 4 base exchanges that should be marked as INSERTED and ENABLED
+      const baseExchangeIds = ["bybit-x03", "bingx-x01", "binance-x01", "okx-x01"]
+      
+      const connections = await client.smembers("connections")
+      let updatedBase = 0
+      let updatedOther = 0
+      
+      for (const connId of connections) {
+        const connData = await client.hgetall(`connection:${connId}`)
+        if (!connData || Object.keys(connData).length === 0) continue
+        
+        if (baseExchangeIds.includes(connId)) {
+          // Mark as INSERTED and ENABLED in Settings (base connection)
+          await client.hset(`connection:${connId}`, {
+            is_inserted: "1",
+            is_enabled: "1",
+            is_predefined: "1",
+            updated_at: new Date().toISOString(),
+          })
+          updatedBase++
+          console.log(`[v0] Migration 015: ${connId} -> inserted=1, enabled=1 (base connection)`)
+        } else {
+          // Non-base predefined connections: just informational templates
+          // NOT inserted, NOT enabled - they are templates only
+          await client.hset(`connection:${connId}`, {
+            is_inserted: "0",
+            is_enabled: "0",
+            is_predefined: "1",
+            is_enabled_dashboard: "0",
+            updated_at: new Date().toISOString(),
+          })
+          updatedOther++
+          console.log(`[v0] Migration 015: ${connId} -> inserted=0, enabled=0 (template only)`)
+        }
+      }
+      
+      console.log(`[v0] Migration 015: Fixed ${updatedBase} base connections, ${updatedOther} template connections`)
+    },
+    down: async (client: any) => {
+      await client.set("_schema_version", "14")
+    },
+  },
 ]
 
 /**

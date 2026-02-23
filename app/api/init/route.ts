@@ -4,6 +4,7 @@ import { getGlobalTradeEngineCoordinator } from "@/lib/trade-engine"
 import { seedDefaultPresetTypes } from "@/lib/preset-types-seed"
 import { initRedis, getAllConnections, createConnection } from "@/lib/redis-db"
 import { CONNECTION_PREDEFINITIONS } from "@/lib/connection-predefinitions"
+import { runMigrations } from "@/lib/redis-migrations"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -19,6 +20,14 @@ export async function GET() {
     // Initialize Redis connection
     await initRedis()
     console.log("[v0] [Init] Redis initialized")
+    
+    // Run all pending migrations FIRST before anything else
+    try {
+      const migrationResult = await runMigrations()
+      console.log(`[v0] [Init] Migrations: ${migrationResult.message} (v${migrationResult.version})`)
+    } catch (migrationError) {
+      console.error("[v0] [Init] Migration error (non-fatal):", migrationError)
+    }
     
     // Seed default preset types
     await seedDefaultPresetTypes()

@@ -59,20 +59,18 @@ export function AddActiveConnectionDialog({
 
       console.log("[v0] [Add Connection Dialog] Total connections from API:", allConnections.length)
 
-      // Filter to ONLY show connections that are:
-      // 1. NOT predefined (inserted connections only)
-      // 2. Have valid credentials (api_key exists and is not placeholder)
-      // 3. NOT already active in dashboard (is_enabled_dashboard = false or not set)
+      // Filter to show connections that are:
+      // 1. INSERTED (is_inserted = "1") - real base connections, not template-only
+      // 2. Enabled in Settings (is_enabled = "1")
+      // 3. NOT already active in dashboard (is_enabled_dashboard != "1")
       const availableForAdd = allConnections.filter((c: any) => {
-        const isPredefined = c.is_predefined === true || c.is_predefined === "1" || c.is_predefined === "true"
-        const hasValidCredentials = c.api_key && typeof c.api_key === "string" && c.api_key.length > 0 && !c.api_key.includes("PLACEHOLDER")
+        const isInserted = c.is_inserted === true || c.is_inserted === "1" || c.is_inserted === "true"
+        const isEnabled = c.is_enabled === true || c.is_enabled === "1" || c.is_enabled === "true"
         const notAlreadyActive = !(c.is_enabled_dashboard === true || c.is_enabled_dashboard === "1" || c.is_enabled_dashboard === "true")
         
-        if (isPredefined) {
-          console.log("[v0] [Add Connection Dialog] Filtered out predefined:", c.id, c.name)
-        }
+        console.log(`[v0] [Add Connection Dialog] ${c.id}: inserted=${isInserted}, enabled=${isEnabled}, alreadyActive=${!notAlreadyActive}`)
         
-        return !isPredefined && hasValidCredentials && notAlreadyActive
+        return isInserted && isEnabled && notAlreadyActive
       })
 
       console.log("[v0] [Add Connection Dialog] Available to add:", availableForAdd.length)
