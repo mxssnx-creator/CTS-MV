@@ -72,26 +72,36 @@ export class TradeEngineManager {
     console.log("[v0] Starting trade engine for connection:", this.connectionId)
 
     try {
-      // Update engine state IMMEDIATELY and set running flag
+      // Phase 1: Initializing
+      await this.updateProgressionPhase("initializing", 5, "Setting up engine components...")
       await this.updateEngineState("running")
       await this.setRunningFlag(true)
 
-      // Load prehistoric data first
+      // Phase 2: Load prehistoric data (historical data retrieval + calculation)
+      await this.updateProgressionPhase("prehistoric_data", 10, "Loading historical market data...")
       await this.loadPrehistoricData()
 
-      // Start async processors
+      // Phase 3: Start indication processor
+      await this.updateProgressionPhase("indications", 60, "Starting indication processor...")
       this.startIndicationProcessor(config.indicationInterval)
+
+      // Phase 4: Start strategy processor
+      await this.updateProgressionPhase("strategies", 75, "Starting strategy processor...")
       this.startStrategyProcessor(config.strategyInterval)
+
+      // Phase 5: Start realtime processor
+      await this.updateProgressionPhase("realtime", 85, "Starting real-time data processor...")
       this.startRealtimeProcessor(config.realtimeInterval)
       this.startHealthMonitoring()
       
-      // Start heartbeat to keep running state active
+      // Phase 6: Live trading ready
       this.startHeartbeat()
-
       this.isRunning = true
+      await this.updateProgressionPhase("live_trading", 100, "Live trading active")
       console.log("[v0] Trade engine started successfully")
     } catch (error) {
       console.error("[v0] Failed to start trade engine:", error)
+      await this.updateProgressionPhase("error", 0, error instanceof Error ? error.message : "Unknown error")
       await this.updateEngineState("error", error instanceof Error ? error.message : "Unknown error")
       await this.setRunningFlag(false)
       throw error
@@ -128,6 +138,7 @@ export class TradeEngineManager {
     // Update engine state and clear running flag
     await this.updateEngineState("stopped")
     await this.setRunningFlag(false)
+    await this.updateProgressionPhase("stopped", 0, "Engine stopped")
 
     console.log("[v0] Trade engine stopped")
   }
@@ -154,8 +165,17 @@ export class TradeEngineManager {
       const prehistoricEnd = new Date()
       const prehistoricStart = new Date(prehistoricEnd.getTime() - 30 * 24 * 60 * 60 * 1000)
 
-      // Process each symbol
-      for (const symbol of symbols) {
+      // Process each symbol with progress tracking
+      for (let i = 0; i < symbols.length; i++) {
+        const symbol = symbols[i]
+        const symbolProgress = 10 + Math.round((i / symbols.length) * 45) // 10% to 55%
+        
+        // Sub-phase: Loading market data
+        await this.updateProgressionPhase("prehistoric_data", symbolProgress, 
+          `Loading market data for ${symbol}...`,
+          { current: i + 1, total: symbols.length, item: symbol }
+        )
+        
         // Check what data already exists in Redis
         const syncStatus = await DataSyncManager.checkSyncStatus(
           this.connectionId,
@@ -166,16 +186,23 @@ export class TradeEngineManager {
         )
 
         if (syncStatus.needsSync) {
-          // Load missing data ranges
           for (const range of syncStatus.missingRanges) {
             await this.loadMarketDataRange(symbol, range.start, range.end)
           }
         }
 
-        // Calculate indications for prehistoric data
+        // Sub-phase: Calculate indications
+        await this.updateProgressionPhase("prehistoric_data", symbolProgress + 2,
+          `Calculating indications for ${symbol}...`,
+          { current: i + 1, total: symbols.length, item: symbol }
+        )
         await this.indicationProcessor.processHistoricalIndications(symbol, prehistoricStart, prehistoricEnd)
 
-        // Calculate strategies for prehistoric data
+        // Sub-phase: Calculate strategies
+        await this.updateProgressionPhase("prehistoric_data", symbolProgress + 4,
+          `Processing strategies for ${symbol}...`,
+          { current: i + 1, total: symbols.length, item: symbol }
+        )
         await this.strategyProcessor.processHistoricalStrategies(symbol, prehistoricStart, prehistoricEnd)
       }
 
@@ -472,7 +499,6 @@ export class TradeEngineManager {
    */
   private async updateEngineState(status: string, errorMessage?: string): Promise<void> {
     try {
-      // Use trade_engine_state prefix for consistency with status endpoint
       const stateKey = `trade_engine_state:${this.connectionId}`
       const currentState = (await getSettings(stateKey)) || {}
       await setSettings(stateKey, {
@@ -486,6 +512,33 @@ export class TradeEngineManager {
       console.log(`[v0] [Engine State] Updated ${stateKey}: status=${status}`)
     } catch (error) {
       console.error("[v0] Failed to update engine state:", error)
+    }
+  }
+
+  /**
+   * Update progression phase with detailed progress tracking
+   * Phases: initializing -> prehistoric_data -> indications -> strategies -> realtime -> live_trading
+   */
+  async updateProgressionPhase(
+    phase: string, 
+    progress: number, 
+    detail: string,
+    subProgress?: { current: number; total: number; item?: string }
+  ): Promise<void> {
+    try {
+      const key = `engine_progression:${this.connectionId}`
+      await setSettings(key, {
+        phase,
+        progress: Math.min(100, Math.max(0, progress)),
+        detail,
+        sub_current: subProgress?.current || 0,
+        sub_total: subProgress?.total || 0,
+        sub_item: subProgress?.item || "",
+        connection_id: this.connectionId,
+        updated_at: new Date().toISOString(),
+      })
+    } catch (error) {
+      console.error("[v0] Failed to update progression phase:", error)
     }
   }
 
