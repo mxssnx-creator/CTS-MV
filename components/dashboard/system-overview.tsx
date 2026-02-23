@@ -71,7 +71,7 @@ export function SystemOverview() {
   useEffect(() => {
     const loadStats = async () => {
       try {
-    const response = await fetch("/api/dashboard/system-stats-v2", {
+    const response = await fetch("/api/dashboard/system-stats-v3", {
       cache: "no-store",
       headers: { "Cache-Control": "no-cache" },
     })
