@@ -29,17 +29,14 @@ export async function POST(request: NextRequest) {
     await initRedis()
     const client = getRedisClient()
     
-    // Set global state in Redis
+    // Set global state in Redis (write-through to Upstash for persistence)
     await client.hset("trade_engine:global", { 
       status: "running", 
       started_at: new Date().toISOString(),
       coordinator_ready: "true"
     })
     
-    // Force immediate persistence so status endpoint sees the change
-    await client.saveSnapshot()
-    
-    console.log("[v0] [Trade Engine] Global Coordinator state saved to Redis: status=running")
+    console.log("[v0] [Trade Engine] Global Coordinator state saved to Redis + Upstash: status=running")
     console.log("[v0] [Trade Engine] Global Coordinator is running and ready")
     console.log("[v0] [Trade Engine] Connection-specific engines controlled via:")
     console.log("[v0] [Trade Engine]   - Main Engine: POST /api/settings/connections/[id]/live-trade")

@@ -99,7 +99,17 @@ class InlineLocalRedis {
 
   async get(key: string): Promise<string | null> {
     const entry = this.getEntry(key)
-    return entry?.type === "string" ? entry.value as string : null
+    if (entry?.type === "string") return entry.value as string
+    // Read-through from Upstash for persistent keys
+    try {
+      const { UpstashSync } = await import("@/lib/redis-persistence")
+      const remote = await UpstashSync.get(key)
+      if (remote !== null) {
+        this.store.set(key, { type: "string", value: remote })
+        return remote
+      }
+    } catch {}
+    return null
   }
 
   async set(key: string, value: string, options?: { ex?: number }): Promise<"OK"> {
@@ -109,6 +119,9 @@ class InlineLocalRedis {
       value,
       expiresAt: options?.ex ? Date.now() + options.ex * 1000 : undefined,
     })
+    // Write-through to Upstash for persistent keys
+    const { UpstashSync } = await import("@/lib/redis-persistence")
+    UpstashSync.set(key, value).catch(() => {})
     return "OK"
   }
 
@@ -153,7 +166,7 @@ class InlineLocalRedis {
     return Math.max(0, Math.ceil((entry.expiresAt - Date.now()) / 1000))
   }
 
-  // Hash operations
+  // Hash operations - with Upstash write-through for persistent keys
   async hset(key: string, fieldOrObj: string | Record<string, any>, value?: string): Promise<number> {
     let entry = this.getEntry(key)
     if (!entry || entry.type !== "hash") {
@@ -167,10 +180,16 @@ class InlineLocalRedis {
         if (!(f in hash)) count++
         hash[f] = String(v ?? "")
       }
+      // Write-through to Upstash for persistent keys
+      const { UpstashSync } = await import("@/lib/redis-persistence")
+      UpstashSync.hset(key, hash).catch(() => {})
       return count
     }
     const isNew = !(fieldOrObj in hash)
     hash[fieldOrObj] = String(value ?? "")
+    // Write-through to Upstash for persistent keys
+    const { UpstashSync } = await import("@/lib/redis-persistence")
+    UpstashSync.hset(key, { [fieldOrObj]: String(value ?? "") }).catch(() => {})
     return isNew ? 1 : 0
   }
 
@@ -183,8 +202,23 @@ class InlineLocalRedis {
 
   async hgetall(key: string): Promise<Record<string, string>> {
     const entry = this.getEntry(key)
-    if (entry?.type !== "hash") return {}
-    return { ...(entry.value as Record<string, string>) }
+    if (entry?.type === "hash") {
+      const localHash = entry.value as Record<string, string>
+      if (Object.keys(localHash).length > 0) {
+        return { ...localHash }
+      }
+    }
+    // Read-through from Upstash if not in local memory
+    try {
+      const { UpstashSync } = await import("@/lib/redis-persistence")
+      const remote = await UpstashSync.hgetall(key)
+      if (remote && Object.keys(remote).length > 0) {
+        // Cache in local memory
+        this.store.set(key, { type: "hash", value: { ...remote } })
+        return remote
+      }
+    } catch {}
+    return {}
   }
 
   async hmset(key: string, ...args: string[]): Promise<"OK"> {

@@ -28,7 +28,7 @@ export interface ActiveConnection {
 /**
  * Load ALL base connections (4 primary exchanges) for the Active Connections list.
  * Always shows all 4 base exchange connections as cards.
- * isActive = is_enabled_dashboard (the dashboard toggle, independent from Settings)
+ * isActive = is_enabled_dashboard (the active toggle, independent from Settings)
  */
 export async function loadActiveConnections(): Promise<ActiveConnection[]> {
   try {
@@ -165,7 +165,7 @@ export async function toggleActiveConnection(connectionId: string, isActive: boo
       // Toggle is_enabled_dashboard (Dashboard active state) - NOT is_enabled (Settings state)
       connection.is_enabled_dashboard = isActive ? "1" : "0"
       await updateConnection(connectionId, connection)
-      console.log(`[v0] [ActiveConnections] Toggled ${connectionId} dashboard active: ${isActive}`)
+      console.log(`[v0] [ActiveConnections] Toggled ${connectionId} active: ${isActive}`)
     }
   } catch (error) {
     console.error("[v0] Error toggling active connection:", error)

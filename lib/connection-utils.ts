@@ -9,9 +9,9 @@
  *    - They appear in Settings as enabled connections
  * 3. TEMPLATE-ONLY (7): Secondary exchanges (binance, okx, gateio, kucoin, mexc, bitget, huobi)
  *    - Just informational templates, not active unless user explicitly enables them
- * 4. ACTIVE CONNECTIONS: Base connections that are enabled on the Dashboard (is_enabled_dashboard)
- *    - Independent status from Settings
- *    - Trade engine processes ONLY these
+ * 4. ACTIVE CONNECTIONS: Base connections that are activated (is_enabled_dashboard field in Redis)
+ *    - INDEPENDENT status from base Settings connections
+ *    - Trade engine processes ONLY active connections
  */
 
 // The 4 primary/base exchanges that are "inserted" and enabled by default
