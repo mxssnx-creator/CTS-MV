@@ -28,25 +28,7 @@
   },
   "license": "UNLICENSED",
   "author": "CTS Development Team",
-  "bin": {
-    "cts-download": "./scripts/quick-install.sh",
-    "cts-install": "./scripts/install.sh",
-    "cts-npx-install": "./scripts/npx-install.sh",
-    "cts-setup": "./scripts/setup.js"
-  },
-  "scripts": {
-    "build": "next build",
-    "clean": "rm -rf .next .turbo node_modules/.cache tsconfig.tsbuildinfo",
-    "clean:all": "rm -rf .next .turbo node_modules/.cache tsconfig.tsbuildinfo node_modules && npm install",
-    "dev": "next dev -p ${PORT:-3000}",
-    "dev:nocache": "next dev -p ${PORT:-3000}",
-    "dev:quick": "next dev -p ${PORT:-3000}",
-    "health": "curl http://localhost:3000/api/system/health || echo 'Server not running'",
-    "lint": "next lint",
-    "start": "next start -p ${PORT:-3000}",
-    "type-check": "tsc --noEmit",
-    "vercel-build": "next build"
-  },
+  "scripts": {},
   "dependencies": {
     "@radix-ui/react-accordion": "1.2.2",
     "@radix-ui/react-alert-dialog": "1.1.4",
