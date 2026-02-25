@@ -28,13 +28,12 @@ export async function POST(request: NextRequest) {
         if (coordinator) await coordinator.stopAll()
       } catch { /* ignore */ }
       
-      // Set global state in Redis
+      // Set global state in Redis (write-through to Upstash)
       await client.hset("trade_engine:global", { 
         status: "stopped", 
         stopped_at: new Date().toISOString(),
         coordinator_ready: "false"
       })
-      await client.saveSnapshot()
       
       console.log("[v0] [Trade Engine] All engines stopped, state saved to Redis")
       return NextResponse.json({ success: true, message: "All trade engines stopped" })
