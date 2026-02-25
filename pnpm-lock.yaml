@@ -56,9 +56,6 @@ importers:
       bcryptjs:
         specifier: 2.4.3
         version: 2.4.3
-      ccxt:
-        specifier: 4.5.40
-        version: 4.5.40
       class-variance-authority:
         specifier: 0.7.1
         version: 0.7.1
@@ -892,10 +889,6 @@ packages:
   caniuse-lite@1.0.30001774:
     resolution: {integrity: sha512-DDdwPGz99nmIEv216hKSgLD+D4ikHQHjBC/seF98N9CPqRX4M5mSxT9eTV6oyisnJcuzxtZy4n17yKKQYmYQOA==}
 
-  ccxt@4.5.40:
-    resolution: {integrity: sha512-8nJhhNKft7+fELDNQuCV2AQZBxLJfYQaD2LpqxHrucSszosyVl0u6lCIFfcnDUbeUW925uhrsKevHf2fNbLjKw==}
-    engines: {node: '>=15.0.0'}
-
   class-variance-authority@0.7.1:
     resolution: {integrity: sha512-Ka+9Trutv7G8M6WT6SeiRWz792K5qEqIGEGzXKhAE6xOWAY6pPH8U+9IY3oCMv6kqTmLsv7Xh/2w2RigkePMsg==}
 
@@ -1222,18 +1215,6 @@ packages:
 
   victory-vendor@36.9.2:
     resolution: {integrity: sha512-PnpQQMuxlwYdocC8fIJqVXvkeViHYzotI+NJrCuav0ZYFoq912ZHBk3mCeuj+5/VpodOjPe1z0Fk2ihgzlXqjQ==}
-
-  ws@8.19.0:
-    resolution: {integrity: sha512-blAT2mjOEIi0ZzruJfIhb3nps74PRWTCz1IjglWEEpQl5XS/UNama6u2/rjFkDDouqr4L67ry+1aGIALViWjDg==}
-    engines: {node: '>=10.0.0'}
-    peerDependencies:
-      bufferutil: ^4.0.1
-      utf-8-validate: '>=5.0.2'
-    peerDependenciesMeta:
-      bufferutil:
-        optional: true
-      utf-8-validate:
-        optional: true
 
 snapshots:
 
@@ -1934,13 +1915,6 @@ snapshots:
 
   caniuse-lite@1.0.30001774: {}
 
-  ccxt@4.5.40:
-    dependencies:
-      ws: 8.19.0
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
-
   class-variance-authority@0.7.1:
     dependencies:
       clsx: 2.1.1
@@ -2261,5 +2235,3 @@ snapshots:
       d3-shape: 3.2.0
       d3-time: 3.1.0
       d3-timer: 3.0.1
-
-  ws@8.19.0: {}
