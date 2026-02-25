@@ -36,30 +36,39 @@ export function DashboardActiveConnectionsManager() {
     try {
       const active = await loadActiveConnections()
       
-      const response = await fetch("/api/settings/connections")
-      if (!response.ok) return
-
-      let data
-      try {
-        data = await response.json()
-      } catch {
+      // STICKY STATE: Never replace existing cards with empty data
+      if (active.length === 0 && activeConnections.length > 0) {
         return
       }
+      
+      let connectionsMap: Record<string, Connection> = {}
+      try {
+        const response = await fetch("/api/settings/connections")
+        if (response.ok) {
+          const data = await response.json()
+          const connections = Array.isArray(data) ? data : (data?.connections || [])
+          connectionsMap = connections.reduce((acc: Record<string, Connection>, c: Connection) => {
+            acc[c.id || ""] = c
+            return acc
+          }, {})
+        }
+      } catch {
+        // Keep existing details if fetch fails
+      }
 
-      const connections = Array.isArray(data) ? data : (data?.connections || [])
-      const connectionsMap = connections.reduce((acc: Record<string, Connection>, c: Connection) => {
-        acc[c.id || ""] = c
-        return acc
-      }, {})
-
-      const enriched = active.map(ac => ({
-        ...ac,
-        details: connectionsMap[ac.connectionId]
-      }))
+      const enriched = active.map(ac => {
+        // Preserve existing details if new fetch didn't return this connection
+        const existingConn = activeConnections.find(e => e.connectionId === ac.connectionId)
+        return {
+          ...ac,
+          details: connectionsMap[ac.connectionId] || existingConn?.details
+        }
+      })
 
       setActiveConnections(enriched)
     } catch (error) {
       console.error("[v0] Error loading connections:", error)
+      // On error: keep existing state, never clear cards
     } finally {
       setLoading(false)
     }
