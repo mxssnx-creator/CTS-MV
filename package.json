@@ -2,37 +2,10 @@
   "name": "cts",
   "version": "3.1.1",
   "private": true,
-  "description": "Comprehensive Cryptocurrency Trading System - Multi-exchange automated trading platform",
-  "keywords": [
-    "cryptocurrency",
-    "trading",
-    "automated-trading",
-    "bybit",
-    "bingx",
-    "pionex",
-    "orangex",
-    "trading-bot",
-    "crypto-bot",
-    "algorithmic-trading",
-    "multi-exchange",
-    "npx",
-    "cli"
-  ],
-  "homepage": "https://github.com/your-username/cts-v3.1#readme",
-  "bugs": {
-    "url": "https://github.com/your-username/cts-v3.1/issues"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/your-username/cts-v3.1.git"
-  },
-  "license": "UNLICENSED",
-  "author": "CTS Development Team",
   "scripts": {
     "build": "next build",
     "dev": "next dev",
-    "start": "next start",
-    "vercel-build": "next build"
+    "start": "next start"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "1.1.15",
