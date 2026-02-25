@@ -9,6 +9,7 @@ import { getPredefinedAsExchangeConnections } from "@/lib/connection-predefiniti
 import { initializeTradeEngineAutoStart } from "@/lib/trade-engine-auto-start"
 import { getGlobalTradeEngineCoordinator } from "@/lib/trade-engine"
 import { getDefaultSettings } from "@/lib/settings-storage"
+import { createExchangeConnector } from "@/lib/exchange-connectors"
 
 async function seedMarketData() {
   console.log("[v0] [Seed] Starting market data seeding...")
@@ -151,63 +152,79 @@ async function initializeDefaultSettings() {
 }
 
 export async function testAllExchangeConnections() {
-  console.log("[v0] [Startup] Testing exchange connections (only user-inserted with valid keys)...")
+  console.log("[v0] [Startup] Testing exchange connections (direct connector test, no HTTP)...")
   try {
     const allConnections = await getAllConnections()
     
-    // Only test connections that are user-inserted with real API keys
+    // Only test connections that have real API keys (not placeholder)
     const testable = allConnections.filter((c: any) => {
-      const isInserted = c.is_inserted === true || c.is_inserted === "true" || c.is_inserted === "1"
-      const hasValidKey = c.api_key && c.api_key.length >= 20 && !c.api_key.includes("PLACEHOLDER") && !c.api_key.includes("00998877")
-      return isInserted && hasValidKey
+      const hasValidKey = c.api_key && c.api_key.length >= 20 
+        && !c.api_key.includes("PLACEHOLDER") 
+        && !c.api_key.includes("00998877")
+        && !c.api_key.includes("your_")
+      const hasSecret = c.api_secret && c.api_secret.length >= 10
+        && !c.api_secret.includes("PLACEHOLDER")
+        && !c.api_secret.includes("your_")
+      return hasValidKey && hasSecret
     })
 
     if (testable.length === 0) {
-      console.log(`[v0] [Startup] No user-inserted connections with valid keys to test (${allConnections.length} total, all predefined/placeholder)`)
-      return
+      console.log(`[v0] [Startup] No connections with valid API keys to test (${allConnections.length} total, all placeholder)`)
+      return { tested: 0, passed: 0, failed: 0 }
     }
 
-    console.log(`[v0] [Startup] Testing ${testable.length} eligible connections (skipping ${allConnections.length - testable.length} predefined/placeholder)`)
+    console.log(`[v0] [Startup] Testing ${testable.length} connections with valid keys (skipping ${allConnections.length - testable.length} placeholder)`)
+    
+    let passed = 0
+    let failed = 0
     
     for (const connection of testable) {
       try {
-        const testResponse = await fetch(`${process.env.NEXTURL || "http://localhost:3000"}/api/settings/connections/test`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            exchange: connection.exchange,
-            api_key: connection.api_key,
-            api_secret: connection.api_secret,
-            api_type: connection.api_type,
-            api_subtype: connection.api_subtype,
-            is_testnet: connection.is_testnet,
-          }),
+        // Test directly using the exchange connector - no HTTP needed
+        const connector = await createExchangeConnector(connection.exchange, {
+          apiKey: connection.api_key,
+          apiSecret: connection.api_secret,
+          apiType: connection.api_type || "live",
+          subType: connection.api_subtype,
+          isTestnet: connection.is_testnet === true || connection.is_testnet === "true",
         })
         
-        const testResult = await testResponse.json()
-        const testStatus = testResult.success ? "success" : "failed"
+        const result = await connector.testConnection()
+        const testStatus = result.success ? "success" : "failed"
         
         await updateConnection(connection.id, {
           ...connection,
           last_test_status: testStatus,
           last_test_time: new Date().toISOString(),
+          last_test_message: result.success ? "Connection verified at startup" : (result.error || "Test failed"),
         })
         
-        console.log(`[v0] [Startup] Tested ${connection.name} (${connection.exchange}): ${testStatus}`)
+        if (result.success) {
+          passed++
+          console.log(`[v0] [Startup] ✓ ${connection.name} (${connection.exchange}): OK`)
+        } else {
+          failed++
+          console.log(`[v0] [Startup] ✗ ${connection.name} (${connection.exchange}): ${result.error || "failed"}`)
+        }
       } catch (error) {
-        console.warn(`[v0] [Startup] Failed to test ${connection.name}:`, error)
+        failed++
+        const errMsg = error instanceof Error ? error.message : String(error)
+        console.warn(`[v0] [Startup] ✗ ${connection.name} (${connection.exchange}): ${errMsg}`)
         
         await updateConnection(connection.id, {
           ...connection,
           last_test_status: "error",
           last_test_time: new Date().toISOString(),
+          last_test_message: errMsg,
         })
       }
     }
     
-    console.log(`[v0] [Startup] Completed testing ${testable.length} connections`)
+    console.log(`[v0] [Startup] Connection testing complete: ${passed} passed, ${failed} failed out of ${testable.length}`)
+    return { tested: testable.length, passed, failed }
   } catch (error) {
     console.error("[v0] [Startup] Failed to test connections:", error)
+    return { tested: 0, passed: 0, failed: 0 }
   }
 }
 
@@ -280,37 +297,41 @@ export async function runPreStartup() {
     console.log("[v0] PRE-STARTUP INITIALIZATION STARTED")
     console.log("[v0] ==========================================")
     
-    console.log("[v0] [1/8] Initializing Redis with file persistence...")
+    console.log("[v0] [1/9] Initializing Redis with Upstash persistence...")
     await initRedis()
-    console.log("[v0] [1/8] ✓ Redis initialized with persistence - snapshots every 60 seconds")
+    console.log("[v0] [1/9] ✓ Redis initialized")
     
-    console.log("[v0] [2/8] Running ALL Redis migrations (automatic)...")
+    console.log("[v0] [2/9] Running ALL Redis migrations (automatic)...")
     const migrationResult = await runMigrations()
-    console.log(`[v0] [2/8] ✓ Migrations completed: ${migrationResult.message}`)
-    console.log(`[v0] [2/8] ✓ Current schema version: ${migrationResult.version}`)
+    console.log(`[v0] [2/9] ✓ Migrations: ${migrationResult.message} (schema v${migrationResult.version})`)
     
-    console.log("[v0] [3/8] Initializing settings...")
+    console.log("[v0] [3/9] Initializing settings...")
     await initializeDefaultSettings()
-    console.log("[v0] [3/8] ✓ Settings initialized")
+    console.log("[v0] [3/9] ✓ Settings initialized")
     
-    console.log("[v0] [4/8] Seeding exchange connections...")
+    console.log("[v0] [4/9] Seeding exchange connections...")
     await seedPredefinedConnections()
-    console.log("[v0] [4/8] ✓ Connections seeded")
+    console.log("[v0] [4/9] ✓ Connections seeded")
     
-    console.log("[v0] [5/8] Seeding market data...")
+    console.log("[v0] [5/9] Seeding market data...")
     await seedMarketData()
-    console.log("[v0] [5/8] ✓ Market data seeded")
+    console.log("[v0] [5/9] ✓ Market data seeded")
     
-    console.log("[v0] [6/8] Initializing default active connections...")
+    console.log("[v0] [6/9] Initializing default active connections...")
     await initializeDefaultActiveConnections()
-    console.log("[v0] [6/8] ✓ Default active connections initialized")
+    console.log("[v0] [6/9] ✓ Default active connections initialized")
     
-    console.log("[v0] [7/8] Initializing Trade Engine...")
+    console.log("[v0] [7/9] Testing exchange connections (direct connector test)...")
+    const testResults = await testAllExchangeConnections()
+    console.log(`[v0] [7/9] ✓ Connection testing done: ${testResults?.passed || 0} passed, ${testResults?.failed || 0} failed`)
+    
+    console.log("[v0] [8/9] Initializing Trade Engine...")
     await initializeTradeEngineAutoStart()
-    console.log("[v0] [7/8] ✓ Trade Engine initialized and auto-start activated")
+    console.log("[v0] [8/9] ✓ Trade Engine initialized and auto-start activated")
     
-    console.log("[v0] [8/8] Startup complete - connection testing will start via /api/health/startup-complete")
-    console.log("[v0] [8/8] ✓ Pre-startup finished")
+    console.log("[v0] [9/9] Starting periodic connection monitoring...")
+    startPeriodicConnectionTesting()
+    console.log("[v0] [9/9] ✓ Periodic testing active (every 5 minutes)")
     
     console.log("[v0] ==========================================")
     console.log("[v0] PRE-STARTUP COMPLETE - SYSTEM READY")

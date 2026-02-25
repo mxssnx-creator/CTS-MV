@@ -22,21 +22,77 @@ export async function POST(request: NextRequest) {
     const client = getRedisClient()
     const coordinator = getGlobalTradeEngineCoordinator()
 
-    // If no connectionId, stop all engines
+    // If no connectionId, stop ALL engines (global shutdown)
     if (!connectionId) {
+      // 1. Find all connections with active engines and record them for potential resume
+      const { getAllConnections, updateConnection } = await import("@/lib/redis-db")
+      const allConnections = await getAllConnections()
+      const pausedConnections: string[] = []
+      const pausedPresetConnections: string[] = []
+      
+      for (const conn of allConnections) {
+        const isLiveTrade = conn.is_live_trade === "1" || conn.is_live_trade === true
+        const isPresetTrade = conn.is_preset_trade === "1" || conn.is_preset_trade === true
+        
+        if (isLiveTrade || isPresetTrade) {
+          const updates: Record<string, string> = {
+            updated_at: new Date().toISOString(),
+          }
+          
+          if (isLiveTrade) {
+            pausedConnections.push(conn.id)
+            updates.is_live_trade = "0"
+            updates.paused_by_global = "1"
+          }
+          if (isPresetTrade) {
+            pausedPresetConnections.push(conn.id)
+            updates.is_preset_trade = "0"
+            updates.paused_preset_by_global = "1"
+          }
+          
+          await updateConnection(conn.id, { ...conn, ...updates })
+          console.log("[v0] [Trade Engine] Paused connection:", conn.id, conn.name, 
+            isLiveTrade ? "(main)" : "", isPresetTrade ? "(preset)" : "")
+        }
+      }
+      
+      // 2. Stop all running engines via coordinator
       try {
         if (coordinator) await coordinator.stopAll()
       } catch { /* ignore */ }
       
-      // Set global state in Redis (write-through to Upstash)
+      // 3. Save paused lists so start route can resume them
+      if (pausedConnections.length > 0) {
+        await client.set("trade_engine:paused_connections", JSON.stringify(pausedConnections))
+      }
+      if (pausedPresetConnections.length > 0) {
+        await client.set("trade_engine:paused_preset_connections", JSON.stringify(pausedPresetConnections))
+      }
+      
+      const totalPaused = new Set([...pausedConnections, ...pausedPresetConnections]).size
+      
+      // 4. Set global state in Redis (write-through to Upstash)
       await client.hset("trade_engine:global", { 
         status: "stopped", 
         stopped_at: new Date().toISOString(),
-        coordinator_ready: "false"
+        coordinator_ready: "false",
+        paused_main_count: String(pausedConnections.length),
+        paused_preset_count: String(pausedPresetConnections.length),
       })
       
-      console.log("[v0] [Trade Engine] All engines stopped, state saved to Redis")
-      return NextResponse.json({ success: true, message: "All trade engines stopped" })
+      console.log("[v0] [Trade Engine] All engines stopped. Paused", totalPaused, "connections (main:", pausedConnections.length, "preset:", pausedPresetConnections.length, ")")
+      await SystemLogger.logTradeEngine(
+        `Global engine stopped. Paused ${pausedConnections.length} main + ${pausedPresetConnections.length} preset engines.`,
+        "info",
+        { pausedConnections, pausedPresetConnections }
+      )
+      
+      return NextResponse.json({ 
+        success: true, 
+        message: `All trade engines stopped. ${totalPaused} connection(s) paused.`,
+        pausedConnections,
+        pausedPresetConnections,
+      })
     }
 
     // Verify connection exists in Redis

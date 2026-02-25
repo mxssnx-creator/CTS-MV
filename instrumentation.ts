@@ -17,25 +17,7 @@ export async function register() {
         console.warn("[v0] Pre-startup notice:", preStartupError instanceof Error ? preStartupError.message : "unknown")
       }
 
-      console.log("[v0] Application ready")
-      try {
-        const { getConnectionManager } = await import("@/lib/connection-manager")
-        const manager = getConnectionManager()
-        const connections = manager.getConnections()
-        console.log(`[v0] ConnectionManager initialized with ${connections.length} connections`)
-
-        const { initializeGlobalCoordinator } = await import("@/lib/trade-engine")
-        const coordinator = initializeGlobalCoordinator()
-        if (coordinator) {
-          console.log("[v0] GlobalTradeEngineCoordinator initialized")
-        }
-
-        const { initializeTradeEngineAutoStart } = await import("@/lib/trade-engine-auto-start")
-        await initializeTradeEngineAutoStart()
-        console.log("[v0] Trade engine auto-initialization complete")
-      } catch (tradeError) {
-        console.warn("[v0] Trade engine init skipped:", tradeError instanceof Error ? tradeError.message : "unknown")
-      }
+      console.log("[v0] Application ready - all initialization completed in pre-startup")
     }
   } catch (error) {
     // Never crash startup

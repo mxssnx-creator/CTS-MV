@@ -26,6 +26,20 @@ export async function initializeTradeEngineAutoStart(): Promise<void> {
   try {
     console.log("[v0] [Auto-Start] Starting trade engine auto-initialization...")
     const coordinator = getGlobalTradeEngineCoordinator()
+    
+    // Check if Global Trade Engine Coordinator is running
+    await initRedis()
+    const client = getRedisClient()
+    const globalState = await client.hgetall("trade_engine:global")
+    const globalRunning = globalState?.status === "running"
+    
+    if (!globalRunning) {
+      console.log("[v0] [Auto-Start] Global Trade Engine is not running - skipping auto-start. Engines will resume when global is started.")
+      autoStartInitialized = true
+      startConnectionMonitoring()
+      return
+    }
+    
     const connections = await getAllConnections()
 
     console.log("[v0] [Auto-Start] Retrieved", connections?.length || 0, "connections from database")
@@ -97,6 +111,15 @@ function startConnectionMonitoring(): void {
 
   autoStartTimer = setInterval(async () => {
     try {
+      // Always check global engine status first
+      await initRedis()
+      const monClient = getRedisClient()
+      const monGlobalState = await monClient.hgetall("trade_engine:global")
+      if (monGlobalState?.status !== "running") {
+        // Global engine not running - don't auto-start any connections
+        return
+      }
+      
       const connections = await getAllConnections()
 
       // Ensure connections is an array before filtering

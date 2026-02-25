@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { SystemLogger } from "@/lib/system-logger"
-import { initRedis, getConnection, updateConnection } from "@/lib/redis-db"
+import { initRedis, getRedisClient, getConnection, updateConnection } from "@/lib/redis-db"
 import { getGlobalTradeEngineCoordinator } from "@/lib/trade-engine"
 
 // POST toggle preset trading for a connection
@@ -22,6 +22,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     if (!connection) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 })
+    }
+
+    // Check if Global Trade Engine Coordinator is running
+    if (is_preset_trade) {
+      const client = getRedisClient()
+      const globalState = await client.hgetall("trade_engine:global")
+      const globalRunning = globalState?.status === "running"
+      if (!globalRunning) {
+        return NextResponse.json({ 
+          error: "Global Trade Engine must be running first",
+          hint: "Start the Global Trade Engine Coordinator before enabling preset engines."
+        }, { status: 400 })
+      }
     }
 
     // Check if connection is enabled AND active on dashboard

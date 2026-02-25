@@ -1,6 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { execute, getDatabaseType } from "@/lib/db"
+import { initRedis, getRedisClient, getConnection, updateConnection } from "@/lib/redis-db"
 import { SystemLogger } from "@/lib/system-logger"
+
+export const dynamic = "force-dynamic"
 
 export async function POST(
   request: NextRequest,
@@ -10,34 +12,28 @@ export async function POST(
     const { id: connectionId, presetTypeId } = await params
 
     console.log("[v0] Stopping preset coordination engine:", { connectionId, presetTypeId })
-    await SystemLogger.logTradeEngine(`Stopping preset coordination engine for connection ${connectionId}`, "info", {
-      connectionId,
-      presetTypeId,
+
+    await initRedis()
+    const client = getRedisClient()
+
+    // Update preset engine state in Redis
+    await client.hset(`preset_engine:${connectionId}:${presetTypeId}`, {
+      status: "stopped",
+      stopped_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     })
 
-    const isSqlite = getDatabaseType() === "sqlite"
+    // Update connection to mark preset trade as disabled
+    const connection = await getConnection(connectionId)
+    if (connection) {
+      await updateConnection(connectionId, {
+        ...connection,
+        is_preset_trade: "0",
+        updated_at: new Date().toISOString(),
+      })
+    }
 
-    const stateQuery = isSqlite
-      ? `
-        UPDATE preset_trade_engine_state 
-        SET status = 'stopped', stopped_at = datetime('now'), updated_at = datetime('now')
-        WHERE connection_id = ? AND preset_id = ?
-      `
-      : `
-        UPDATE preset_trade_engine_state 
-        SET status = 'stopped', stopped_at = NOW(), updated_at = NOW()
-        WHERE connection_id = $1 AND preset_id = $2
-      `
-
-    await execute(stateQuery, [connectionId, presetTypeId])
-
-    const updateConnectionQuery = isSqlite
-      ? `UPDATE exchange_connections SET is_preset_trade = 0, updated_at = datetime('now') WHERE id = ?`
-      : `UPDATE exchange_connections SET is_preset_trade = false, updated_at = NOW() WHERE id = $1`
-
-    await execute(updateConnectionQuery, [connectionId])
-
-    await SystemLogger.logTradeEngine(`Preset coordination engine stopped successfully`, "info", {
+    await SystemLogger.logTradeEngine(`Preset engine stopped`, "info", {
       connectionId,
       presetTypeId,
       status: "stopped",

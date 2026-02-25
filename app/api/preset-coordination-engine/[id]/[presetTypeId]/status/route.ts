@@ -1,5 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { query, getDatabaseType } from "@/lib/db"
+import { initRedis, getRedisClient } from "@/lib/redis-db"
+
+export const dynamic = "force-dynamic"
 
 export async function GET(
   request: NextRequest,
@@ -8,15 +10,13 @@ export async function GET(
   try {
     const { id: connectionId, presetTypeId } = await params
 
-    const isSqlite = getDatabaseType() === "sqlite"
+    await initRedis()
+    const client = getRedisClient()
 
-    const stateQuery = isSqlite
-      ? `SELECT * FROM preset_trade_engine_state WHERE connection_id = ? AND preset_id = ?`
-      : `SELECT * FROM preset_trade_engine_state WHERE connection_id = $1 AND preset_id = $2`
+    // Get preset engine state from Redis
+    const state = await client.hgetall(`preset_engine:${connectionId}:${presetTypeId}`)
 
-    const states = await query<any>(stateQuery, [connectionId, presetTypeId])
-
-    if (states.length === 0) {
+    if (!state || Object.keys(state).length === 0) {
       return NextResponse.json({
         status: "not_initialized",
         connectionId,
@@ -24,43 +24,28 @@ export async function GET(
       })
     }
 
-    const state = states[0]
+    // Check if global engine is running
+    const globalState = await client.hgetall("trade_engine:global")
+    const globalRunning = globalState?.status === "running"
 
-    const positionQuery = isSqlite
-      ? `
-        SELECT 
-          COUNT(*) as total,
-          SUM(CASE WHEN type = 'base' THEN 1 ELSE 0 END) as base_count,
-          SUM(CASE WHEN type = 'main' THEN 1 ELSE 0 END) as main_count,
-          SUM(CASE WHEN type = 'real' THEN 1 ELSE 0 END) as real_count
-        FROM preset_pseudo_positions 
-        WHERE connection_id = ? AND preset_id = ? AND status = 'active'
-      `
-      : `
-        SELECT 
-          COUNT(*) as total,
-          SUM(CASE WHEN type = 'base' THEN 1 ELSE 0 END) as base_count,
-          SUM(CASE WHEN type = 'main' THEN 1 ELSE 0 END) as main_count,
-          SUM(CASE WHEN type = 'real' THEN 1 ELSE 0 END) as real_count
-        FROM preset_pseudo_positions 
-        WHERE connection_id = $1 AND preset_id = $2 AND status = 'active'
-      `
-
-    const positions = await query<any>(positionQuery, [connectionId, presetTypeId])
-    const positionStats = positions[0] || { total: 0, base_count: 0, main_count: 0, real_count: 0 }
+    // If global engine stopped but preset says running, it was paused
+    const effectiveStatus = (state.status === "running" && !globalRunning)
+      ? "paused"
+      : state.status
 
     return NextResponse.json({
-      status: state.status,
+      status: effectiveStatus,
       connectionId,
       presetTypeId,
-      startedAt: state.started_at,
-      stoppedAt: state.stopped_at,
-      updatedAt: state.updated_at,
+      startedAt: state.started_at || null,
+      stoppedAt: state.stopped_at || null,
+      updatedAt: state.updated_at || null,
+      globalEngineRunning: globalRunning,
       positions: {
-        total: Number(positionStats.total) || 0,
-        base: Number(positionStats.base_count) || 0,
-        main: Number(positionStats.main_count) || 0,
-        real: Number(positionStats.real_count) || 0,
+        total: 0,
+        base: 0,
+        main: 0,
+        real: 0,
       },
     })
   } catch (error) {
