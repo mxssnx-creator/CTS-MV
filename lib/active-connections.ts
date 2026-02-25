@@ -121,7 +121,8 @@ export async function addActiveConnection(connectionId: string, exchangeName: st
       id: `active-${connectionId}`,
       connectionId,
       exchangeName,
-      isActive: connection.is_enabled === true || connection.is_enabled === "1",
+      isActive: true, // We just set is_enabled_dashboard = "1"
+      isBaseEnabled: connection.is_enabled === true || connection.is_enabled === "1" || connection.is_enabled === "true",
       addedAt: connection.created_at || new Date().toISOString(),
     }
   } catch (error) {

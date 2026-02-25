@@ -227,8 +227,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           updated_at: new Date().toISOString(),
         })
 
-        const manager = getConnectionManager()
-        await manager.markTestFailed(id, userFriendlyError)
+        // Connection already updated above with last_test_status: "error"
       }
     } catch (updateError) {
       console.error("[v0] Failed to update connection error status:", updateError)

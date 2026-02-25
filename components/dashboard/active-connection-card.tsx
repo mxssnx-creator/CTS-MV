@@ -28,15 +28,22 @@ import type { ActiveConnection } from "@/lib/active-connections"
 interface ProgressionData {
   phase: string
   progress: number
-  detail: string
-  sub_current: number
-  sub_total: number
-  sub_item: string
-  engine_status: string
-  engine_running: boolean
+  message: string
+  subPhase: string | null
+  startedAt: string | null
+  updatedAt: string | null
+  details: {
+    historicalDataLoaded: boolean
+    indicationsCalculated: boolean
+    strategiesProcessed: boolean
+    liveProcessingActive: boolean
+    liveTradingActive: boolean
+  }
+  error: string | null
 }
 
 const PHASE_LABELS: Record<string, string> = {
+  disabled: "Disabled",
   idle: "Idle",
   initializing: "Initializing",
   prehistoric_data: "Loading Historical Data",
@@ -49,6 +56,7 @@ const PHASE_LABELS: Record<string, string> = {
 }
 
 const PHASE_COLORS: Record<string, string> = {
+  disabled: "bg-muted",
   idle: "bg-muted",
   initializing: "bg-blue-500",
   prehistoric_data: "bg-amber-500",
@@ -86,7 +94,9 @@ export function ActiveConnectionCard({
       const res = await fetch(`/api/connections/progression/${connection.connectionId}`)
       if (res.ok) {
         const data = await res.json()
-        setProgression(data)
+        if (data.success && data.progression) {
+          setProgression(data.progression)
+        }
       }
     } catch {
       // Silently fail - will retry on next poll
@@ -221,12 +231,12 @@ export function ActiveConnectionCard({
                 value={progress} 
                 className="h-2"
               />
-              {progression?.detail && (
+              {progression?.message && (
                 <p className="text-xs text-muted-foreground truncate">
-                  {progression.detail}
-                  {progression.sub_total > 0 && (
-                    <span className="ml-1 tabular-nums">
-                      ({progression.sub_current}/{progression.sub_total})
+                  {progression.message}
+                  {progression.subPhase && (
+                    <span className="ml-1">
+                      - {progression.subPhase}
                     </span>
                   )}
                 </p>
@@ -268,7 +278,7 @@ export function ActiveConnectionCard({
               </div>
 
               {/* Progression details when expanded */}
-              {progression && phase !== "idle" && phase !== "stopped" && (
+              {progression && phase !== "idle" && phase !== "stopped" && phase !== "disabled" && (
                 <div className="mt-4 pt-3 border-t">
                   <h4 className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">Engine Progression</h4>
                   <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
@@ -280,28 +290,39 @@ export function ActiveConnectionCard({
                       <div className="text-xs text-muted-foreground">Overall Progress</div>
                       <div className="font-medium tabular-nums">{progress}%</div>
                     </div>
-                    {progression.sub_total > 0 && (
-                      <>
-                        <div className="space-y-0.5">
-                          <div className="text-xs text-muted-foreground">Processing</div>
-                          <div className="font-medium">{progression.sub_item}</div>
-                        </div>
-                        <div className="space-y-0.5">
-                          <div className="text-xs text-muted-foreground">Symbol Progress</div>
-                          <div className="font-medium tabular-nums">{progression.sub_current} / {progression.sub_total}</div>
-                        </div>
-                      </>
-                    )}
                     <div className="space-y-0.5">
-                      <div className="text-xs text-muted-foreground">Engine Status</div>
-                      <Badge variant={progression.engine_running ? "default" : "secondary"} className="text-xs">
-                        {progression.engine_status || "unknown"}
+                      <div className="text-xs text-muted-foreground">Historical Data</div>
+                      <Badge variant={progression.details?.historicalDataLoaded ? "default" : "secondary"} className="text-xs">
+                        {progression.details?.historicalDataLoaded ? "Loaded" : "Pending"}
                       </Badge>
                     </div>
-                    {progression.updated_at && (
+                    <div className="space-y-0.5">
+                      <div className="text-xs text-muted-foreground">Indications</div>
+                      <Badge variant={progression.details?.indicationsCalculated ? "default" : "secondary"} className="text-xs">
+                        {progression.details?.indicationsCalculated ? "Calculated" : "Pending"}
+                      </Badge>
+                    </div>
+                    <div className="space-y-0.5">
+                      <div className="text-xs text-muted-foreground">Strategies</div>
+                      <Badge variant={progression.details?.strategiesProcessed ? "default" : "secondary"} className="text-xs">
+                        {progression.details?.strategiesProcessed ? "Processed" : "Pending"}
+                      </Badge>
+                    </div>
+                    <div className="space-y-0.5">
+                      <div className="text-xs text-muted-foreground">Live Processing</div>
+                      <Badge variant={progression.details?.liveProcessingActive ? "default" : "secondary"} className="text-xs">
+                        {progression.details?.liveProcessingActive ? "Active" : "Pending"}
+                      </Badge>
+                    </div>
+                    {progression.error && (
+                      <div className="col-span-2 space-y-0.5">
+                        <div className="text-xs text-red-500 font-medium">Error: {progression.error}</div>
+                      </div>
+                    )}
+                    {progression.updatedAt && (
                       <div className="space-y-0.5">
                         <div className="text-xs text-muted-foreground">Last Update</div>
-                        <div className="font-medium text-xs">{new Date(progression.updated_at).toLocaleTimeString()}</div>
+                        <div className="font-medium text-xs">{new Date(progression.updatedAt).toLocaleTimeString()}</div>
                       </div>
                     )}
                   </div>
