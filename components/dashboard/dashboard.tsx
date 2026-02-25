@@ -6,12 +6,10 @@ import { useExchange } from "@/lib/exchange-context"
 import { useConnectionState } from "@/lib/connection-state"
 import { SystemOverview } from "./system-overview"
 import { GlobalTradeEngineControls } from "./global-trade-engine-controls"
-import { ConnectionCard } from "./connection-card"
-import { AddActiveConnectionDialog } from "@/components/dashboard/add-active-connection-dialog"
+import { DashboardActiveConnectionsManager } from "./dashboard-active-connections-manager"
 import { IntervalsStrategiesOverview } from "./intervals-strategies-overview"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Plus, RefreshCw } from "lucide-react"
+import { RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 import type { ExchangeConnection } from "@/lib/types"
 
@@ -20,15 +18,9 @@ export function Dashboard() {
   const { selectedExchange } = useExchange()
   const { 
     exchangeConnectionsActive, 
-    setExchangeConnectionsActive,
     loadExchangeConnectionsActive, 
     isExchangeConnectionsActiveLoading,
-    exchangeConnectionsActiveStatus,
-    toggleExchangeConnectionsActiveStatus,
-    recentlyInsertedActive,
-    markAsInserted 
   } = useConnectionState()
-  const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [stats, setStats] = useState({
     activeConnections: 0,
     totalPositions: 0,
@@ -120,156 +112,6 @@ export function Dashboard() {
     }
   }
 
-  const handleToggleEnable = async (id: string, enabled: boolean) => {
-    try {
-      const connection = filteredConnections.find(c => c.id === id)
-      if (!connection) {
-        toast.error("Connection not found")
-        return
-      }
-
-      // IMMEDIATE UI UPDATE: Optimistically update the connection state before API call completes
-      const updatedConnection = {
-        ...connection,
-        is_enabled: enabled,
-        is_live_trade: enabled ? connection.is_live_trade : false,
-        is_preset_trade: enabled ? connection.is_preset_trade : false,
-        updated_at: new Date().toISOString(),
-      }
-      
-      // Update the local state immediately for instant UI feedback
-      setExchangeConnectionsActive(prev => 
-        prev.map(c => c.id === id ? updatedConnection : c)
-      )
-
-      const response = await fetch(`/api/settings/connections/${id}/toggle`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          is_enabled: enabled,
-          is_live_trade: enabled ? connection.is_live_trade : false,
-          is_preset_trade: enabled ? connection.is_preset_trade : false,
-        }),
-      })
-
-      if (response.ok) {
-        const result = await response.json()
-        console.log("[v0] [Dashboard] Toggle successful - engine status:", result.engineStatus)
-        
-        // Update state with the confirmed response from server
-        if (result.connection) {
-          setExchangeConnectionsActive(prev => 
-            prev.map(c => c.id === id ? result.connection : c)
-          )
-        }
-        
-        toast.success(`Connection ${enabled ? "enabled - trade engine starting..." : "disabled - trade engine stopped"}`)
-        
-        // Refresh in background immediately and then again after 1s to catch engine status
-        await loadExchangeConnectionsActive()
-        setTimeout(() => loadExchangeConnectionsActive(), 1000)
-      } else {
-        const error = await response.json()
-        // Revert optimistic update on error
-        setExchangeConnectionsActive(prev => 
-          prev.map(c => c.id === id ? connection : c)
-        )
-        toast.error(error.details || "Failed to toggle connection")
-      }
-    } catch (error) {
-      console.error("[v0] Failed to toggle connection:", error)
-      toast.error("Failed to toggle connection")
-      // Revert optimistic update on error - reload to ensure consistency
-      await loadExchangeConnectionsActive()
-    }
-  }
-
-  const handleToggleLiveTrade = async (id: string, enabled: boolean) => {
-    try {
-      const connection = filteredConnections.find(c => c.id === id)
-      if (!connection) {
-        toast.error("Connection not found")
-        return
-      }
-
-      if (!connection.is_enabled && enabled) {
-        toast.error("Please enable the connection first")
-        return
-      }
-
-      const response = await fetch(`/api/settings/connections/${id}/live-trade`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ is_live_trade: enabled }),
-      })
-
-      if (response.ok) {
-        toast.success(`Live trading ${enabled ? "enabled" : "disabled"}`)
-        await loadExchangeConnectionsActive()
-      } else {
-        const error = await response.json()
-        toast.error(error.details || error.error || "Failed to toggle live trading")
-      }
-    } catch (error) {
-      console.error("[v0] Failed to toggle live trading:", error)
-      toast.error("Failed to toggle live trading")
-    }
-  }
-
-  const handleTogglePresetTrade = async (id: string, enabled: boolean) => {
-    try {
-      const connection = filteredConnections.find(c => c.id === id)
-      if (!connection) {
-        toast.error("Connection not found")
-        return
-      }
-
-      if (!connection.is_enabled && enabled) {
-        toast.error("Please enable the connection first")
-        return
-      }
-
-      // Call the preset-toggle endpoint (controls Preset Engine)
-      const response = await fetch(`/api/settings/connections/${id}/preset-toggle`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          is_preset_trade: enabled,
-        }),
-      })
-
-      if (response.ok) {
-        toast.success(`Preset trading ${enabled ? "enabled" : "disabled"}`)
-        await loadExchangeConnectionsActive()
-      } else {
-        const error = await response.json()
-        toast.error(error.details || error.error || "Failed to toggle preset trading")
-      }
-    } catch (error) {
-      console.error("[v0] Failed to toggle preset trading:", error)
-      toast.error("Failed to toggle preset trading")
-    }
-  }
-
-  const handleDeleteConnection = async (id: string) => {
-    try {
-      const response = await fetch(`/api/settings/connections/${id}`, {
-        method: "DELETE",
-      })
-
-      if (response.ok) {
-        toast.success("Connection deleted successfully")
-        await loadExchangeConnectionsActive()
-      } else {
-        const error = await response.json()
-        toast.error(error.details || error.error || "Failed to delete connection")
-      }
-    } catch (error) {
-      console.error("[v0] Failed to delete connection:", error)
-      toast.error("Failed to delete connection")
-    }
-  }
-
   return (
     <div className="flex-1 space-y-6 p-6">
       {/* Header */}
@@ -290,65 +132,15 @@ export function Dashboard() {
       {/* Trade Engine Controls */}
       <GlobalTradeEngineControls />
 
-      {/* Active Connections */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Active Connections</CardTitle>
-          <Button size="sm" onClick={() => setAddDialogOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Connection
-          </Button>
-        </CardHeader>
-        <CardContent>
-           {isExchangeConnectionsActiveLoading ? (
-            <p className="text-center text-muted-foreground py-8">Loading connections...</p>
-          ) : filteredConnections.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8">No connections configured</p>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {filteredConnections.map((connection) => (
-                <ConnectionCard
-                  key={connection.id}
-                  connection={connection}
-                  onToggleEnable={handleToggleEnable}
-                  onToggleLiveTrade={handleToggleLiveTrade}
-                  onTogglePresetTrade={handleTogglePresetTrade}
-                  onDelete={handleDeleteConnection}
-                  isActive={exchangeConnectionsActiveStatus.get(connection.id) ?? false}
-                  onToggleActive={() => toggleExchangeConnectionsActiveStatus(connection.id)}
-                  balance={parseFloat(connection.last_test_balance as any) || 0}
-                  status={
-                    !(connection.is_enabled === true || (connection.is_enabled as any) === "1" || (connection.is_enabled as any) === "true")
-                      ? "disabled"
-                      : connection.last_test_status === "success"
-                        ? "connected"
-                        : connection.last_test_status === "failed"
-                          ? "error"
-                          : "connecting"
-                  }
-                />
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/* Active Connections - With global engine guard, progression tracking, sticky state */}
+      <DashboardActiveConnectionsManager />
 
       {/* Intervals & Strategies Overview */}
       {filteredConnections.length > 0 && (
         <IntervalsStrategiesOverview connections={filteredConnections} />
       )}
 
-      <AddActiveConnectionDialog
-        open={addDialogOpen}
-        onOpenChange={setAddDialogOpen}
-        onConnectionAdded={async (connectionId) => {
-          console.log("[v0] [Dashboard] New connection added to active list:", connectionId)
-          await loadExchangeConnectionsActive()
-          if (connectionId) {
-            markAsInserted(connectionId, "active")
-          }
-        }}
-      />
+
     </div>
   )
 }
