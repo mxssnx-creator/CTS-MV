@@ -8,7 +8,6 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  transpilePackages: ["geist"],
   turbopack: {},
   productionBrowserSourceMaps: false,
   compress: true,
