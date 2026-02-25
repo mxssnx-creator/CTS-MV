@@ -75,6 +75,7 @@ interface ActiveConnectionCardProps {
   onToggle: (connectionId: string, currentState: boolean) => Promise<void>
   onRemove: (connectionId: string, name: string) => Promise<void>
   isToggling: boolean
+  globalEngineRunning: boolean
 }
 
 export function ActiveConnectionCard({
@@ -84,6 +85,7 @@ export function ActiveConnectionCard({
   onToggle,
   onRemove,
   isToggling,
+  globalEngineRunning,
 }: ActiveConnectionCardProps) {
   const [progression, setProgression] = useState<ProgressionData | null>(null)
   const details = connection.details
@@ -178,8 +180,9 @@ export function ActiveConnectionCard({
                 <Switch
                   checked={connection.isActive}
                   onCheckedChange={() => onToggle(connection.connectionId, connection.isActive)}
-                  disabled={isToggling}
+                  disabled={isToggling || (!globalEngineRunning && !connection.isActive)}
                   className="scale-90"
+                  title={!globalEngineRunning && !connection.isActive ? "Start Global Trade Engine first" : undefined}
                 />
               </div>
 

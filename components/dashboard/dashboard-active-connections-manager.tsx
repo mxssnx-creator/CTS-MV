@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Plus } from "lucide-react"
+import { Plus, AlertTriangle } from "lucide-react"
 import { toast } from "@/lib/simple-toast"
 import type { Connection } from "@/lib/file-storage"
 import { 
@@ -25,11 +25,38 @@ export function DashboardActiveConnectionsManager() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set())
+  const [globalEngineRunning, setGlobalEngineRunning] = useState(false)
+  const [globalEngineLoading, setGlobalEngineLoading] = useState(true)
+
+  const checkGlobalEngine = async () => {
+    try {
+      const res = await fetch("/api/trade-engine/status")
+      if (res.ok) {
+        const data = await res.json()
+        const wasRunning = globalEngineRunning
+        const nowRunning = data.running === true
+        setGlobalEngineRunning(nowRunning)
+        // If global engine just started, refresh connections to update their state
+        if (!wasRunning && nowRunning) {
+          loadConnections()
+        }
+      }
+    } catch {
+      // Keep previous state on error
+    } finally {
+      setGlobalEngineLoading(false)
+    }
+  }
 
   useEffect(() => {
     loadConnections()
-    const interval = setInterval(loadConnections, 5000)
-    return () => clearInterval(interval)
+    checkGlobalEngine()
+    const connInterval = setInterval(loadConnections, 5000)
+    const engineInterval = setInterval(checkGlobalEngine, 3000)
+    return () => {
+      clearInterval(connInterval)
+      clearInterval(engineInterval)
+    }
   }, [])
 
   const loadConnections = async () => {
@@ -76,6 +103,15 @@ export function DashboardActiveConnectionsManager() {
 
   const handleToggle = async (connectionId: string, currentState: boolean) => {
     const newState = !currentState
+    
+    // Block enabling if global engine is not running
+    if (newState && !globalEngineRunning) {
+      toast.error("Cannot activate connection", {
+        description: "Global Trade Engine must be running first. Start it from the Trade Engine controls.",
+      })
+      return
+    }
+    
     setTogglingIds(prev => new Set(prev).add(connectionId))
     
     try {
@@ -98,7 +134,6 @@ export function DashboardActiveConnectionsManager() {
         
         if (!startRes.ok) {
           const errorData = await startRes.json().catch(() => ({ error: "Unknown error" }))
-          // If engine start fails, still keep active toggle on but warn user
           toast.warning("Connection enabled", {
             description: `Active but engine: ${errorData.error || "could not start"}`,
           })
@@ -194,6 +229,20 @@ export function DashboardActiveConnectionsManager() {
         onConnectionAdded={() => loadConnections()}
       />
 
+      {!globalEngineLoading && !globalEngineRunning && (
+        <div className="flex items-center gap-3 p-3 rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30">
+          <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+              Global Trade Engine is not running
+            </p>
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              Start the Global Trade Engine first before activating individual connections.
+            </p>
+          </div>
+        </div>
+      )}
+
       {activeConnections.length === 0 ? (
         <Card>
           <CardContent className="pt-6 text-center text-muted-foreground">
@@ -212,6 +261,7 @@ export function DashboardActiveConnectionsManager() {
               onToggle={handleToggle}
               onRemove={handleRemove}
               isToggling={togglingIds.has(conn.connectionId)}
+              globalEngineRunning={globalEngineRunning}
             />
           ))}
         </div>
