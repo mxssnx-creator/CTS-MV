@@ -14,18 +14,7 @@ import { BinanceConnector } from "./binance-connector"
 import { OKXConnector } from "./okx-connector"
 import { EXCHANGE_API_TYPES } from "@/lib/connection-predefinitions"
 
-const CCXT_SUPPORTED = [
-  "gateio",
-  "mexc",
-  "kucoin",
-  "huobi",
-  "kraken",
-  "coinbase",
-  "crypto.com",
-  "dydx",
-  "hyperliquid",
-  "polymarket",
-]
+// All primary exchanges use dedicated connectors (no CCXT dependency)
 
 export async function createExchangeConnector(
   exchange: string,
@@ -56,16 +45,9 @@ export async function createExchangeConnector(
       return new BinanceConnector(credentials, "binance")
     case "okx":
       return new OKXConnector(credentials, "okx")
-    // CCXT fallback for any other supported exchange (server-side only)
     default:
-      if (CCXT_SUPPORTED.includes(normalizedExchange)) {
-        // Dynamic import - only works on server
-        const { CCXTConnector } = await import("./ccxt-connector")
-        return new CCXTConnector(credentials, exchange)
-      }
-
       throw new Error(
-        `Unsupported exchange: ${exchange}. Supported exchanges: bybit, bingx, pionex, orangex, binance, okx, ${CCXT_SUPPORTED.join(", ")}`
+        `Unsupported exchange: ${exchange}. Supported exchanges: bybit, bingx, pionex, orangex, binance, okx`
       )
   }
 }
