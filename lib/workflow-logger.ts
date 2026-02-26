@@ -68,18 +68,24 @@ export class WorkflowLogger {
       const logKey = `workflow_logs:${connectionId}`
       const logsJson = JSON.stringify(logEntry)
 
-      // Add log entry to sorted set (for retention)
-      await (client as any).zadd(logKey, Date.now(), logsJson)
-
-      // Trim logs to max per connection
-      await (client as any).zremrangebyrank(
-        logKey,
-        0,
-        -this.MAX_LOGS_PER_CONNECTION - 1
-      )
-
-      // Set expiration for logs (7 days)
-      await (client as any).expire(logKey, 86400 * this.LOG_RETENTION_DAYS)
+      // Store in Redis list instead of sorted set (Upstash doesn't support zadd)
+      let workflowLogs: string[] = []
+      
+      const existing = await client.get(logKey)
+      if (existing) {
+        try { workflowLogs = JSON.parse(existing) } catch { workflowLogs = [] }
+      }
+      
+      // Prepend new entry
+      workflowLogs.unshift(logsJson)
+      
+      // Trim to max entries and set expiration for logs (7 days)
+      if (workflowLogs.length > this.MAX_LOGS_PER_CONNECTION) {
+        workflowLogs = workflowLogs.slice(0, this.MAX_LOGS_PER_CONNECTION)
+      }
+      
+      await client.set(logKey, JSON.stringify(workflowLogs))
+      // Upstash doesn't support expire, so we'll handle this via TTL keys elsewhere
 
       // Also log to console with structured format
       const levelEmoji = {

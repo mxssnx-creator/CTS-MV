@@ -206,8 +206,24 @@ export class VolumeCalculator {
         created_at: new Date().toISOString(),
       }))
 
-      // Add to sorted set for time-ordered lookups (auto-expire after 7 days)
-      await client.zadd(`volume_calcs:${connectionId}`, Date.now(), logId)
+      // Store in Redis list instead of sorted set (Upstash doesn't support zadd)
+      const volumeCalcsKey = `volume_calcs:${connectionId}`
+      let volumeCalcs: string[] = []
+      
+      const existing = await client.get(volumeCalcsKey)
+      if (existing) {
+        try { volumeCalcs = JSON.parse(existing) } catch { volumeCalcs = [] }
+      }
+      
+      // Prepend new entry
+      volumeCalcs.unshift(logId)
+      
+      // Trim to max 500 entries
+      if (volumeCalcs.length > 500) {
+        volumeCalcs = volumeCalcs.slice(0, 500)
+      }
+      
+      await client.set(volumeCalcsKey, JSON.stringify(volumeCalcs))
     } catch (error) {
       console.error("[v0] Failed to log volume calculation:", error)
     }
@@ -221,12 +237,22 @@ export class VolumeCalculator {
       await initRedis()
       const client = getRedisClient()
 
-      // Get recent log IDs from sorted set
-      const logIds = await client.zrange(`volume_calcs:${connectionId}`, -limit, -1)
+      // Get recent log IDs from list (prepended order, so slice from beginning)
+      const volumeCalcsKey = `volume_calcs:${connectionId}`
+      const existing = await client.get(volumeCalcsKey)
+      
+      let logIds: string[] = []
+      if (existing) {
+        try { logIds = JSON.parse(existing) } catch { logIds = [] }
+      }
+      
       if (!logIds || logIds.length === 0) return []
 
+      // Take most recent entries (first in list)
+      const recentIds = logIds.slice(0, Math.min(limit, logIds.length))
+      
       const history = []
-      for (const logId of logIds.reverse()) {
+      for (const logId of recentIds) {
         const data = await client.get(`volume_calc:${connectionId}:${logId}`)
         if (data) {
           const parsed = typeof data === "string" ? JSON.parse(data) : data

@@ -28,18 +28,40 @@ export class ErrorLogger {
       }
 
       await setSettings(`site_log:${logId}`, logEntry)
-      await client.zadd("site_logs:all", Date.now(), logId)
-      await client.zadd(`site_logs:${level}`, Date.now(), logId)
-
-      // Trim to last 1000 entries per level
-      const count = await client.zcard(`site_logs:${level}`)
-      if (count > 1000) {
-        const toRemove = await client.zrange(`site_logs:${level}`, 0, count - 1001)
-        for (const id of toRemove) {
-          await client.del(`site_log:${id}`)
-        }
-        await client.zremrangebyrank(`site_logs:${level}`, 0, count - 1001)
+      
+      // Store in Redis lists instead of sorted sets (Upstash doesn't support zadd)
+      const allLogsKey = "site_logs:all"
+      const levelLogsKey = `site_logs:${level}`
+      
+      let allLogs: string[] = []
+      let levelLogs: string[] = []
+      
+      const existingAll = await client.get(allLogsKey)
+      if (existingAll) {
+        try { allLogs = JSON.parse(existingAll) } catch { allLogs = [] }
       }
+      
+      const existingLevel = await client.get(levelLogsKey)
+      if (existingLevel) {
+        try { levelLogs = JSON.parse(existingLevel) } catch { levelLogs = [] }
+      }
+      
+      // Prepend new entry
+      allLogs.unshift(logId)
+      levelLogs.unshift(logId)
+      
+      // Trim to max 1000 entries
+      if (allLogs.length > 1000) allLogs = allLogs.slice(0, 1000)
+      if (levelLogs.length > 1000) levelLogs = levelLogs.slice(0, 1000)
+      
+      // Remove old entries from individual log storage
+      const toRemove = allLogs.slice(1000)
+      for (const oldId of toRemove) {
+        await client.del(`site_log:${oldId}`)
+      }
+      
+      await client.set(allLogsKey, JSON.stringify(allLogs))
+      await client.set(levelLogsKey, JSON.stringify(levelLogs))
     } catch (logError) {
       console.error("[v0] Failed to write log to Redis:", logError)
     }

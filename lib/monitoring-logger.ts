@@ -38,8 +38,33 @@ export class MonitoringLogger {
         timestamp: new Date().toISOString(),
       })
 
-      await client.zadd("monitor_logs:all", Date.now(), logId)
-      await client.zadd(`monitor_logs:${category}`, Date.now(), logId)
+      // Store in Redis lists instead of sorted sets (Upstash doesn't support zadd)
+      const allLogsKey = "monitor_logs:all"
+      const categoryLogsKey = `monitor_logs:${category}`
+      
+      let allLogs: string[] = []
+      let categoryLogs: string[] = []
+      
+      const existingAll = await client.get(allLogsKey)
+      if (existingAll) {
+        try { allLogs = JSON.parse(existingAll) } catch { allLogs = [] }
+      }
+      
+      const existingCat = await client.get(categoryLogsKey)
+      if (existingCat) {
+        try { categoryLogs = JSON.parse(existingCat) } catch { categoryLogs = [] }
+      }
+      
+      // Prepend new entry
+      allLogs.unshift(logId)
+      categoryLogs.unshift(logId)
+      
+      // Trim to max 500 entries
+      if (allLogs.length > 500) allLogs = allLogs.slice(0, 500)
+      if (categoryLogs.length > 500) categoryLogs = categoryLogs.slice(0, 500)
+      
+      await client.set(allLogsKey, JSON.stringify(allLogs))
+      await client.set(categoryLogsKey, JSON.stringify(categoryLogs))
     } catch (error) {
       console.error("[v0] Failed to write to monitoring log:", error)
     }

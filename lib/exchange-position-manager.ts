@@ -385,18 +385,28 @@ export class ExchangePositionManager {
         timestamp: new Date().toISOString(),
       })
 
-      // Sorted set for time-ordered lookups
-      await client.zadd(`coord_logs:${params.connectionId}`, Date.now(), logId)
-
-      // Trim to last 500 entries
-      const count = await client.zcard(`coord_logs:${params.connectionId}`)
-      if (count > 500) {
-        const toRemove = await client.zrange(`coord_logs:${params.connectionId}`, 0, count - 501)
+      // Store in Redis list instead of sorted set (Upstash doesn't support zadd)
+      const coordLogsKey = `coord_logs:${params.connectionId}`
+      let coordLogs: string[] = []
+      
+      const existing = await client.get(coordLogsKey)
+      if (existing) {
+        try { coordLogs = JSON.parse(existing) } catch { coordLogs = [] }
+      }
+      
+      // Prepend new entry
+      coordLogs.unshift(logId)
+      
+      // Trim to max 500 entries
+      if (coordLogs.length > 500) {
+        const toRemove = coordLogs.slice(500)
         for (const id of toRemove) {
           await client.del(`coord_log:${params.connectionId}:${id}`)
         }
-        await client.zremrangebyrank(`coord_logs:${params.connectionId}`, 0, count - 501)
+        coordLogs = coordLogs.slice(0, 500)
       }
+      
+      await client.set(coordLogsKey, JSON.stringify(coordLogs))
     } catch (error) {
       console.error("[v0] Failed to log coordination event:", error)
     }
