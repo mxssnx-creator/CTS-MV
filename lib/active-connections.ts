@@ -26,10 +26,8 @@ export interface ActiveConnection {
 }
 
 /**
- * Load connections for the Active Connections list on the Dashboard.
- * Shows:
- * - ALL inserted base connections (is_inserted=1) -- always visible as cards
- * - ANY connection with is_enabled_dashboard=1 -- user-activated connections
+ * Load ALL base connections (4 primary exchanges) for the Active Connections list.
+ * Always shows all 4 base exchange connections as cards.
  * isActive = is_enabled_dashboard (the active toggle, independent from Settings)
  */
 export async function loadActiveConnections(): Promise<ActiveConnection[]> {
@@ -38,32 +36,25 @@ export async function loadActiveConnections(): Promise<ActiveConnection[]> {
     const allConnections = await getAllConnections()
 
     const activeConnections: ActiveConnection[] = []
-    const seenIds = new Set<string>()
 
     for (const conn of allConnections) {
       const exchange = (conn.exchange || "").toLowerCase().trim()
-      const isInserted = conn.is_inserted === true || conn.is_inserted === "1" || conn.is_inserted === "true"
-      const isDashboardActive = conn.is_enabled_dashboard === true || conn.is_enabled_dashboard === "1" || conn.is_enabled_dashboard === "true"
-      const isSettingsEnabled = conn.is_enabled === true || conn.is_enabled === "1" || conn.is_enabled === "true"
-      const isBase = BASE_EXCHANGES.includes(exchange)
-
-      // Show if: it's a base exchange, OR it's inserted, OR it's dashboard-active
-      if (isBase || isInserted || isDashboardActive) {
-        if (seenIds.has(conn.id)) continue
-        seenIds.add(conn.id)
-
+      // Show ALL base connections (bybit, bingx, pionex, orangex) - always visible
+      if (BASE_EXCHANGES.includes(exchange)) {
+        const isDashboardActive = conn.is_enabled_dashboard === true || conn.is_enabled_dashboard === "1" || conn.is_enabled_dashboard === "true"
+        const isSettingsEnabled = conn.is_enabled === true || conn.is_enabled === "1" || conn.is_enabled === "true"
         activeConnections.push({
           id: `active-${conn.id}`,
           connectionId: conn.id,
           exchangeName: conn.exchange.charAt(0).toUpperCase() + conn.exchange.slice(1),
-          isActive: isDashboardActive,
-          isBaseEnabled: isSettingsEnabled,
+          isActive: isDashboardActive,        // Dashboard toggle (independent)
+          isBaseEnabled: isSettingsEnabled,    // Settings enabled (read-only)
           addedAt: conn.created_at || new Date().toISOString(),
         })
       }
     }
 
-    console.log(`[v0] [ActiveConnections] Loaded ${activeConnections.length} connections (${activeConnections.filter(c => c.isActive).length} active)`)
+    console.log(`[v0] [ActiveConnections] Loaded ${activeConnections.length} base connections (${activeConnections.filter(c => c.isActive).length} active)`)
     return activeConnections
   } catch (error) {
     console.error("[v0] Error loading active connections from Redis:", error)

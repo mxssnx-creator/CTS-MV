@@ -41,37 +41,9 @@ export function Dashboard() {
   }, [exchangeConnectionsActive, selectedExchange])
 
   useEffect(() => {
-    // Initialize all systems on dashboard load
-    const initializeSystems = async () => {
-      try {
-        console.log("[v0] [Dashboard] Initializing systems...")
-        
-        // Call init endpoint to seed defaults and initialize trade engine
-        const initResponse = await fetch("/api/init", { 
-          method: "GET",
-          cache: "no-store"
-        })
-        
-        if (initResponse.ok) {
-          const initData = await initResponse.json()
-          console.log("[v0] [Dashboard] Systems initialized:", initData)
-          if (initData.defaultConnectionsCreated > 0) {
-            toast.info("Trade System", { 
-              description: `Initialized ${initData.defaultConnectionsCreated} default exchange connection(s)`
-            })
-          }
-        } else {
-          console.warn("[v0] [Dashboard] System initialization returned:", initResponse.status)
-        }
-        
-        // Load all active connections
-        await loadExchangeConnectionsActive()
-      } catch (error) {
-        console.error("[v0] [Dashboard] Failed to initialize systems:", error)
-      }
-    }
-    
-    initializeSystems()
+    // System initialization happens automatically at server startup (instrumentation.ts -> pre-startup.ts)
+    // Dashboard only needs to load data
+    loadExchangeConnectionsActive()
     loadStats()
     
     const interval = setInterval(() => {

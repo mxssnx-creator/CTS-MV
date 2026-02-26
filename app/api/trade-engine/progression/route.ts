@@ -1,106 +1,52 @@
 import { NextResponse } from "next/server"
-import { loadConnections } from "@/lib/file-storage"
-import { SystemLogger } from "@/lib/system-logger"
-import { query } from "@/lib/db"
+import { initRedis, getAllConnections, getSettings } from "@/lib/redis-db"
 
+export const dynamic = "force-dynamic"
+
+/**
+ * GET /api/trade-engine/progression
+ * Returns progression data for ALL active connections.
+ * Individual connection progression: /api/connections/progression/[id]
+ */
 export async function GET() {
   try {
-    console.log("[v0] Fetching real-time trade engine progression data")
-    
-    const connections = loadConnections()
-    const activeConnections = connections.filter((c) => c.is_active && c.is_enabled)
-    
-    console.log(`[v0] Processing ${activeConnections.length} active enabled connections`)
-    
-    // Import the global coordinator to get real engine status
-    const { getGlobalTradeEngineCoordinator } = await import("@/lib/trade-engine")
-    const coordinator = getGlobalTradeEngineCoordinator()
-    
-    // Get progression status for each connection with REAL data
+    await initRedis()
+    const allConnections = await getAllConnections()
+
+    // Only include connections that are active on dashboard
+    const activeConnections = allConnections.filter((c: any) => {
+      const d = c.is_enabled_dashboard
+      return d === true || d === "1" || d === "true"
+    })
+
     const progressionData = await Promise.all(
-      activeConnections.map(async (conn) => {
-        try {
-          console.log(`[v0] Getting progression for ${conn.name}...`)
-          
-          // Get REAL engine status from running coordinator
-          const engineStatus = await coordinator.getEngineStatus(conn.id)
-          const isEngineRunning = engineStatus !== null
-          
-          // Get trade count from database
-          const trades = await query<{ count: number }>(
-            `SELECT COUNT(*) as count FROM trades WHERE connection_id = ?`,
-            [conn.id]
-          )
-          
-          // Get pseudo position count
-          const pseudoPositions = await query<{ count: number }>(
-            `SELECT COUNT(*) as count FROM pseudo_positions WHERE connection_id = ?`,
-            [conn.id]
-          )
-          
-          // Get engine state from database
-          const state = await query<{ state: string; updated_at: string; prehistoric_data_loaded: boolean }>(
-            `SELECT state, updated_at, prehistoric_data_loaded FROM trade_engine_state WHERE connection_id = ?`,
-            [conn.id]
-          )
-          
-          const tradeCount = trades[0]?.count || 0
-          const pseudoCount = pseudoPositions[0]?.count || 0
-          const dbState = state[0]
-          const engineState = isEngineRunning ? 'running' : (dbState?.state || 'idle')
-          const updatedAt = dbState?.updated_at
-          const prehistoricLoaded = dbState?.prehistoric_data_loaded || false
-          
-          // Get cycle metrics from engine status if available
-          const cycleMetrics = engineStatus ? {
-            indicationCycles: engineStatus.indication_cycle_count || 0,
-            strategyCycles: engineStatus.strategy_cycle_count || 0,
-            realtimeCycles: engineStatus.realtime_cycle_count || 0,
-            lastCycleAt: engineStatus.last_cycle_at || null,
-          } : null
-          
-          console.log(`[v0] ${conn.name}: ${engineState}, ${tradeCount} trades, ${pseudoCount} positions, running=${isEngineRunning}`)
-          
-          return {
-            connectionId: conn.id,
-            connectionName: conn.name,
-            exchange: conn.exchange,
-            isEnabled: conn.is_enabled,
-            isActive: conn.is_active,
-            isLiveTrading: conn.is_live_trade,
-            isEngineRunning,
-            engineState,
-            tradeCount,
-            pseudoPositionCount: pseudoCount,
-            prehistoricDataLoaded: prehistoricLoaded,
-            lastUpdate: updatedAt,
-            cycleMetrics,
-            realTimeData: true, // Flag indicating this is real data
-          }
-        } catch (err) {
-          console.warn(`[v0] Failed to get progression for ${conn.id}:`, err)
-          return {
-            connectionId: conn.id,
-            connectionName: conn.name,
-            exchange: conn.exchange,
-            isEnabled: conn.is_enabled,
-            isActive: conn.is_active,
-            isLiveTrading: conn.is_live_trade,
-            isEngineRunning: false,
-            engineState: 'error',
-            tradeCount: 0,
-            pseudoPositionCount: 0,
-            prehistoricDataLoaded: false,
-            lastUpdate: null,
-            cycleMetrics: null,
-            error: err instanceof Error ? err.message : String(err),
-            realTimeData: false,
-          }
+      activeConnections.map(async (conn: any) => {
+        const progression = await getSettings(`engine_progression:${conn.id}`)
+        const engineRunningRaw = await getSettings(`engine_is_running:${conn.id}`)
+        const engineRunning = engineRunningRaw === "true" || engineRunningRaw === true
+
+        const phase = progression?.phase || (engineRunning ? "initializing" : "idle")
+        const progress = Number(progression?.progress) || 0
+
+        return {
+          connectionId: conn.id,
+          connectionName: conn.name,
+          exchange: conn.exchange,
+          isEnabled: conn.is_enabled === true || conn.is_enabled === "1",
+          isLiveTrading: conn.is_live_trade === true || conn.is_live_trade === "1",
+          isPresetTrading: conn.is_preset_trade === true || conn.is_preset_trade === "1",
+          isEngineRunning: engineRunning,
+          phase,
+          progress,
+          detail: progression?.detail || "",
+          subItem: progression?.sub_item || "",
+          subCurrent: Number(progression?.sub_current) || 0,
+          subTotal: Number(progression?.sub_total) || 0,
+          updatedAt: progression?.updated_at || null,
         }
       })
     )
-    
-    console.log(`[v0] Returned real-time progression data for ${progressionData.length} connections`)
+
     return NextResponse.json({
       success: true,
       connections: progressionData,
@@ -110,8 +56,7 @@ export async function GET() {
     })
   } catch (error) {
     console.error("[v0] Failed to fetch progression:", error)
-    await SystemLogger.logError(error, "api", "GET /api/trade-engine/progression")
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: false,
       error: "Failed to fetch progression",
       details: error instanceof Error ? error.message : String(error),
