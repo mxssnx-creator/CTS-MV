@@ -77,11 +77,9 @@ export function ConnectionStateProvider({ children }: { children: ReactNode }) {
     loadingRef.current.base = true
     setIsBaseLoading(true)
     try {
-      console.log("[v0] [ConnectionState] Loading base connections (all)")
       const response = await fetch("/api/settings/connections")
       if (response.ok) {
         const data = await response.json()
-        console.log("[v0] [ConnectionState] Loaded", data.connections?.length || 0, "base connections")
         setBaseConnections(data.connections || [])
         
         // Initialize status map - base connections are ALWAYS enabled
@@ -207,7 +205,6 @@ export function ConnectionStateProvider({ children }: { children: ReactNode }) {
       const next = new Map(prev)
       const currentStatus = next.get(id) ?? false
       next.set(id, !currentStatus)
-      console.log("[v0] [ConnectionState] Toggled Active Connection", id, "to", !currentStatus, "(independent from Settings)")
       return next
     })
   }

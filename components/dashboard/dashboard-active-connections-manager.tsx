@@ -80,14 +80,7 @@ export function DashboardActiveConnectionsManager() {
       }
       const data = await response.json()
       const allConnections: Connection[] = Array.isArray(data) ? data : (data?.connections || [])
-      console.log("[v0] [Manager] API returned", allConnections.length, "total connections, data keys:", Object.keys(data || {}))
-      if (allConnections.length > 0) {
-        const sample = allConnections[0]
-        console.log("[v0] [Manager] Sample conn:", sample.id, "exchange:", sample.exchange, "is_inserted:", sample.is_inserted, "is_enabled:", sample.is_enabled, "is_enabled_dashboard:", sample.is_enabled_dashboard)
-      } else if (data?.connections === undefined && !Array.isArray(data)) {
-        console.log("[v0] [Manager] WARNING: API response has no connections array. Full keys:", JSON.stringify(Object.keys(data || {})))
-      }
-
+      
       // Build active connection cards from API data
       const activeConns: ActiveConnectionWithDetails[] = []
       const seenIds = new Set<string>()
@@ -118,8 +111,6 @@ export function DashboardActiveConnectionsManager() {
           debugSkipped++
         }
       }
-
-      console.log("[v0] [Manager] Filtered to", activeConns.length, "displayable connections (skipped:", debugSkipped, "template-only)")
       
       // STICKY STATE: Never replace existing cards with empty data on transient fetch issues
       if (activeConns.length === 0 && activeConnectionsRef.current.length > 0) {

@@ -15,6 +15,18 @@ export async function GET(request: NextRequest) {
     await initRedis()
     let connections = await getAllConnections()
 
+    // Base exchanges that are always enabled in Settings
+    const BASE_EXCHANGES = ["bybit", "bingx", "pionex", "orangex", "binance", "okx"]
+    
+    // Force-enable all base exchange connections (they cannot be disabled in Settings)
+    connections = connections.map((c) => {
+      const isBaseExchange = BASE_EXCHANGES.includes((c.exchange || "").toLowerCase().trim())
+      if (isBaseExchange && (!c.is_enabled || c.is_enabled === "0" || c.is_enabled === false)) {
+        return { ...c, is_enabled: "1" }
+      }
+      return c
+    })
+
     // Auto-initialize predefined connections if none exist
     if (connections.length === 0) {
       console.log("[v0] [API] No connections found, auto-initializing predefined connections...")
