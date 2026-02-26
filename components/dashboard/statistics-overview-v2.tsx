@@ -8,6 +8,7 @@ import { TrendingUp, TrendingDown, Activity, AlertCircle } from "lucide-react"
 interface StrategyMetrics {
   type: "base" | "main" | "real" | "live"
   count: number
+  winRate: number
   drawdown: number
   drawdownHours: number
   profitFactor250: number
@@ -111,10 +112,10 @@ export function StatisticsOverviewV2({ connections }: StatisticsOverviewV2Props)
 
       // Parse strategy metrics from progression data (simplified)
       const strategiesData: StrategyMetrics[] = [
-        { type: "base", count: 0, drawdown: 0, drawdownHours: 0, profitFactor250: 0, profitFactor50: 0 },
-        { type: "main", count: 0, drawdown: 0, drawdownHours: 0, profitFactor250: 0, profitFactor50: 0 },
-        { type: "real", count: 0, drawdown: 0, drawdownHours: 0, profitFactor250: 0, profitFactor50: 0 },
-        { type: "live", count: 0, drawdown: 0, drawdownHours: 0, profitFactor250: 0, profitFactor50: 0 },
+        { type: "base", count: 0, winRate: 0, drawdown: 0, drawdownHours: 0, profitFactor250: 0, profitFactor50: 0 },
+        { type: "main", count: 0, winRate: 0, drawdown: 0, drawdownHours: 0, profitFactor250: 0, profitFactor50: 0 },
+        { type: "real", count: 0, winRate: 0, drawdown: 0, drawdownHours: 0, profitFactor250: 0, profitFactor50: 0 },
+        { type: "live", count: 0, winRate: 0, drawdown: 0, drawdownHours: 0, profitFactor250: 0, profitFactor50: 0 },
       ]
       setStrategies(strategiesData)
     } catch (err) {
@@ -199,36 +200,80 @@ export function StatisticsOverviewV2({ connections }: StatisticsOverviewV2Props)
           </div>
         </div>
 
-        {/* Strategies Overview - Strategy Types with Metrics */}
-        <div className="space-y-2">
+        {/* Strategies Overview - Strategy Types with Metrics in Smart Lines */}
+        <div className="space-y-3 pt-4 border-t">
           <div className="text-sm font-semibold text-muted-foreground">Strategy Types</div>
-          <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-4">
+          <div className="space-y-2">
             {strategies.map((strategy) => (
-              <div key={strategy.type} className="rounded-lg border bg-card p-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <Badge variant="outline" className="capitalize text-xs">
-                    {strategy.type}
-                  </Badge>
-                  <span className="font-semibold text-sm">{strategy.count}</span>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div>
-                    <div className="text-muted-foreground">Drawdown</div>
-                    <div className="font-semibold text-red-600">{strategy.drawdown.toFixed(2)}%</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">Time (h)</div>
-                    <div className="font-semibold">{strategy.drawdownHours.toFixed(1)}</div>
+              <div key={strategy.type} className="rounded-lg border bg-card p-3">
+                {/* Strategy Header with Count */}
+                <div className="flex items-center justify-between pb-2 border-b">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="capitalize text-xs font-semibold">
+                      {strategy.type}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">
+                      {strategy.count} strateg{strategy.count === 1 ? "y" : "ies"}
+                    </span>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t">
-                  <div>
-                    <div className="text-muted-foreground">PF (250)</div>
-                    <div className="font-semibold">{strategy.profitFactor250.toFixed(2)}</div>
+
+                {/* Evaluation Metrics Line */}
+                <div className="grid grid-cols-4 gap-3 pt-2 text-xs">
+                  {/* Win Rate */}
+                  <div className="flex flex-col">
+                    <span className="text-muted-foreground text-xs">Win Rate</span>
+                    <span className="font-semibold text-sm">{(strategy.winRate * 100).toFixed(1)}%</span>
                   </div>
-                  <div>
-                    <div className="text-muted-foreground">PF (50)</div>
-                    <div className="font-semibold">{strategy.profitFactor50.toFixed(2)}</div>
+
+                  {/* Drawdown */}
+                  <div className="flex flex-col">
+                    <span className="text-muted-foreground text-xs">Drawdown</span>
+                    <span className={`font-semibold text-sm ${strategy.drawdown > 20 ? "text-red-600" : strategy.drawdown > 10 ? "text-orange-600" : "text-green-600"}`}>
+                      {strategy.drawdown.toFixed(2)}%
+                    </span>
+                  </div>
+
+                  {/* Drawdown Time */}
+                  <div className="flex flex-col">
+                    <span className="text-muted-foreground text-xs">Drawdown Time</span>
+                    <span className="font-semibold text-sm">{strategy.drawdownHours.toFixed(1)}h</span>
+                  </div>
+
+                  {/* Profit Factor Average */}
+                  <div className="flex flex-col">
+                    <span className="text-muted-foreground text-xs">Avg Profit Factor</span>
+                    <span className={`font-semibold text-sm ${
+                      (strategy.profitFactor250 + strategy.profitFactor50) / 2 >= 1.5 ? "text-green-600" :
+                      (strategy.profitFactor250 + strategy.profitFactor50) / 2 >= 1.0 ? "text-blue-600" :
+                      "text-red-600"
+                    }`}>
+                      {((strategy.profitFactor250 + strategy.profitFactor50) / 2).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Performance Breakdown Line */}
+                <div className="grid grid-cols-2 gap-4 pt-3 border-t mt-3 text-xs">
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Profit Factor (Last 250)</span>
+                    <span className={`font-semibold ${
+                      strategy.profitFactor250 >= 1.5 ? "text-green-600" :
+                      strategy.profitFactor250 >= 1.0 ? "text-blue-600" :
+                      "text-red-600"
+                    }`}>
+                      {strategy.profitFactor250.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Profit Factor (Last 50)</span>
+                    <span className={`font-semibold ${
+                      strategy.profitFactor50 >= 1.5 ? "text-green-600" :
+                      strategy.profitFactor50 >= 1.0 ? "text-blue-600" :
+                      "text-red-600"
+                    }`}>
+                      {strategy.profitFactor50.toFixed(2)}
+                    </span>
                   </div>
                 </div>
               </div>
