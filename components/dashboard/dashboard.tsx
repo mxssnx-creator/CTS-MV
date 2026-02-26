@@ -8,7 +8,6 @@ import { SystemOverview } from "./system-overview"
 import { GlobalTradeEngineControls } from "./global-trade-engine-controls"
 import { DashboardActiveConnectionsManager } from "./dashboard-active-connections-manager"
 import { IntervalsStrategiesOverview } from "./intervals-strategies-overview"
-import { QuickStartButton } from "./quick-start-button"
 import { StatisticsOverviewV2 } from "./statistics-overview-v2"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -177,11 +176,6 @@ export function Dashboard() {
       {/* Trade Engine Controls */}
       <ErrorBoundary name="Global Trade Engine Controls">
         <GlobalTradeEngineControls />
-      </ErrorBoundary>
-
-      {/* Quick Start Button - One-click setup for testing */}
-      <ErrorBoundary name="Quick Start">
-        <QuickStartButton />
       </ErrorBoundary>
 
       {/* Active Connections - With global engine guard, progression tracking, sticky state */}

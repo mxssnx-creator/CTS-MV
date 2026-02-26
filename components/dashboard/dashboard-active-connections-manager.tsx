@@ -11,6 +11,7 @@ import { BASE_EXCHANGES } from "@/lib/connection-utils"
 import { COMPONENT_VERSIONS } from "@/lib/system-version"
 import { AddActiveConnectionDialog } from "./add-active-connection-dialog"
 import { ActiveConnectionCard } from "./active-connection-card"
+import { QuickStartButton } from "./quick-start-button"
 
 interface ActiveConnectionWithDetails extends ActiveConnection {
   details?: Connection
@@ -298,6 +299,9 @@ export function DashboardActiveConnectionsManager() {
           Add Connection
         </Button>
       </div>
+
+      {/* Quick Start Button - One-click setup for testing with BingX */}
+      <QuickStartButton onQuickStartComplete={() => loadConnections()} />
 
       <AddActiveConnectionDialog
         open={addDialogOpen}
