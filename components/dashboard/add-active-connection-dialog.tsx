@@ -66,6 +66,7 @@ export function AddActiveConnectionDialog({
         const isBase = BASE_EXCHANGES.includes(exchange)
         const isEnabled = c.is_enabled === true || c.is_enabled === "1" || c.is_enabled === "true"
         const alreadyOnDashboard = c.is_dashboard_inserted === true || c.is_dashboard_inserted === "1"
+        console.log(`[v0] [AddDialog] ${c.name}: base=${isBase}, enabled=${isEnabled}, onDashboard=${alreadyOnDashboard}`)
         // Show base connections that are enabled in Settings but NOT yet on dashboard
         return isBase && isEnabled && !alreadyOnDashboard
       })

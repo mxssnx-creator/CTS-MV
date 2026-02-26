@@ -18,34 +18,34 @@ export async function GET(request: NextRequest) {
     await initRedis()
     let connections = await getAllConnections()
 
-    // MIGRATION: Ensure ONLY bybit and bingx have is_dashboard_inserted="1"
-    // All other exchanges should have is_dashboard_inserted="0"
+    // CRITICAL MIGRATION: Enforce ONLY bybit and bingx on dashboard
+    // This must run on EVERY request to ensure no other exchanges are wrongly inserted
     for (const c of connections) {
       const exch = (c.exchange || "").toLowerCase().trim()
       const shouldBeOnDashboard = DASHBOARD_AUTO_INSERTED.includes(exch)
       const currentlyInserted = c.is_dashboard_inserted === "1" || c.is_dashboard_inserted === true
       
-      // Set bybit/bingx to inserted if not already
+      // Enforce correct state: bybit/bingx must be inserted, others must not be
       if (shouldBeOnDashboard && !currentlyInserted) {
         await updateConnection(c.id, {
           ...c,
           is_dashboard_inserted: "1",
-          is_enabled_dashboard: "0", // Disabled by default
+          is_enabled_dashboard: "0",
           updated_at: new Date().toISOString(),
         })
-      }
-      // Remove other exchanges from dashboard if incorrectly inserted
-      else if (!shouldBeOnDashboard && currentlyInserted) {
+        console.log(`[v0] [API] Migration: Set ${c.exchange} dashboard_inserted=1`)
+      } else if (!shouldBeOnDashboard && currentlyInserted) {
         await updateConnection(c.id, {
           ...c,
           is_dashboard_inserted: "0",
           is_enabled_dashboard: "0",
           updated_at: new Date().toISOString(),
         })
+        console.log(`[v0] [API] Migration: Reset ${c.exchange} dashboard_inserted=0`)
       }
     }
     
-    // Reload after migration
+    // Reload to get fresh data with migrations applied
     connections = await getAllConnections()
 
     // Auto-initialize predefined connections if none exist
