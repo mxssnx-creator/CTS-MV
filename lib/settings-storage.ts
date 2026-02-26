@@ -30,6 +30,11 @@ function getDefaultSettings(): Record<string, any> {
     publicRequestDelayMs: 20,
     privateRequestDelayMs: 100,
     websocketTimeoutMs: 30000,
+    // Main Strategy: Max Pseudo Positions
+    // Each configuration possibility set can have max 1 pseudo position for long and 1 for short
+    // This prevents over-leveraging and ensures controlled position sizing
+    strategyMainMaxPseudoPositionsLong: 1,
+    strategyMainMaxPseudoPositionsShort: 1,
   }
 }
 

@@ -8,6 +8,7 @@ export async function GET() {
 
     const riskSettings = await client.hgetall("settings:risk-management")
     const engineSettings = await client.hgetall("settings:engines")
+    const strategySettings = await client.hgetall("settings:strategy-main")
 
     return NextResponse.json({
       success: true,
@@ -25,6 +26,10 @@ export async function GET() {
         mainTradeEngine: engineSettings.main_trade_engine === "true",
         realtimePositionsEngine: engineSettings.realtime_positions_engine === "true",
         riskManagementEngine: engineSettings.risk_management_engine === "true",
+      },
+      strategy: {
+        mainMaxPseudoPositionsLong: parseInt(strategySettings.max_pseudo_positions_long || "1"),
+        mainMaxPseudoPositionsShort: parseInt(strategySettings.max_pseudo_positions_short || "1"),
       },
     })
   } catch (error) {
@@ -67,7 +72,19 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    console.log("[v0] Risk management and engine settings updated")
+    // Update main strategy settings including max pseudo positions
+    if (body.strategy) {
+      const strat = body.strategy
+      await client.hset("settings:strategy-main", {
+        max_pseudo_positions_long: (strat.mainMaxPseudoPositionsLong || "1").toString(),
+        max_pseudo_positions_short: (strat.mainMaxPseudoPositionsShort || "1").toString(),
+      })
+      console.log(
+        `[v0] Main Strategy max pseudo positions: long=${strat.mainMaxPseudoPositionsLong}, short=${strat.mainMaxPseudoPositionsShort}`
+      )
+    }
+
+    console.log("[v0] Risk management, engine, and strategy settings updated")
 
     return NextResponse.json({
       success: true,
