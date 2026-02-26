@@ -15,6 +15,16 @@ interface StrategyMetrics {
   profitFactor50: number
 }
 
+interface IndicationMetrics {
+  type: "base" | "main" | "real" | "live"
+  totalCount: number
+  directionCount: number
+  moveCount: number
+  activeCount: number
+  lastTrigger: Date | null
+  avgSignalStrength: number
+}
+
 interface SymbolStats {
   symbol: string
   livePositions: number
@@ -52,6 +62,7 @@ interface StatisticsOverviewV2Props {
 
 export function StatisticsOverviewV2({ connections }: StatisticsOverviewV2Props) {
   const [strategies, setStrategies] = useState<StrategyMetrics[]>([])
+  const [indications, setIndications] = useState<IndicationMetrics[]>([])
   const [symbols, setSymbols] = useState<SymbolStats[]>([])
   const [performance, setPerformance] = useState<PerformanceMetrics | null>(null)
   const [loading, setLoading] = useState(true)
@@ -118,6 +129,15 @@ export function StatisticsOverviewV2({ connections }: StatisticsOverviewV2Props)
         { type: "live", count: 0, winRate: 0, drawdown: 0, drawdownHours: 0, profitFactor250: 0, profitFactor50: 0 },
       ]
       setStrategies(strategiesData)
+
+      // Initialize indications metrics by type
+      const indicationsData: IndicationMetrics[] = [
+        { type: "base", totalCount: 0, directionCount: 0, moveCount: 0, activeCount: 0, lastTrigger: null, avgSignalStrength: 0 },
+        { type: "main", totalCount: 0, directionCount: 0, moveCount: 0, activeCount: 0, lastTrigger: null, avgSignalStrength: 0 },
+        { type: "real", totalCount: 0, directionCount: 0, moveCount: 0, activeCount: 0, lastTrigger: null, avgSignalStrength: 0 },
+        { type: "live", totalCount: 0, directionCount: 0, moveCount: 0, activeCount: 0, lastTrigger: null, avgSignalStrength: 0 },
+      ]
+      setIndications(indicationsData)
     } catch (err) {
       console.error("[v0] Statistics V2 load error:", err)
       setError(err instanceof Error ? err.message : "Failed to load statistics")
@@ -281,6 +301,80 @@ export function StatisticsOverviewV2({ connections }: StatisticsOverviewV2Props)
           </div>
         </div>
 
+        {/* Indications Overview - Indication Types with Metrics in Smart Lines */}
+        <div className="space-y-3 pt-4 border-t">
+          <div className="text-sm font-semibold text-muted-foreground">Indication Types</div>
+          <div className="space-y-2">
+            {indications.map((indication) => (
+              <div key={indication.type} className="rounded-lg border bg-card p-3">
+                {/* Indication Header with Count */}
+                <div className="flex items-center justify-between pb-2 border-b">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="capitalize text-xs font-semibold">
+                      {indication.type}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">
+                      {indication.totalCount} indication{indication.totalCount === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    Last: {indication.lastTrigger ? new Date(indication.lastTrigger).toLocaleTimeString() : "Never"}
+                  </span>
+                </div>
+
+                {/* Indication Types and Counts Line */}
+                <div className="grid grid-cols-4 gap-3 pt-2 text-xs">
+                  {/* Direction Indications */}
+                  <div className="flex flex-col">
+                    <span className="text-muted-foreground text-xs">Direction</span>
+                    <span className="font-semibold text-sm text-blue-600">{indication.directionCount}</span>
+                  </div>
+
+                  {/* Move Indications */}
+                  <div className="flex flex-col">
+                    <span className="text-muted-foreground text-xs">Move</span>
+                    <span className="font-semibold text-sm text-green-600">{indication.moveCount}</span>
+                  </div>
+
+                  {/* Active Indications */}
+                  <div className="flex flex-col">
+                    <span className="text-muted-foreground text-xs">Active</span>
+                    <span className="font-semibold text-sm text-orange-600">{indication.activeCount}</span>
+                  </div>
+
+                  {/* Average Signal Strength */}
+                  <div className="flex flex-col">
+                    <span className="text-muted-foreground text-xs">Avg Signal</span>
+                    <span className={`font-semibold text-sm ${
+                      indication.avgSignalStrength >= 0.7 ? "text-green-600" :
+                      indication.avgSignalStrength >= 0.4 ? "text-yellow-600" :
+                      "text-red-600"
+                    }`}>
+                      {indication.avgSignalStrength.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Indication Breakdown Line */}
+                <div className="grid grid-cols-3 gap-4 pt-3 border-t mt-3 text-xs">
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Direction Signals</span>
+                    <span className="font-semibold text-blue-600">{indication.directionCount}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Move Signals</span>
+                    <span className="font-semibold text-green-600">{indication.moveCount}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Active Signals</span>
+                    <span className="font-semibold text-orange-600">{indication.activeCount}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* Symbols Overview - Compact 22 Symbols */}
         {symbols.length > 0 && (
           <div className="space-y-2">
@@ -312,10 +406,10 @@ export function StatisticsOverviewV2({ connections }: StatisticsOverviewV2Props)
           </div>
         )}
 
-        {/* Indications Summary - For strategies only */}
+        {/* Footer Note */}
         <div className="pt-4 border-t">
           <div className="text-xs text-muted-foreground">
-            Indications are shown for strategy types only. Base, Main, Real, and Live represent different strategy complexity levels.
+            Base, Main, Real, and Live represent different strategy and indication complexity levels. Direction (blue) shows trend reversals, Move (green) shows momentum, Active (orange) shows current trading signals.
           </div>
         </div>
       </CardContent>
