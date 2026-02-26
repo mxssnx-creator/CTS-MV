@@ -753,20 +753,6 @@ export async function getActiveConnectionsForEngine(): Promise<any[]> {
   return filtered
 }
 
-/**
- * Get ONLY Active Connections (is_enabled_dashboard = true)
- * These are the ONLY connections the trade engine should process
- */
-export async function getActiveConnectionsForEngine(): Promise<any[]> {
-  const all = await getAllConnections()
-  const filtered = all.filter((c: any) => {
-    const d = c.is_enabled_dashboard
-    return d === true || d === "1" || d === "true"
-  })
-  console.log(`[v0] [DB] getActiveConnectionsForEngine: ${filtered.length} active dashboard (out of ${all.length})`)
-  return filtered
-}
-
 export async function createConnection(connection: any): Promise<any> {
   await saveConnection(connection)
   return connection
