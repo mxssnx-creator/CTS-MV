@@ -93,13 +93,13 @@ export function DashboardActiveConnectionsManager() {
         const exchange = (conn.exchange || "").toLowerCase().trim()
         const isBase = BASE_EXCHANGES.includes(exchange)
         
-        // Dashboard uses its OWN states - completely independent from Settings
+        // IMPORTANT: Active connections use ONLY dashboard-specific fields
+        // NOT base connection settings like is_enabled or is_inserted
         const isDashboardInserted = conn.is_dashboard_inserted === true || conn.is_dashboard_inserted === "1"
         const isDashboardActive = conn.is_enabled_dashboard === true || conn.is_enabled_dashboard === "1"
 
-        console.log(`[v0] [Manager] ${conn.name}: base=${isBase}, dashboard_inserted=${isDashboardInserted} (raw: ${JSON.stringify(conn.is_dashboard_inserted)}), dashboard_active=${isDashboardActive}`)
-        
-        // Show ONLY base connections that are inserted on DASHBOARD (not Settings is_inserted)
+        // Show ONLY base connections that are inserted on DASHBOARD
+        // This is completely independent from Settings is_enabled status
         if (isBase && isDashboardInserted) {
           if (seenIds.has(conn.id)) continue
           seenIds.add(conn.id)
@@ -108,12 +108,14 @@ export function DashboardActiveConnectionsManager() {
             id: `active-${conn.id}`,
             connectionId: conn.id,
             exchangeName: conn.exchange ? conn.exchange.charAt(0).toUpperCase() + conn.exchange.slice(1) : "Unknown",
-            isActive: isDashboardActive, // DISABLED by default - only true if explicitly enabled
-            isBaseEnabled: true, // Always allow dashboard operations
+            isActive: isDashboardActive, // Uses ONLY dashboard_enabled, not Settings is_enabled
+            isBaseEnabled: true,
             addedAt: conn.created_at || new Date().toISOString(),
             details: conn,
           })
-          console.log(`[v0] [Manager] ✓ Added ${conn.name} to dashboard`)
+          console.log(`[v0] [Manager] ✓ Added ${conn.name} to dashboard (dashboard_inserted=${isDashboardInserted}, dashboard_active=${isDashboardActive})`)
+        } else if (isBase && !isDashboardInserted) {
+          console.log(`[v0] [Manager] - ${conn.name}: not on dashboard (dashboard_inserted=${isDashboardInserted})`)
         }
       }
       

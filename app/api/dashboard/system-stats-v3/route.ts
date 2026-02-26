@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic"
 export const revalidate = 0
 export const fetchCache = "force-no-store"
 
-const BASE_EXCHANGES = ["bybit", "bingx", "pionex", "orangex"]
+const BASE_EXCHANGES = ["bybit", "bingx", "pionex", "orangex", "binance", "okx"]
 
 function isBaseExchange(c: any): boolean {
   return BASE_EXCHANGES.includes((c?.exchange || "").toLowerCase().trim())
@@ -17,24 +17,38 @@ export async function GET() {
     const client = getRedisClient()
     
     const allConnections = await getAllConnections()
+    console.log(`[v0] [SystemStats] Analyzing ${allConnections.length} total connections`)
     
-    // BASE = 4 primary exchanges
+    // BASE = 6 primary exchanges
     const baseConnections = allConnections.filter(isBaseExchange)
+    console.log(`[v0] [SystemStats] Base exchanges: ${baseConnections.length} connections (${baseConnections.map(c => c.exchange).join(", ")})`)
+    
     const enabledBase = baseConnections.filter((c: any) => {
       const e = c.is_enabled
       return e === true || e === "1" || e === "true" || e === undefined || e === null
     })
+    console.log(`[v0] [SystemStats] Enabled base: ${enabledBase.length}`)
+    
     // Check multiple test status field names and values
     const workingBase = baseConnections.filter((c: any) => {
       const status = c.last_test_status || c.test_status || c.connection_status
       return status === "success" || status === "ok" || status === "connected"
     })
+    console.log(`[v0] [SystemStats] Working/tested base: ${workingBase.length}`)
     
     // ACTIVE = connections with is_enabled_dashboard = "1" (independent state)
     const activeConnections = allConnections.filter((c: any) => {
       const d = c.is_enabled_dashboard
       return d === true || d === "1" || d === "true"
     })
+    console.log(`[v0] [SystemStats] Dashboard-active connections: ${activeConnections.length} (${activeConnections.map(c => c.exchange).join(", ")})`)
+    
+    // Dashboard-inserted (different from active) = should have bybit, bingx only
+    const dashboardInserted = allConnections.filter((c: any) => {
+      const d = c.is_dashboard_inserted
+      return d === true || d === "1"
+    })
+    console.log(`[v0] [SystemStats] Dashboard-inserted connections: ${dashboardInserted.length} (${dashboardInserted.map(c => c.exchange).join(", ")})`)
     
     // Live vs Preset counts from active connections
     let liveTradeCount = 0

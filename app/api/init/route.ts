@@ -132,7 +132,7 @@ export async function GET() {
       message: "System initialized",
       connectionsCreated: createdConnections.length,
       totalConnections: connections.length + createdConnections.length,
-      forceEnabled: forceEnabledCount,
+      migratedCount: migratedCount,
     })
   } catch (error) {
     console.error("[v0] [Init] Initialization error:", error)

@@ -26,38 +26,34 @@ export async function GET(request: NextRequest) {
     let connections = await getAllConnections()
 
     // CRITICAL MIGRATION: Enforce ONLY bybit and bingx on dashboard
-    // This must run on EVERY request to ensure no other exchanges are wrongly inserted
-    console.log(`[v0] [API] [Migration] Starting - found ${connections.length} connections`)
+    // This must run on EVERY request to ensure consistency
+    console.log(`[v0] [API] [Migration] Checking ${connections.length} connections...`)
+    let migratedCount = 0
     for (const c of connections) {
       const exch = (c.exchange || "").toLowerCase().trim()
       const shouldBeOnDashboard = DASHBOARD_AUTO_INSERTED.includes(exch)
-      const currentlyInserted = c.is_dashboard_inserted === "1" || c.is_dashboard_inserted === true
       
-      console.log(`[v0] [API] [Migration] ${c.name}: exchange=${exch}, shouldBeDashboard=${shouldBeOnDashboard}, currentlyInserted=${currentlyInserted}, raw_value=${JSON.stringify(c.is_dashboard_inserted)}`)
+      // Check actual values (not just string "1", but also true or empty/undefined = not set)
+      const dashboardInserted = c.is_dashboard_inserted === "1" || c.is_dashboard_inserted === true
+      const needsDashboardSet = shouldBeOnDashboard && !dashboardInserted
+      const needsDashboardReset = !shouldBeOnDashboard && dashboardInserted
       
-      // Enforce correct state: bybit/bingx must be inserted, others must not be
-      if (shouldBeOnDashboard && !currentlyInserted) {
+      if (needsDashboardSet || needsDashboardReset) {
+        const newValue = shouldBeOnDashboard ? "1" : "0"
         await updateConnection(c.id, {
           ...c,
-          is_dashboard_inserted: "1",
-          is_enabled_dashboard: "0",
+          is_dashboard_inserted: newValue,
           updated_at: new Date().toISOString(),
         })
-        console.log(`[v0] [API] [Migration] SET: ${c.exchange} dashboard_inserted=1`)
-      } else if (!shouldBeOnDashboard && currentlyInserted) {
-        await updateConnection(c.id, {
-          ...c,
-          is_dashboard_inserted: "0",
-          is_enabled_dashboard: "0",
-          updated_at: new Date().toISOString(),
-        })
-        console.log(`[v0] [API] [Migration] RESET: ${c.exchange} dashboard_inserted=0`)
+        migratedCount++
+        console.log(`[v0] [API] [Migration] ${c.exchange}: dashboard_inserted=${needsDashboardSet ? "SET to 1" : "RESET to 0"}`)
       }
     }
-    console.log(`[v0] [API] [Migration] Complete`)
-    
-    // Reload to get fresh data with migrations applied
-    connections = await getAllConnections()
+    if (migratedCount > 0) {
+      console.log(`[v0] [API] [Migration] Updated ${migratedCount} connections`)
+      // Reload after updates
+      connections = await getAllConnections()
+    }
 
     // Auto-initialize predefined connections if none exist
     if (connections.length === 0) {
