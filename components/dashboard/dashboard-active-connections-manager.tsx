@@ -92,17 +92,24 @@ export function DashboardActiveConnectionsManager() {
         const isDashboardActive = conn.is_enabled_dashboard === true || conn.is_enabled_dashboard === "1" || (conn.is_enabled_dashboard as string) === "true"
         const isSettingsEnabled = conn.is_enabled === true || conn.is_enabled === "1" || (conn.is_enabled as string) === "true"
         const isBase = BASE_EXCHANGES.includes(exchange)
+        const isInserted = conn.is_inserted === true || conn.is_inserted === "1" || conn.is_inserted === 1
+        const isDashboardActive = conn.is_enabled_dashboard === true || conn.is_enabled_dashboard === "1"
+        const isSettingsEnabled = conn.is_enabled === true || conn.is_enabled === "1" || conn.is_enabled === "true"
 
-        // Show if: base exchange, OR inserted, OR dashboard-active, OR settings-enabled
-        if (isBase || isInserted || isDashboardActive || isSettingsEnabled) {
+        // Only show connections that are BASE AND INSERTED AND ENABLED
+        if (isBase && isInserted && isSettingsEnabled) {
           if (seenIds.has(conn.id)) continue
           seenIds.add(conn.id)
+          
+          // Determine if this connection should be ADDED BY DEFAULT (only bybit and bingx)
+          const DEFAULT_EXCHANGES = ["bybit", "bingx"]
+          const shouldAddByDefault = DEFAULT_EXCHANGES.includes(exchange)
 
           activeConns.push({
             id: `active-${conn.id}`,
             connectionId: conn.id,
             exchangeName: conn.exchange ? conn.exchange.charAt(0).toUpperCase() + conn.exchange.slice(1) : "Unknown",
-            isActive: false, // Always disabled by default - user must explicitly enable via toggle
+            isActive: isDashboardActive || shouldAddByDefault, // Pre-enable bybit and bingx by default
             isBaseEnabled: isSettingsEnabled,
             addedAt: conn.created_at || new Date().toISOString(),
             details: conn,
@@ -116,6 +123,34 @@ export function DashboardActiveConnectionsManager() {
       if (activeConns.length === 0 && activeConnectionsRef.current.length > 0) {
         setLoading(false)
         return
+      }
+
+      // Auto-enable bybit and bingx on dashboard if not already enabled
+      const DEFAULT_EXCHANGES = ["bybit", "bingx"]
+      const autoEnablePromises = activeConns
+        .filter(ac => {
+          const exchange = ac.exchangeName.toLowerCase()
+          return DEFAULT_EXCHANGES.includes(exchange) && !ac.isActive
+        })
+        .map(ac => 
+          fetch(`/api/settings/connections/${ac.connectionId}/active`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+          }).catch(() => null)
+        )
+      
+      if (autoEnablePromises.length > 0) {
+        await Promise.all(autoEnablePromises)
+        console.log(`[v0] [Manager] Auto-enabled ${autoEnablePromises.length} default connections (bybit, bingx)`)
+        
+        // Update local state to reflect the auto-enable
+        updateActiveConnections(prev => prev.map(ac => {
+          const exchange = ac.exchangeName.toLowerCase()
+          if (DEFAULT_EXCHANGES.includes(exchange)) {
+            return { ...ac, isActive: true }
+          }
+          return ac
+        }))
       }
 
       updateActiveConnections(activeConns)
