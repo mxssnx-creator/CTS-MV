@@ -715,6 +715,7 @@ const _BASE_EXCHANGES = ["bybit", "bingx", "pionex", "orangex"]
  * Get enabled connections (respects inserted state)
  * Auto-inserted exchanges (bybit, bingx) are enabled by default
  * Other connections start disabled unless explicitly enabled by user
+ * @returns Array of enabled connections
  */
 export async function getEnabledConnections(): Promise<any[]> {
   const all = await getAllConnections()
