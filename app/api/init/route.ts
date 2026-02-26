@@ -3,6 +3,10 @@ import { initializeTradeEngineAutoStart } from "@/lib/trade-engine-auto-start"
 import { getGlobalTradeEngineCoordinator } from "@/lib/trade-engine"
 import { seedDefaultPresetTypes } from "@/lib/preset-types-seed"
 import { initRedis, getAllConnections, createConnection, updateConnection } from "@/lib/redis-db"
+import { initializeConsoleLogger } from "@/lib/console-logger"
+
+// Initialize console logger on server startup
+initializeConsoleLogger()
 import { CONNECTION_PREDEFINITIONS } from "@/lib/connection-predefinitions"
 import { runMigrations } from "@/lib/redis-migrations"
 

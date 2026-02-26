@@ -8,6 +8,10 @@ import { SidebarProvider } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
 import { SystemInitializer } from "@/components/system-initializer"
 import { Toaster } from "@/components/ui/sonner"
+import { initializeConsoleLogger } from "@/lib/console-logger"
+
+// Initialize console logger to capture all [v0] logs
+initializeConsoleLogger()
 
 export const dynamic = "force-dynamic"
 
