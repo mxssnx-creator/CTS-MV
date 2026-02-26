@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { SystemLogger } from "@/lib/system-logger"
 import { getConnection, updateConnection, deleteConnection, initRedis } from "@/lib/redis-db"
 import { ConnectionDataArchive } from "@/lib/connection-data-archive"
+import { notifySettingsChanged, detectChangedFields } from "@/lib/settings-coordinator"
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -79,7 +80,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     await updateConnection(id, updatedConnection)
 
-    console.log("[v0] Connection patched successfully:", id)
+    // Notify running engines about the change
+    const changedFields = detectChangedFields(connection, updatedConnection)
+    if (changedFields.length > 0) {
+      const changeEvent = await notifySettingsChanged(id, changedFields, connection, updatedConnection)
+      console.log(`[v0] Connection patched: ${id}, change type: ${changeEvent.changeType}, fields: [${changedFields.join(",")}]`)
+    }
+
     await SystemLogger.logConnection(`Connection patched successfully`, id, "info")
 
     return NextResponse.json({ success: true, connection: updatedConnection })
@@ -117,6 +124,13 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     await updateConnection(id, updatedConnection)
+
+    // Notify running engines about the change
+    const changedFields = detectChangedFields(connection, updatedConnection)
+    if (changedFields.length > 0) {
+      const changeEvent = await notifySettingsChanged(id, changedFields, connection, updatedConnection)
+      console.log(`[v0] Connection updated: ${id}, change type: ${changeEvent.changeType}, fields: [${changedFields.join(",")}]`)
+    }
 
     await SystemLogger.logConnection(`Connection updated successfully`, id, "info")
 

@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { SystemLogger } from "@/lib/system-logger"
 import { updateConnection, initRedis, getConnection } from "@/lib/redis-db"
 import { RedisTrades, RedisPositions } from "@/lib/redis-operations"
+import { notifySettingsChanged, detectChangedFields } from "@/lib/settings-coordinator"
 
 export async function GET(
   request: NextRequest,
@@ -75,6 +76,13 @@ export async function PUT(
     }
 
     await updateConnection(id, updated)
+
+    // Notify engine of settings change
+    const changedFields = detectChangedFields(connection, updated)
+    if (changedFields.length > 0) {
+      await notifySettingsChanged(id, changedFields, connection, updated)
+    }
+
     await SystemLogger.logConnection(`Updated settings`, id, "info")
 
     return NextResponse.json({ success: true, connection: updated })
@@ -116,6 +124,13 @@ export async function PATCH(
     }
 
     await updateConnection(id, updated)
+
+    // Notify engine of settings change
+    const changedFields = Object.keys(settings)
+    if (changedFields.length > 0) {
+      await notifySettingsChanged(id, ["connection_settings"])
+    }
+
     await SystemLogger.logConnection(`Patched settings`, id, "info")
 
     return NextResponse.json({ success: true, settings: merged })
