@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { initRedis, getEnabledBaseConnections, updateConnection } from "@/lib/redis-db"
+import { initRedis, getEnabledConnections, updateConnection } from "@/lib/redis-db"
 import { ConnectionCoordinator } from "@/lib/connection-coordinator"
 
 export const runtime = "nodejs"
@@ -31,7 +31,7 @@ export async function POST() {
     lastAutoTestTime = now
 
     await initRedis()
-    const baseConnections = await getEnabledBaseConnections()
+    const baseConnections = await getEnabledConnections()
 
     if (baseConnections.length === 0) {
       return NextResponse.json({
