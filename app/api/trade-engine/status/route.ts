@@ -18,16 +18,32 @@ export async function GET() {
     const isGloballyRunning = engineHash.status === "running"
     const isGloballyPaused = engineHash.status === "paused"
     
+    // Also check in-memory coordinator state
+    const coordinatorRunning = coordinator?.isRunning() || false
+    
+    // If coordinator says running but Redis says not, fix Redis
+    if (coordinatorRunning && !isGloballyRunning) {
+      await client.hset("trade_engine:global", {
+        status: "running",
+        started_at: new Date().toISOString(),
+        coordinator_ready: "true",
+      })
+      console.log("[v0] [Status] Fixed: coordinator running but Redis said stopped. Updated Redis.")
+    }
+    
+    // Effective running state: either Redis or coordinator says running
+    const effectivelyRunning = isGloballyRunning || coordinatorRunning
+    
     // Get active connections
     const connections = await getActiveConnectionsForEngine()
     
     if (connections.length === 0) {
       return NextResponse.json({
         success: true,
-        running: isGloballyRunning,
-        isRunning: isGloballyRunning,
+        running: effectivelyRunning,
+        isRunning: effectivelyRunning,
         paused: isGloballyPaused,
-        status: isGloballyRunning ? "running" : (isGloballyPaused ? "paused" : "stopped"),
+        status: effectivelyRunning ? "running" : (isGloballyPaused ? "paused" : "stopped"),
         activeEngineCount: coordinator?.getActiveEngineCount() || 0,
         connections: [],
         summary: { total: 0, running: 0, stopped: 0, totalTrades: 0, totalPositions: 0, errors: 0 },
@@ -49,7 +65,7 @@ export async function GET() {
           const tradesCount = await client.scard(tradesKey)
 
           // Determine if this connection's engine is actively running
-          const connectionRunning = isGloballyRunning && !isGloballyPaused
+          const connectionRunning = effectivelyRunning && !isGloballyPaused
 
           return {
             id: conn.id,
@@ -98,9 +114,10 @@ export async function GET() {
 
     const responseBody = {
       success: true,
-      running: isGloballyRunning,
+      running: effectivelyRunning,
       paused: isGloballyPaused,
-      status: isGloballyRunning ? "running" : (isGloballyPaused ? "paused" : "stopped"),
+      status: effectivelyRunning ? "running" : (isGloballyPaused ? "paused" : "stopped"),
+      activeEngineCount: coordinator?.getActiveEngineCount() || 0,
       connections: connectionStatuses,
       summary,
     }

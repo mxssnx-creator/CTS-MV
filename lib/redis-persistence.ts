@@ -13,10 +13,18 @@ const PERSISTENT_KEY_PREFIXES = [
   "connection:",
   "connections",
   "_schema_version",
-  "settings:trade_engine",
-  "settings:engine_progression",
-  "settings:engine_is_running",
-  "settings:engine_state",
+  "settings:",
+  "progression:",
+  "pseudo_position:",
+  "pseudo_positions:",
+  "positions:",
+  "trades:",
+  "indications:",
+  "market_data:",
+  "sync_status:",
+  "sync_log:",
+  "engine_",
+  "migration_version",
 ]
 
 function isPersistentKey(key: string): boolean {

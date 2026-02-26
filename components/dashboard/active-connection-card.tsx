@@ -5,8 +5,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
-import { ChevronDown, Eye, EyeOff, Trash2, Loader2 } from "lucide-react"
+import { Separator } from "@/components/ui/separator"
+import {
+  ChevronDown,
+  Info,
+  Settings2,
+  Trash2,
+  Loader2,
+  Wifi,
+  WifiOff,
+  Clock,
+  Activity,
+} from "lucide-react"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,8 +34,11 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
-import type { Connection } from "@/lib/file-storage"
+import { ConnectionInfoDialog } from "@/components/settings/connection-info-dialog"
+import { ConnectionSettingsDialog } from "@/components/settings/connection-settings-dialog"
+import type { Connection } from "@/lib/redis-db"
 import type { ActiveConnection } from "@/lib/active-connections"
+import { toast } from "@/lib/simple-toast"
 
 interface ProgressionData {
   phase: string
@@ -55,19 +70,6 @@ const PHASE_LABELS: Record<string, string> = {
   error: "Error",
 }
 
-const PHASE_COLORS: Record<string, string> = {
-  disabled: "bg-muted",
-  idle: "bg-muted",
-  initializing: "bg-blue-500",
-  prehistoric_data: "bg-amber-500",
-  indications: "bg-orange-500",
-  strategies: "bg-purple-500",
-  realtime: "bg-cyan-500",
-  live_trading: "bg-green-500",
-  stopped: "bg-muted",
-  error: "bg-red-500",
-}
-
 interface ActiveConnectionCardProps {
   connection: ActiveConnection & { details?: Connection }
   expanded: boolean
@@ -88,9 +90,23 @@ export function ActiveConnectionCard({
   globalEngineRunning,
 }: ActiveConnectionCardProps) {
   const [progression, setProgression] = useState<ProgressionData | null>(null)
+  const [infoDialogOpen, setInfoDialogOpen] = useState(false)
+  const [settingsDialogOpen, setSettingsDialogOpen] = useState(false)
+  const [liveTrade, setLiveTrade] = useState(false)
+  const [presetMode, setPresetMode] = useState(false)
+  const [liveTradeLoading, setLiveTradeLoading] = useState(false)
+  const [presetModeLoading, setPresetModeLoading] = useState(false)
   const details = connection.details
 
-  // Poll progression when connection is active or transitioning
+  // Sync local toggle states from connection details
+  useEffect(() => {
+    if (details) {
+      setLiveTrade(details.is_live_trade === true || details.is_live_trade === "1" || (details.is_live_trade as string) === "true")
+      setPresetMode(details.is_preset_trade === true || details.is_preset_trade === "1" || (details.is_preset_trade as string) === "true")
+    }
+  }, [details])
+
+  // Poll progression
   const fetchProgression = useCallback(async () => {
     try {
       const res = await fetch(`/api/connections/progression/${connection.connectionId}`)
@@ -101,20 +117,82 @@ export function ActiveConnectionCard({
         }
       }
     } catch {
-      // Silently fail - will retry on next poll
+      // Silently fail
     }
   }, [connection.connectionId])
 
   useEffect(() => {
     fetchProgression()
-    // Poll faster when engine is active/transitioning, slower when idle
-    const interval = setInterval(fetchProgression, 
+    const interval = setInterval(
+      fetchProgression,
       progression?.phase && progression.phase !== "idle" && progression.phase !== "stopped" && progression.phase !== "live_trading"
-        ? 1000 
+        ? 1000
         : 5000
     )
     return () => clearInterval(interval)
   }, [fetchProgression, progression?.phase])
+
+  // Handle Live Trade toggle
+  const handleLiveTradeToggle = async (newState: boolean) => {
+    if (newState && !globalEngineRunning) {
+      toast.error("Global Trade Engine must be running first")
+      return
+    }
+    if (newState && !connection.isActive) {
+      toast.error("Enable the connection first")
+      return
+    }
+    setLiveTradeLoading(true)
+    try {
+      const res = await fetch(`/api/settings/connections/${connection.connectionId}/live-trade`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_live_trade: newState }),
+      })
+      if (res.ok) {
+        setLiveTrade(newState)
+        toast.success(newState ? "Live Trade engine starting..." : "Live Trade engine stopped")
+      } else {
+        const err = await res.json().catch(() => ({ error: "Failed" }))
+        toast.error(err.error || "Failed to toggle Live Trade")
+      }
+    } catch {
+      toast.error("Failed to toggle Live Trade")
+    } finally {
+      setLiveTradeLoading(false)
+    }
+  }
+
+  // Handle Preset Mode toggle
+  const handlePresetModeToggle = async (newState: boolean) => {
+    if (newState && !globalEngineRunning) {
+      toast.error("Global Trade Engine must be running first")
+      return
+    }
+    if (newState && !connection.isActive) {
+      toast.error("Enable the connection first")
+      return
+    }
+    setPresetModeLoading(true)
+    try {
+      const res = await fetch(`/api/settings/connections/${connection.connectionId}/preset-toggle`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_preset_trade: newState }),
+      })
+      if (res.ok) {
+        setPresetMode(newState)
+        toast.success(newState ? "Preset Mode engine starting..." : "Preset Mode engine stopped")
+      } else {
+        const err = await res.json().catch(() => ({ error: "Failed" }))
+        toast.error(err.error || "Failed to toggle Preset Mode")
+      }
+    } catch {
+      toast.error("Failed to toggle Preset Mode")
+    } finally {
+      setPresetModeLoading(false)
+    }
+  }
 
   const phase = progression?.phase || "idle"
   const progress = progression?.progress || 0
@@ -131,214 +209,370 @@ export function ActiveConnectionCard({
         : "border-border"
 
   const statusBadge = isRunning
-    ? { label: "Live", variant: "default" as const, className: "bg-green-600 text-white" }
+    ? { label: "Live", className: "bg-green-600 text-white" }
     : isStarting
-      ? { label: "Starting...", variant: "secondary" as const, className: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300" }
+      ? { label: "Starting...", className: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300" }
       : hasError
-        ? { label: "Error", variant: "secondary" as const, className: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" }
+        ? { label: "Error", className: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" }
         : connection.isActive && !globalEngineRunning
-          ? { label: "Paused", variant: "secondary" as const, className: "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300" }
+          ? { label: "Paused", className: "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300" }
           : connection.isActive
-            ? { label: "Ready", variant: "secondary" as const, className: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" }
-            : { label: "Off", variant: "secondary" as const, className: "text-muted-foreground" }
+            ? { label: "Ready", className: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" }
+            : { label: "Off", className: "text-muted-foreground" }
+
+  const connName = details?.name || connection.connectionId
+  const testStatus = details?.last_test_status
 
   return (
-    <Collapsible open={expanded} onOpenChange={onExpand}>
-      <Card className={`transition-colors ${cardBorderClass}`}>
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3 flex-1">
-              <CollapsibleTrigger asChild>
-                <Button variant="ghost" size="sm" className="w-8 h-8 p-0">
-                  <ChevronDown className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`} />
-                </Button>
-              </CollapsibleTrigger>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <CardTitle className="text-sm truncate">
-                    {details?.name || connection.connectionId}
-                  </CardTitle>
-                  <Badge variant={statusBadge.variant} className={`text-xs ${statusBadge.className}`}>
-                    {statusBadge.label}
-                  </Badge>
-                  <Badge variant="outline" className="text-xs">
-                    {details?.exchange || connection.exchangeName}
-                  </Badge>
+    <>
+      <Collapsible open={expanded} onOpenChange={onExpand}>
+        <Card className={`transition-colors ${cardBorderClass}`}>
+          <CardHeader className="pb-2 px-4 pt-4">
+            {/* Row 1: Name, exchange badge, status badge, expand button */}
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  {connection.isActive ? (
+                    <Wifi className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                  ) : (
+                    <WifiOff className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  )}
+                  <CardTitle className="text-sm font-semibold truncate">{connName}</CardTitle>
                 </div>
-                <CardDescription className="text-xs mt-0.5">
-                  {details?.api_type && `${details.api_type.replace(/_/g, " ")} `}
-                  {details?.connection_method && `/ ${details.connection_method}`}
-                </CardDescription>
+                <Badge variant="outline" className="text-[10px] shrink-0">
+                  {details?.exchange || connection.exchangeName}
+                </Badge>
+                <Badge variant="secondary" className={`text-[10px] shrink-0 ${statusBadge.className}`}>
+                  {statusBadge.label}
+                </Badge>
+                {testStatus && (
+                  <Badge
+                    variant="outline"
+                    className={`text-[10px] shrink-0 ${
+                      testStatus === "success"
+                        ? "border-green-300 text-green-700 dark:text-green-400"
+                        : testStatus === "error" || testStatus === "failed"
+                          ? "border-red-300 text-red-700 dark:text-red-400"
+                          : ""
+                    }`}
+                  >
+                    {testStatus === "success" ? "Tested" : testStatus === "error" || testStatus === "failed" ? "Test Failed" : testStatus}
+                  </Badge>
+                )}
+              </div>
+
+              <div className="flex items-center gap-1 shrink-0">
+                {/* Info button */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0"
+                  onClick={() => setInfoDialogOpen(true)}
+                  title="Connection Info"
+                >
+                  <Info className="h-3.5 w-3.5" />
+                </Button>
+                {/* Settings button */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0"
+                  onClick={() => setSettingsDialogOpen(true)}
+                  title="Connection Settings"
+                >
+                  <Settings2 className="h-3.5 w-3.5" />
+                </Button>
+                {/* Expand toggle */}
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                    <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />
+                  </Button>
+                </CollapsibleTrigger>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-muted/50">
-                {isToggling ? (
-                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                ) : connection.isActive ? (
-                  <Eye className="h-4 w-4 text-green-600" />
-                ) : (
-                  <EyeOff className="h-4 w-4 text-muted-foreground" />
-                )}
+            {/* Row 2: Connection info line */}
+            <CardDescription className="text-[11px] mt-1 flex items-center gap-2 flex-wrap">
+              {details?.api_type && (
+                <span className="capitalize">{details.api_type.replace(/_/g, " ")}</span>
+              )}
+              {details?.connection_method && (
+                <>
+                  <span className="text-muted-foreground/50">|</span>
+                  <span className="capitalize">{details.connection_method}</span>
+                </>
+              )}
+              {details?.margin_type && (
+                <>
+                  <span className="text-muted-foreground/50">|</span>
+                  <span className="capitalize">{details.margin_type}</span>
+                </>
+              )}
+              {details?.is_testnet && (
+                <>
+                  <span className="text-muted-foreground/50">|</span>
+                  <span className="text-amber-600 dark:text-amber-400 font-medium">Testnet</span>
+                </>
+              )}
+              {details?.last_test_time && (
+                <>
+                  <span className="text-muted-foreground/50">|</span>
+                  <span className="flex items-center gap-0.5">
+                    <Clock className="h-3 w-3" />
+                    {new Date(details.last_test_time).toLocaleTimeString()}
+                  </span>
+                </>
+              )}
+            </CardDescription>
+
+            {/* Row 3: Three toggle switches */}
+            <div className="flex items-center gap-4 mt-2.5 pt-2 border-t border-border/50">
+              {/* Enable toggle */}
+              <div className="flex items-center gap-2">
                 <Switch
+                  id={`enable-${connection.connectionId}`}
                   checked={connection.isActive}
                   onCheckedChange={() => onToggle(connection.connectionId, connection.isActive)}
                   disabled={isToggling || (!globalEngineRunning && !connection.isActive)}
-                  className="scale-90"
-                  title={!globalEngineRunning && !connection.isActive ? "Start Global Trade Engine first" : undefined}
+                  className="scale-[0.8]"
                 />
+                <Label
+                  htmlFor={`enable-${connection.connectionId}`}
+                  className="text-xs font-medium cursor-pointer"
+                >
+                  {isToggling ? (
+                    <span className="flex items-center gap-1">
+                      <Loader2 className="h-3 w-3 animate-spin" /> Enable
+                    </span>
+                  ) : (
+                    "Enable"
+                  )}
+                </Label>
               </div>
 
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Remove from Active List</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      {`Remove "${details?.name || connection.connectionId}" from active connections? The engine will be stopped.`}
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <div className="flex gap-2 justify-end">
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction
-                      onClick={() => onRemove(connection.connectionId, details?.name || connection.connectionId)}
-                      className="bg-red-600 hover:bg-red-700"
-                    >
-                      Remove
-                    </AlertDialogAction>
-                  </div>
-                </AlertDialogContent>
-              </AlertDialog>
-            </div>
-          </div>
-        </CardHeader>
+              <Separator orientation="vertical" className="h-4" />
 
-        {/* Progress bar - shown when engine is active, starting, or has error */}
-        {connection.isActive && phase !== "idle" && phase !== "stopped" && (
-          <CardContent className="pt-0 pb-3">
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground font-medium">
-                  {PHASE_LABELS[phase] || phase}
-                </span>
-                <span className="text-muted-foreground tabular-nums">
-                  {progress}%
-                </span>
-              </div>
-              <Progress 
-                value={progress} 
-                className="h-2"
-              />
-              {progression?.message && (
-                <p className="text-xs text-muted-foreground truncate">
-                  {progression.message}
-                  {progression.subPhase && (
-                    <span className="ml-1">
-                      - {progression.subPhase}
+              {/* Live Trade toggle */}
+              <div className="flex items-center gap-2">
+                <Switch
+                  id={`live-${connection.connectionId}`}
+                  checked={liveTrade}
+                  onCheckedChange={handleLiveTradeToggle}
+                  disabled={liveTradeLoading || !connection.isActive || !globalEngineRunning}
+                  className="scale-[0.8]"
+                />
+                <Label
+                  htmlFor={`live-${connection.connectionId}`}
+                  className={`text-xs font-medium cursor-pointer ${
+                    liveTrade ? "text-green-600 dark:text-green-400" : ""
+                  }`}
+                >
+                  {liveTradeLoading ? (
+                    <span className="flex items-center gap-1">
+                      <Loader2 className="h-3 w-3 animate-spin" /> Live Trade
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1">
+                      <Activity className="h-3 w-3" /> Live Trade
                     </span>
                   )}
-                </p>
-              )}
-            </div>
-          </CardContent>
-        )}
-
-        <CollapsibleContent>
-          {details && (
-            <CardContent className="pt-0 pb-4">
-              <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
-                <div className="space-y-0.5">
-                  <div className="text-xs text-muted-foreground">Exchange</div>
-                  <div className="font-medium">{details.exchange}</div>
-                </div>
-                <div className="space-y-0.5">
-                  <div className="text-xs text-muted-foreground">API Type</div>
-                  <div className="font-medium capitalize">{details.api_type?.replace(/_/g, " ")}</div>
-                </div>
-                <div className="space-y-0.5">
-                  <div className="text-xs text-muted-foreground">Connection Method</div>
-                  <div className="font-medium capitalize">{details.connection_method}</div>
-                </div>
-                <div className="space-y-0.5">
-                  <div className="text-xs text-muted-foreground">Mode</div>
-                  <Badge variant={details.is_testnet ? "secondary" : "default"} className="text-xs">
-                    {details.is_testnet ? "Testnet" : "Live"}
-                  </Badge>
-                </div>
-                <div className="space-y-0.5">
-                  <div className="text-xs text-muted-foreground">Margin Type</div>
-                  <div className="font-medium capitalize">{details.margin_type}</div>
-                </div>
-                <div className="space-y-0.5">
-                  <div className="text-xs text-muted-foreground">Position Mode</div>
-                  <div className="font-medium capitalize">{details.position_mode?.replace(/-/g, " ")}</div>
-                </div>
+                </Label>
               </div>
 
-              {/* Progression details when expanded */}
+              <Separator orientation="vertical" className="h-4" />
+
+              {/* Preset Mode toggle */}
+              <div className="flex items-center gap-2">
+                <Switch
+                  id={`preset-${connection.connectionId}`}
+                  checked={presetMode}
+                  onCheckedChange={handlePresetModeToggle}
+                  disabled={presetModeLoading || !connection.isActive || !globalEngineRunning}
+                  className="scale-[0.8]"
+                />
+                <Label
+                  htmlFor={`preset-${connection.connectionId}`}
+                  className={`text-xs font-medium cursor-pointer ${
+                    presetMode ? "text-purple-600 dark:text-purple-400" : ""
+                  }`}
+                >
+                  {presetModeLoading ? (
+                    <span className="flex items-center gap-1">
+                      <Loader2 className="h-3 w-3 animate-spin" /> Preset Mode
+                    </span>
+                  ) : (
+                    "Preset Mode"
+                  )}
+                </Label>
+              </div>
+
+              {/* Spacer + Remove */}
+              <div className="ml-auto">
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Remove from Active List</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        {`Remove "${connName}" from active connections? All engines will be stopped.`}
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <div className="flex gap-2 justify-end">
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={() => onRemove(connection.connectionId, connName)}
+                        className="bg-red-600 hover:bg-red-700"
+                      >
+                        Remove
+                      </AlertDialogAction>
+                    </div>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
+            </div>
+          </CardHeader>
+
+          {/* Progress bar when engine is active */}
+          {connection.isActive && phase !== "idle" && phase !== "stopped" && (
+            <CardContent className="pt-0 pb-3 px-4">
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground font-medium">
+                    {PHASE_LABELS[phase] || phase}
+                  </span>
+                  <span className="text-muted-foreground tabular-nums">{progress}%</span>
+                </div>
+                <Progress value={progress} className="h-1.5" />
+                {progression?.message && (
+                  <p className="text-[11px] text-muted-foreground truncate">
+                    {progression.message}
+                    {progression.subPhase && <span className="ml-1">- {progression.subPhase}</span>}
+                  </p>
+                )}
+                {progression?.error && (
+                  <p className="text-[11px] text-red-500 font-medium truncate">
+                    {progression.error}
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          )}
+
+          {/* Expanded details */}
+          <CollapsibleContent>
+            <CardContent className="pt-0 pb-4 px-4">
+              <Separator className="mb-3" />
+              {details && (
+                <div className="grid grid-cols-3 gap-x-4 gap-y-2.5 text-xs">
+                  <div>
+                    <div className="text-muted-foreground mb-0.5">Exchange</div>
+                    <div className="font-medium">{details.exchange}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground mb-0.5">API Type</div>
+                    <div className="font-medium capitalize">{details.api_type?.replace(/_/g, " ") || "-"}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground mb-0.5">Method</div>
+                    <div className="font-medium capitalize">{details.connection_method || "-"}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground mb-0.5">Margin</div>
+                    <div className="font-medium capitalize">{details.margin_type || "-"}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground mb-0.5">Position Mode</div>
+                    <div className="font-medium capitalize">{details.position_mode?.replace(/-/g, " ") || "-"}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground mb-0.5">Mode</div>
+                    <Badge variant={details.is_testnet ? "secondary" : "default"} className="text-[10px]">
+                      {details.is_testnet ? "Testnet" : "Live"}
+                    </Badge>
+                  </div>
+                </div>
+              )}
+
+              {/* Engine progression details when running */}
               {progression && phase !== "idle" && phase !== "stopped" && phase !== "disabled" && (
-                <div className="mt-4 pt-3 border-t">
-                  <h4 className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">Engine Progression</h4>
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-                    <div className="space-y-0.5">
-                      <div className="text-xs text-muted-foreground">Current Phase</div>
+                <div className="mt-3 pt-3 border-t">
+                  <h4 className="text-[10px] font-semibold text-muted-foreground mb-2 uppercase tracking-wider">
+                    Engine Progression
+                  </h4>
+                  <div className="grid grid-cols-3 gap-x-4 gap-y-2 text-xs">
+                    <div>
+                      <div className="text-muted-foreground mb-0.5">Phase</div>
                       <div className="font-medium">{PHASE_LABELS[phase] || phase}</div>
                     </div>
-                    <div className="space-y-0.5">
-                      <div className="text-xs text-muted-foreground">Overall Progress</div>
+                    <div>
+                      <div className="text-muted-foreground mb-0.5">Progress</div>
                       <div className="font-medium tabular-nums">{progress}%</div>
                     </div>
-                    <div className="space-y-0.5">
-                      <div className="text-xs text-muted-foreground">Historical Data</div>
-                      <Badge variant={progression.details?.historicalDataLoaded ? "default" : "secondary"} className="text-xs">
+                    <div>
+                      <div className="text-muted-foreground mb-0.5">Updated</div>
+                      <div className="font-medium">
+                        {progression.updatedAt ? new Date(progression.updatedAt).toLocaleTimeString() : "-"}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground mb-0.5">Historical</div>
+                      <Badge variant={progression.details?.historicalDataLoaded ? "default" : "secondary"} className="text-[10px]">
                         {progression.details?.historicalDataLoaded ? "Loaded" : "Pending"}
                       </Badge>
                     </div>
-                    <div className="space-y-0.5">
-                      <div className="text-xs text-muted-foreground">Indications</div>
-                      <Badge variant={progression.details?.indicationsCalculated ? "default" : "secondary"} className="text-xs">
-                        {progression.details?.indicationsCalculated ? "Calculated" : "Pending"}
+                    <div>
+                      <div className="text-muted-foreground mb-0.5">Indications</div>
+                      <Badge variant={progression.details?.indicationsCalculated ? "default" : "secondary"} className="text-[10px]">
+                        {progression.details?.indicationsCalculated ? "Done" : "Pending"}
                       </Badge>
                     </div>
-                    <div className="space-y-0.5">
-                      <div className="text-xs text-muted-foreground">Strategies</div>
-                      <Badge variant={progression.details?.strategiesProcessed ? "default" : "secondary"} className="text-xs">
-                        {progression.details?.strategiesProcessed ? "Processed" : "Pending"}
+                    <div>
+                      <div className="text-muted-foreground mb-0.5">Strategies</div>
+                      <Badge variant={progression.details?.strategiesProcessed ? "default" : "secondary"} className="text-[10px]">
+                        {progression.details?.strategiesProcessed ? "Done" : "Pending"}
                       </Badge>
                     </div>
-                    <div className="space-y-0.5">
-                      <div className="text-xs text-muted-foreground">Live Processing</div>
-                      <Badge variant={progression.details?.liveProcessingActive ? "default" : "secondary"} className="text-xs">
+                    <div>
+                      <div className="text-muted-foreground mb-0.5">Live Processing</div>
+                      <Badge variant={progression.details?.liveProcessingActive ? "default" : "secondary"} className="text-[10px]">
                         {progression.details?.liveProcessingActive ? "Active" : "Pending"}
                       </Badge>
                     </div>
-                    {progression.error && (
-                      <div className="col-span-2 space-y-0.5">
-                        <div className="text-xs text-red-500 font-medium">Error: {progression.error}</div>
-                      </div>
-                    )}
-                    {progression.updatedAt && (
-                      <div className="space-y-0.5">
-                        <div className="text-xs text-muted-foreground">Last Update</div>
-                        <div className="font-medium text-xs">{new Date(progression.updatedAt).toLocaleTimeString()}</div>
-                      </div>
-                    )}
+                    <div>
+                      <div className="text-muted-foreground mb-0.5">Live Trading</div>
+                      <Badge variant={progression.details?.liveTradingActive ? "default" : "secondary"} className="text-[10px]">
+                        {progression.details?.liveTradingActive ? "Active" : "Pending"}
+                      </Badge>
+                    </div>
                   </div>
                 </div>
               )}
             </CardContent>
-          )}
-        </CollapsibleContent>
-      </Card>
-    </Collapsible>
+          </CollapsibleContent>
+        </Card>
+      </Collapsible>
+
+      {/* Dialogs */}
+      <ConnectionInfoDialog
+        open={infoDialogOpen}
+        onOpenChange={setInfoDialogOpen}
+        connectionId={connection.connectionId}
+        connectionName={connName}
+      />
+      <ConnectionSettingsDialog
+        open={settingsDialogOpen}
+        onOpenChange={setSettingsDialogOpen}
+        connectionId={connection.connectionId}
+        connectionName={connName}
+      />
+    </>
   )
 }

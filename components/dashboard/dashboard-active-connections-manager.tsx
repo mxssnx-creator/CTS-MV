@@ -80,12 +80,19 @@ export function DashboardActiveConnectionsManager() {
       }
       const data = await response.json()
       const allConnections: Connection[] = Array.isArray(data) ? data : (data?.connections || [])
-      console.log("[v0] [Manager] API returned", allConnections.length, "total connections")
+      console.log("[v0] [Manager] API returned", allConnections.length, "total connections, data keys:", Object.keys(data || {}))
+      if (allConnections.length > 0) {
+        const sample = allConnections[0]
+        console.log("[v0] [Manager] Sample conn:", sample.id, "exchange:", sample.exchange, "is_inserted:", sample.is_inserted, "is_enabled:", sample.is_enabled, "is_enabled_dashboard:", sample.is_enabled_dashboard)
+      } else if (data?.connections === undefined && !Array.isArray(data)) {
+        console.log("[v0] [Manager] WARNING: API response has no connections array. Full keys:", JSON.stringify(Object.keys(data || {})))
+      }
 
       // Build active connection cards from API data
       const activeConns: ActiveConnectionWithDetails[] = []
       const seenIds = new Set<string>()
 
+      let debugSkipped = 0
       for (const conn of allConnections) {
         const exchange = (conn.exchange || "").toLowerCase().trim()
         const isInserted = conn.is_inserted === true || conn.is_inserted === "1" || (conn.is_inserted as string) === "true"
@@ -93,8 +100,8 @@ export function DashboardActiveConnectionsManager() {
         const isSettingsEnabled = conn.is_enabled === true || conn.is_enabled === "1" || (conn.is_enabled as string) === "true"
         const isBase = BASE_EXCHANGES.includes(exchange)
 
-        // Show if: base exchange, OR inserted, OR dashboard-active
-        if (isBase || isInserted || isDashboardActive) {
+        // Show if: base exchange, OR inserted, OR dashboard-active, OR settings-enabled
+        if (isBase || isInserted || isDashboardActive || isSettingsEnabled) {
           if (seenIds.has(conn.id)) continue
           seenIds.add(conn.id)
 
@@ -107,10 +114,12 @@ export function DashboardActiveConnectionsManager() {
             addedAt: conn.created_at || new Date().toISOString(),
             details: conn,
           })
+        } else {
+          debugSkipped++
         }
       }
 
-      console.log("[v0] [Manager] Filtered to", activeConns.length, "displayable connections")
+      console.log("[v0] [Manager] Filtered to", activeConns.length, "displayable connections (skipped:", debugSkipped, "template-only)")
       
       // STICKY STATE: Never replace existing cards with empty data on transient fetch issues
       if (activeConns.length === 0 && activeConnectionsRef.current.length > 0) {

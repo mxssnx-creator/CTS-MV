@@ -1,43 +1,21 @@
 /**
  * Realtime Processor
- * Processes real-time updates for active positions with market data stream
+ * Processes real-time updates for active positions with market data
+ * NOW: 100% Redis-backed, no SQL
  */
 
-import { getSettings, setSettings } from "@/lib/redis-db"
+import { getSettings, setSettings, getMarketData } from "@/lib/redis-db"
 import { PseudoPositionManager } from "./pseudo-position-manager"
-import { MarketDataStream } from "@/lib/realtime/market-data-stream"
 
 export class RealtimeProcessor {
   private connectionId: string
   private positionManager: PseudoPositionManager
-  private marketDataStream: MarketDataStream | null = null
+  private priceCache: Map<string, { price: number; ts: number }> = new Map()
+  private readonly PRICE_CACHE_TTL = 5000 // 5s
 
   constructor(connectionId: string) {
     this.connectionId = connectionId
     this.positionManager = new PseudoPositionManager(connectionId)
-  }
-
-  /**
-   * Initialize market data stream
-   */
-  async initializeStream(wsUrl: string, symbols: string[]): Promise<void> {
-    try {
-      this.marketDataStream = new MarketDataStream(this.connectionId, wsUrl)
-      await this.marketDataStream.start(symbols)
-      console.log("[v0] Market data stream initialized")
-    } catch (error) {
-      console.error("[v0] Failed to initialize market data stream:", error)
-    }
-  }
-
-  /**
-   * Stop market data stream
-   */
-  stopStream(): void {
-    if (this.marketDataStream) {
-      this.marketDataStream.stop()
-      this.marketDataStream = null
-    }
   }
 
   /**
@@ -51,16 +29,16 @@ export class RealtimeProcessor {
         return
       }
 
-      console.log(`[v0] Processing ${activePositions.length} active positions`)
-
-      // Process each position
+      // Process each position in parallel
       await Promise.all(activePositions.map((position) => this.processPosition(position)))
 
       // Update engine state in Redis
-      const engineState = await getSettings(`trade_engine_state:${this.connectionId}`)
-      await setSettings(`trade_engine_state:${this.connectionId}`, {
+      const stateKey = `trade_engine_state:${this.connectionId}`
+      const engineState = (await getSettings(stateKey)) || {}
+      await setSettings(stateKey, {
         ...engineState,
         active_positions_count: activePositions.length,
+        last_realtime_run: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
     } catch (error) {
@@ -73,16 +51,7 @@ export class RealtimeProcessor {
    */
   private async processPosition(position: any): Promise<void> {
     try {
-      // Get current market price (from stream if available, otherwise from database)
-      let currentPrice: number | null = null
-
-      if (this.marketDataStream) {
-        currentPrice = this.marketDataStream.getLatestPrice(position.symbol)
-      }
-
-      if (!currentPrice) {
-        currentPrice = await this.getCurrentPriceFromDB(position.symbol)
-      }
+      const currentPrice = await this.getCurrentPrice(position.symbol)
 
       if (!currentPrice) {
         return
@@ -92,16 +61,31 @@ export class RealtimeProcessor {
       await this.positionManager.updatePosition(position.id, currentPrice)
 
       // Calculate profit/loss
-      const profitLoss = this.calculateProfitLoss(position, currentPrice)
+      const entryPrice = parseFloat(position.entry_price || "0")
+      const quantity = parseFloat(position.quantity || "0")
+      const side = position.side || "long"
 
-      // Check if take profit or stop loss hit
-      if (this.shouldCloseTakeProfit(position, currentPrice, profitLoss)) {
+      const pnl = side === "long"
+        ? (currentPrice - entryPrice) * quantity
+        : (entryPrice - currentPrice) * quantity
+
+      // Check take profit
+      if (this.shouldCloseTakeProfit(position, currentPrice)) {
         await this.positionManager.closePosition(position.id, "take_profit")
-      } else if (this.shouldCloseStopLoss(position, currentPrice, profitLoss)) {
+        console.log(`[v0] [Realtime] TP hit for ${position.symbol} ${side} | PnL: ${pnl.toFixed(4)}`)
+        return
+      }
+
+      // Check stop loss
+      if (this.shouldCloseStopLoss(position, currentPrice)) {
         await this.positionManager.closePosition(position.id, "stop_loss")
-      } else if (position.trailing_enabled) {
-        // Update trailing stop if enabled
-        await this.updateTrailingStop(position, currentPrice, profitLoss)
+        console.log(`[v0] [Realtime] SL hit for ${position.symbol} ${side} | PnL: ${pnl.toFixed(4)}`)
+        return
+      }
+
+      // Update trailing stop if enabled
+      if (position.trailing_enabled === "1" || position.trailing_enabled === true) {
+        await this.updateTrailingStop(position, currentPrice)
       }
     } catch (error) {
       console.error(`[v0] Failed to process position ${position.id}:`, error)
@@ -109,19 +93,28 @@ export class RealtimeProcessor {
   }
 
   /**
-   * Get current market price from database
+   * Get current price from Redis market data (cached)
    */
-  private async getCurrentPriceFromDB(symbol: string): Promise<number | null> {
+  private async getCurrentPrice(symbol: string): Promise<number | null> {
     try {
-      const [data] = await sql`
-        SELECT close FROM market_data
-        WHERE trading_pair_id IN (
-          SELECT id FROM trading_pairs WHERE symbol = ${symbol}
-        )
-        ORDER BY timestamp DESC
-        LIMIT 1
-      `
-      return data ? Number.parseFloat(data.close) : null
+      const now = Date.now()
+      const cached = this.priceCache.get(symbol)
+      if (cached && now - cached.ts < this.PRICE_CACHE_TTL) {
+        return cached.price
+      }
+
+      const marketData = await getMarketData(symbol)
+      if (!marketData) return null
+
+      const data = Array.isArray(marketData) ? marketData[0] : marketData
+      const price = parseFloat(data?.close || data?.price || "0")
+
+      if (price > 0) {
+        this.priceCache.set(symbol, { price, ts: now })
+        return price
+      }
+
+      return null
     } catch (error) {
       console.error(`[v0] Failed to get current price for ${symbol}:`, error)
       return null
@@ -129,27 +122,14 @@ export class RealtimeProcessor {
   }
 
   /**
-   * Calculate profit/loss for position
-   */
-  private calculateProfitLoss(position: any, currentPrice: number): number {
-    const entryPrice = Number.parseFloat(position.entry_price)
-    const quantity = Number.parseFloat(position.quantity)
-
-    if (position.side === "long") {
-      return (currentPrice - entryPrice) * quantity
-    } else {
-      return (entryPrice - currentPrice) * quantity
-    }
-  }
-
-  /**
    * Check if take profit should be triggered
    */
-  private shouldCloseTakeProfit(position: any, currentPrice: number, profitLoss: number): boolean {
-    const entryPrice = Number.parseFloat(position.entry_price)
-    const takeprofitFactor = Number.parseFloat(position.takeprofit_factor)
+  private shouldCloseTakeProfit(position: any, currentPrice: number): boolean {
+    const entryPrice = parseFloat(position.entry_price || "0")
+    const takeprofitFactor = parseFloat(position.takeprofit_factor || "0")
+    const side = position.side || "long"
 
-    if (position.side === "long") {
+    if (side === "long") {
       const takeProfitPrice = entryPrice * (1 + takeprofitFactor / 100)
       return currentPrice >= takeProfitPrice
     } else {
@@ -161,11 +141,20 @@ export class RealtimeProcessor {
   /**
    * Check if stop loss should be triggered
    */
-  private shouldCloseStopLoss(position: any, currentPrice: number, profitLoss: number): boolean {
-    const entryPrice = Number.parseFloat(position.entry_price)
-    const stoplossRatio = Number.parseFloat(position.stoploss_ratio)
+  private shouldCloseStopLoss(position: any, currentPrice: number): boolean {
+    const entryPrice = parseFloat(position.entry_price || "0")
+    const stoplossRatio = parseFloat(position.stoploss_ratio || "0")
+    const side = position.side || "long"
 
-    if (position.side === "long") {
+    // Check trailing stop first if it exists
+    const trailingStopPrice = parseFloat(position.trailing_stop_price || "0")
+    if (trailingStopPrice > 0) {
+      if (side === "long" && currentPrice <= trailingStopPrice) return true
+      if (side === "short" && currentPrice >= trailingStopPrice) return true
+    }
+
+    // Check regular stop loss
+    if (side === "long") {
       const stopLossPrice = entryPrice * (1 - stoplossRatio / 100)
       return currentPrice <= stopLossPrice
     } else {
@@ -175,24 +164,35 @@ export class RealtimeProcessor {
   }
 
   /**
-   * Update trailing stop
+   * Update trailing stop (Redis-based)
    */
-  private async updateTrailingStop(position: any, currentPrice: number, profitLoss: number): Promise<void> {
+  private async updateTrailingStop(position: any, currentPrice: number): Promise<void> {
     try {
-      const entryPrice = Number.parseFloat(position.entry_price)
-      const stoplossRatio = Number.parseFloat(position.stoploss_ratio)
+      const entryPrice = parseFloat(position.entry_price || "0")
+      const stoplossRatio = parseFloat(position.stoploss_ratio || "0")
+      const side = position.side || "long"
+      const currentTrailingStop = parseFloat(position.trailing_stop_price || "0")
 
-      // Calculate trailing stop distance
       const trailingDistance = currentPrice * (stoplossRatio / 100)
 
-      // Update trailing stop in database
-      await sql`
-        UPDATE pseudo_positions
-        SET trailing_stop_price = ${currentPrice - trailingDistance}
-        WHERE id = ${position.id}
-      `
+      let newTrailingStop: number
+      if (side === "long") {
+        newTrailingStop = currentPrice - trailingDistance
+        // Only move trailing stop UP for longs
+        if (newTrailingStop <= currentTrailingStop && currentTrailingStop > 0) return
+      } else {
+        newTrailingStop = currentPrice + trailingDistance
+        // Only move trailing stop DOWN for shorts
+        if (newTrailingStop >= currentTrailingStop && currentTrailingStop > 0) return
+      }
 
-      console.log(`[v0] Updated trailing stop for position ${position.id}`)
+      // Update via the position manager's update
+      const { getRedisClient } = await import("@/lib/redis-db")
+      const client = getRedisClient()
+      await client.hset(`pseudo_position:${this.connectionId}:${position.id}`, {
+        trailing_stop_price: String(newTrailingStop),
+        updated_at: new Date().toISOString(),
+      })
     } catch (error) {
       console.error(`[v0] Failed to update trailing stop for position ${position.id}:`, error)
     }
@@ -201,7 +201,7 @@ export class RealtimeProcessor {
   /**
    * Get stream status
    */
-  getStreamStatus(): string {
-    return this.marketDataStream?.getStatus() || "not_initialized"
+  getStatus(): string {
+    return "redis_polling"
   }
 }

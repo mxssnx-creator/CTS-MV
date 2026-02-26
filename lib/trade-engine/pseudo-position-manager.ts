@@ -1,10 +1,18 @@
 /**
  * Pseudo Position Manager
  * Manages pseudo positions (paper trading) with volume calculations
+ * NOW: 100% Redis-backed, no SQL
  */
 
-import { sql } from "@/lib/db"
+import { getRedisClient, getSettings, setSettings, createPosition as redisCreatePosition } from "@/lib/redis-db"
 import { VolumeCalculator } from "@/lib/volume-calculator"
+
+function nanoid(len = 12): string {
+  const chars = "abcdefghijklmnopqrstuvwxyz0123456789"
+  let id = ""
+  for (let i = 0; i < len; i++) id += chars[Math.floor(Math.random() * chars.length)]
+  return id
+}
 
 export class PseudoPositionManager {
   private connectionId: string
@@ -15,6 +23,56 @@ export class PseudoPositionManager {
   constructor(connectionId: string) {
     this.connectionId = connectionId
   }
+
+  // ── helpers ──────────────────────────────────────────────────────────
+
+  /** Redis set key that indexes every position id for this connection */
+  private positionsSetKey(): string {
+    return `pseudo_positions:${this.connectionId}`
+  }
+
+  /** Redis hash key for one position */
+  private positionKey(id: string): string {
+    return `pseudo_position:${this.connectionId}:${id}`
+  }
+
+  /** Read a single position hash from Redis */
+  private async readPosition(id: string): Promise<any | null> {
+    try {
+      const client = getRedisClient()
+      const data = await client.hgetall(this.positionKey(id))
+      if (!data || Object.keys(data).length === 0) return null
+      return { ...data, id }
+    } catch {
+      return null
+    }
+  }
+
+  /** List all positions for this connection, optionally filtered */
+  private async listPositions(filter?: { status?: string; side?: string; symbol?: string; indicationType?: string }): Promise<any[]> {
+    try {
+      const client = getRedisClient()
+      const ids = await client.smembers(this.positionsSetKey())
+      if (!ids || ids.length === 0) return []
+
+      const positions: any[] = []
+      for (const id of ids) {
+        const pos = await this.readPosition(id)
+        if (!pos) continue
+        if (filter?.status && pos.status !== filter.status) continue
+        if (filter?.side && pos.side !== filter.side) continue
+        if (filter?.symbol && pos.symbol !== filter.symbol) continue
+        if (filter?.indicationType && pos.indication_type !== filter.indicationType) continue
+        positions.push(pos)
+      }
+      return positions
+    } catch (error) {
+      console.error("[v0] [PseudoPosMgr] Failed to list positions:", error)
+      return []
+    }
+  }
+
+  // ── public API ────────────────────────────────────────────────────────
 
   /**
    * Create new pseudo position with proper volume calculation
@@ -28,7 +86,7 @@ export class PseudoPositionManager {
     stoplossRatio: number
     profitFactor: number
     trailingEnabled: boolean
-  }): Promise<number | null> {
+  }): Promise<string | null> {
     try {
       const canCreate = await this.canCreatePosition(
         params.symbol,
@@ -41,7 +99,7 @@ export class PseudoPositionManager {
 
       if (!canCreate) {
         console.log(
-          `[v0] Cannot create ${params.side} position for ${params.symbol} (TP=${params.takeprofitFactor}, SL=${params.stoplossRatio}, trailing=${params.trailingEnabled}): max positions for this specific config reached`,
+          `[v0] Cannot create ${params.side} position for ${params.symbol} (TP=${params.takeprofitFactor}, SL=${params.stoplossRatio}, trailing=${params.trailingEnabled}): max positions reached`,
         )
         return null
       }
@@ -72,29 +130,40 @@ export class PseudoPositionManager {
       // Calculate position cost
       const positionCost = (volumeCalc.finalVolume * params.entryPrice) / volumeCalc.leverage
 
-      // Insert position
-      const [result] = await sql`
-        INSERT INTO pseudo_positions (
-          connection_id, symbol, indication_type, side,
-          entry_price, current_price, quantity, position_cost,
-          takeprofit_factor, stoploss_ratio, profit_factor,
-          trailing_enabled
-        )
-        VALUES (
-          ${this.connectionId}, ${params.symbol}, ${params.indicationType}, ${params.side},
-          ${params.entryPrice}, ${params.entryPrice}, ${volumeCalc.finalVolume}, ${positionCost},
-          ${params.takeprofitFactor}, ${params.stoplossRatio}, ${params.profitFactor},
-          ${params.trailingEnabled}
-        )
-        RETURNING id
-      `
+      // Store position in Redis
+      const id = nanoid()
+      const client = getRedisClient()
 
-      console.log(`[v0] Created pseudo position for ${params.symbol} with volume ${volumeCalc.finalVolume}`)
+      const positionData: Record<string, string> = {
+        connection_id: this.connectionId,
+        symbol: params.symbol,
+        indication_type: params.indicationType,
+        side: params.side,
+        entry_price: String(params.entryPrice),
+        current_price: String(params.entryPrice),
+        quantity: String(volumeCalc.finalVolume),
+        position_cost: String(positionCost),
+        takeprofit_factor: String(params.takeprofitFactor),
+        takeprofit_price: String(takeProfitPrice),
+        stoploss_ratio: String(params.stoplossRatio),
+        stoploss_price: String(stopLossPrice),
+        profit_factor: String(params.profitFactor),
+        trailing_enabled: params.trailingEnabled ? "1" : "0",
+        trailing_stop_price: "0",
+        status: "active",
+        opened_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
 
-      // Update active positions count
+      await client.hset(this.positionKey(id), positionData)
+      await client.sadd(this.positionsSetKey(), id)
+
+      console.log(`[v0] Created pseudo position ${id} for ${params.symbol} side=${params.side} vol=${volumeCalc.finalVolume}`)
+
+      this.invalidateCache()
       await this.updateActivePositionsCount()
 
-      return result.id
+      return id
     } catch (error) {
       console.error("[v0] Failed to create pseudo position:", error)
       return null
@@ -111,12 +180,14 @@ export class PseudoPositionManager {
         return this.activePositionsCache
       }
 
-      const positions = await sql`
-        SELECT * FROM pseudo_positions
-        WHERE connection_id = ${this.connectionId}
-          AND status = 'active'
-        ORDER BY opened_at DESC
-      `
+      const positions = await this.listPositions({ status: "active" })
+
+      // Sort by opened_at DESC
+      positions.sort((a, b) => {
+        const tA = new Date(a.opened_at || 0).getTime()
+        const tB = new Date(b.opened_at || 0).getTime()
+        return tB - tA
+      })
 
       this.activePositionsCache = positions
       this.cacheTimestamp = now
@@ -129,78 +200,49 @@ export class PseudoPositionManager {
   }
 
   /**
-   * Update position with current price and calculate metrics
+   * Update position with current price
    */
-  async updatePosition(positionId: number, currentPrice: number): Promise<void> {
+  async updatePosition(positionId: string, currentPrice: number): Promise<void> {
     try {
-      // Get position details
-      const [position] = await sql`
-        SELECT * FROM pseudo_positions WHERE id = ${positionId}
-      `
+      const client = getRedisClient()
 
-      if (!position) return
-
-      // Calculate risk metrics
-      const metrics = VolumeCalculator.calculateRiskMetrics({
-        entryPrice: Number.parseFloat(position.entry_price),
-        currentPrice,
-        volume: Number.parseFloat(position.quantity),
-        leverage: 125 / Number.parseFloat(position.profit_factor), // Approximate leverage
-        side: position.side,
-        stopLossPrice: Number.parseFloat(position.entry_price) * (1 - Number.parseFloat(position.stoploss_ratio) / 100),
-        takeProfitPrice:
-          Number.parseFloat(position.entry_price) * (1 + Number.parseFloat(position.takeprofit_factor) / 100),
+      await client.hset(this.positionKey(positionId), {
+        current_price: String(currentPrice),
+        updated_at: new Date().toISOString(),
       })
-
-      // Update position
-      await sql`
-        UPDATE pseudo_positions
-        SET 
-          current_price = ${currentPrice},
-          updated_at = CURRENT_TIMESTAMP
-        WHERE id = ${positionId}
-      `
     } catch (error) {
       console.error(`[v0] Failed to update position ${positionId}:`, error)
     }
   }
 
   /**
-   * Close position with final calculations
+   * Close position with reason
    */
-  async closePosition(positionId: number, reason: string): Promise<void> {
+  async closePosition(positionId: string, reason: string): Promise<void> {
     try {
-      // Get position details
-      const [position] = await sql`
-        SELECT * FROM pseudo_positions WHERE id = ${positionId}
-      `
-
+      const position = await this.readPosition(positionId)
       if (!position) return
 
-      // Calculate final PnL
-      const finalMetrics = VolumeCalculator.calculateRiskMetrics({
-        entryPrice: Number.parseFloat(position.entry_price),
-        currentPrice: Number.parseFloat(position.current_price),
-        volume: Number.parseFloat(position.quantity),
-        leverage: 125 / Number.parseFloat(position.profit_factor),
-        side: position.side,
+      const entryPrice = parseFloat(position.entry_price || "0")
+      const currentPrice = parseFloat(position.current_price || "0")
+      const quantity = parseFloat(position.quantity || "0")
+      const side = position.side || "long"
+
+      const pnl = side === "long"
+        ? (currentPrice - entryPrice) * quantity
+        : (entryPrice - currentPrice) * quantity
+
+      const client = getRedisClient()
+      await client.hset(this.positionKey(positionId), {
+        status: "closed",
+        closed_at: new Date().toISOString(),
+        close_reason: reason,
+        realized_pnl: String(pnl),
       })
 
-      // Close position
-      await sql`
-        UPDATE pseudo_positions
-        SET 
-          status = 'closed',
-          closed_at = CURRENT_TIMESTAMP,
-          close_reason = ${reason}
-        WHERE id = ${positionId}
-      `
-
-      console.log(`[v0] Closed position ${positionId}: ${reason} (PnL: ${finalMetrics.unrealizedPnL.toFixed(2)})`)
+      console.log(`[v0] Closed position ${positionId}: ${reason} (PnL: ${pnl.toFixed(4)})`)
 
       this.invalidateCache()
-
-      // Update active positions count
       await this.updateActivePositionsCount()
     } catch (error) {
       console.error(`[v0] Failed to close position ${positionId}:`, error)
@@ -208,66 +250,64 @@ export class PseudoPositionManager {
   }
 
   /**
-   * Get position count
+   * Get active position count
    */
   async getPositionCount(): Promise<number> {
-    try {
-      const [result] = await sql`
-        SELECT COUNT(*) as count
-        FROM pseudo_positions
-        WHERE connection_id = ${this.connectionId}
-          AND status = 'active'
-      `
-      return Number.parseInt(result.count)
-    } catch (error) {
-      console.error("[v0] Failed to get position count:", error)
-      return 0
-    }
+    const active = await this.listPositions({ status: "active" })
+    return active.length
   }
 
   /**
-   * Update active positions count in engine state
+   * Update active positions count in engine state (Redis)
    */
   private async updateActivePositionsCount(): Promise<void> {
     try {
       const count = await this.getPositionCount()
-
-      await sql`
-        UPDATE trade_engine_state
-        SET active_positions_count = ${count}
-        WHERE connection_id = ${this.connectionId}
-      `
+      const stateKey = `trade_engine_state:${this.connectionId}`
+      const current = (await getSettings(stateKey)) || {}
+      await setSettings(stateKey, { ...current, active_positions_count: count })
     } catch (error) {
       console.error("[v0] Failed to update active positions count:", error)
     }
   }
 
   /**
-   * Get position statistics with direction breakdown
+   * Get position statistics
    */
-  async getPositionStats() {
+  async getPositionStats(): Promise<any> {
     try {
-      const [stats] = await sql`
-        SELECT 
-          COUNT(*) as total_positions,
-          SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active_positions,
-          SUM(CASE WHEN status = 'active' AND side = 'long' THEN 1 ELSE 0 END) as active_long,
-          SUM(CASE WHEN status = 'active' AND side = 'short' THEN 1 ELSE 0 END) as active_short,
-          SUM(CASE WHEN status = 'closed' THEN 1 ELSE 0 END) as closed_positions,
-          AVG(CASE WHEN status = 'closed' THEN 
-            (current_price - entry_price) * quantity 
-          END) as avg_pnl,
-          AVG(CASE WHEN status = 'closed' AND side = 'long' THEN 
-            (current_price - entry_price) * quantity 
-          END) as avg_pnl_long,
-          AVG(CASE WHEN status = 'closed' AND side = 'short' THEN 
-            (entry_price - current_price) * quantity 
-          END) as avg_pnl_short
-        FROM pseudo_positions
-        WHERE connection_id = ${this.connectionId}
-      `
+      const allPositions = await this.listPositions()
 
-      return stats
+      const active = allPositions.filter(p => p.status === "active")
+      const closed = allPositions.filter(p => p.status === "closed")
+      const activeLong = active.filter(p => p.side === "long").length
+      const activeShort = active.filter(p => p.side === "short").length
+
+      let totalPnl = 0
+      let pnlLong = 0
+      let pnlShort = 0
+
+      for (const p of closed) {
+        const entry = parseFloat(p.entry_price || "0")
+        const current = parseFloat(p.current_price || "0")
+        const qty = parseFloat(p.quantity || "0")
+        const side = p.side || "long"
+        const pnl = side === "long" ? (current - entry) * qty : (entry - current) * qty
+        totalPnl += pnl
+        if (side === "long") pnlLong += pnl
+        else pnlShort += pnl
+      }
+
+      return {
+        total_positions: allPositions.length,
+        active_positions: active.length,
+        active_long: activeLong,
+        active_short: activeShort,
+        closed_positions: closed.length,
+        avg_pnl: closed.length > 0 ? totalPnl / closed.length : 0,
+        avg_pnl_long: closed.filter(p => p.side === "long").length > 0 ? pnlLong / closed.filter(p => p.side === "long").length : 0,
+        avg_pnl_short: closed.filter(p => p.side === "short").length > 0 ? pnlShort / closed.filter(p => p.side === "short").length : 0,
+      }
     } catch (error) {
       console.error("[v0] Failed to get position stats:", error)
       return null
@@ -275,88 +315,7 @@ export class PseudoPositionManager {
   }
 
   /**
-   * Get position count by direction
-   */
-  async getPositionCountByDirection(side: "long" | "short"): Promise<number> {
-    try {
-      const [result] = await sql`
-        SELECT COUNT(*) as count
-        FROM pseudo_positions
-        WHERE connection_id = ${this.connectionId}
-          AND side = ${side}
-          AND status = 'active'
-      `
-      return Number.parseInt(result.count)
-    } catch (error) {
-      console.error(`[v0] Failed to get ${side} position count:`, error)
-      return 0
-    }
-  }
-
-  /**
-   * Get max positions allowed per direction from configuration
-   */
-  private async getMaxPositionsPerDirection(
-    symbol: string,
-    indicationType: string,
-    side: "long" | "short",
-  ): Promise<boolean> {
-    // Fixed return type from Promise<number> to Promise<boolean> to match actual return value
-    try {
-      const [settingRow] = await sql`
-        SELECT value FROM system_settings
-        WHERE key = 'maxPositionsPerConfigSet'
-      `
-      const maxPerConfig = settingRow ? Number.parseInt(settingRow.value) : 1
-
-      // Long and Short are completely independent with separate limits
-      let countResult
-
-      if (true) {
-        // Check specific config combination + direction (direction is mandatory)
-        countResult = await sql`
-          SELECT COUNT(*) as count
-          FROM pseudo_positions
-          WHERE connection_id = ${this.connectionId}
-            AND symbol = ${symbol}
-            AND indication_type = ${indicationType}
-            AND side = ${side}
-            AND status = 'active'
-        `
-      } else {
-        // Check at indication + direction level
-        // Direction is still part of the constraint for independence
-        countResult = await sql`
-          SELECT COUNT(*) as count
-          FROM pseudo_positions
-          WHERE connection_id = ${this.connectionId}
-            AND symbol = ${symbol}
-            AND indication_type = ${indicationType}
-            AND side = ${side}
-            AND status = 'active'
-        `
-      }
-
-      const currentCount = Number.parseInt(countResult[0].count)
-      const canCreate = currentCount < maxPerConfig
-
-      const configStr = `${side} (any config)`
-
-      console.log(
-        `[v0] Position check for ${symbol} ${indicationType} ${configStr}: ${currentCount}/${maxPerConfig} (can create: ${canCreate})`,
-      )
-
-      return canCreate
-    } catch (error) {
-      console.error("[v0] Failed to get max positions per direction:", error)
-      return false // Changed from 0 to false to match boolean return type
-    }
-  }
-
-  /**
-   * Check if can create new position for SPECIFIC config combination + DIRECTION
-   * Each unique (symbol, indication_type, DIRECTION, TP, SL, trailing) is independent
-   * Long and Short directions have SEPARATE and INDEPENDENT limits
+   * Check if can create new position for specific config+direction
    */
   private async canCreatePosition(
     symbol: string,
@@ -367,53 +326,27 @@ export class PseudoPositionManager {
     trailingEnabled?: boolean,
   ): Promise<boolean> {
     try {
-      const [settingRow] = await sql`
-        SELECT value FROM system_settings
-        WHERE key = 'maxPositionsPerConfigSet'
-      `
-      const maxPerConfig = settingRow ? Number.parseInt(settingRow.value) : 1
+      const maxSetting = await getSettings("maxPositionsPerConfigSet")
+      const maxPerConfig = maxSetting ? parseInt(String(maxSetting), 10) : 1
 
-      // Long and Short are completely independent with separate limits
-      let countResult
+      // Get active positions matching this config
+      const active = await this.listPositions({ status: "active", symbol, indicationType, side })
 
+      let matching: any[]
       if (takeprofitFactor !== undefined && stoplossRatio !== undefined && trailingEnabled !== undefined) {
-        // Check specific config combination + direction (direction is mandatory)
-        countResult = await sql`
-          SELECT COUNT(*) as count
-          FROM pseudo_positions
-          WHERE connection_id = ${this.connectionId}
-            AND symbol = ${symbol}
-            AND indication_type = ${indicationType}
-            AND side = ${side}
-            AND takeprofit_factor = ${takeprofitFactor}
-            AND stoploss_ratio = ${stoplossRatio}
-            AND trailing_enabled = ${trailingEnabled}
-            AND status = 'active'
-        `
+        matching = active.filter(p =>
+          parseFloat(p.takeprofit_factor || "0") === takeprofitFactor &&
+          parseFloat(p.stoploss_ratio || "0") === stoplossRatio &&
+          (p.trailing_enabled === "1") === trailingEnabled
+        )
       } else {
-        // Check at indication + direction level
-        // Direction is still part of the constraint for independence
-        countResult = await sql`
-          SELECT COUNT(*) as count
-          FROM pseudo_positions
-          WHERE connection_id = ${this.connectionId}
-            AND symbol = ${symbol}
-            AND indication_type = ${indicationType}
-            AND side = ${side}
-            AND status = 'active'
-        `
+        matching = active
       }
 
-      const currentCount = Number.parseInt(countResult[0].count)
-      const canCreate = currentCount < maxPerConfig
-
-      const configStr =
-        takeprofitFactor !== undefined
-          ? `${side} TP=${takeprofitFactor} SL=${stoplossRatio} trailing=${trailingEnabled}`
-          : `${side} (any config)`
+      const canCreate = matching.length < maxPerConfig
 
       console.log(
-        `[v0] Position check for ${symbol} ${indicationType} ${configStr}: ${currentCount}/${maxPerConfig} (can create: ${canCreate})`,
+        `[v0] Position check: ${symbol} ${indicationType} ${side} | ${matching.length}/${maxPerConfig} (can create: ${canCreate})`,
       )
 
       return canCreate
@@ -421,6 +354,14 @@ export class PseudoPositionManager {
       console.error("[v0] Failed to check if can create position:", error)
       return false
     }
+  }
+
+  /**
+   * Get position count by direction
+   */
+  async getPositionCountByDirection(side: "long" | "short"): Promise<number> {
+    const positions = await this.listPositions({ status: "active", side })
+    return positions.length
   }
 
   /**
