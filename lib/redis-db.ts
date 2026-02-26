@@ -708,11 +708,6 @@ export async function deleteConnection(connectionId: string): Promise<void> {
   await client.srem("connections", connectionId)
 }
 
-export async function getEnabledConnections(): Promise<any[]> {
-  const all = await getAllConnections()
-  return all.filter(c => c.is_enabled === true)
-}
-
 // Inline base exchange list - no external imports to avoid caching issues
 const _BASE_EXCHANGES = ["bybit", "bingx", "pionex", "orangex"]
 
