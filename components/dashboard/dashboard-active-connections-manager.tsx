@@ -69,13 +69,28 @@ export function DashboardActiveConnectionsManager() {
   }
 
   useEffect(() => {
+    console.log(`[v0] [Manager] Initializing active connections manager (version: ${VERSION})`)
     loadConnections()
     checkGlobalEngine()
     const connInterval = setInterval(loadConnections, 5000)
     const engineInterval = setInterval(checkGlobalEngine, 3000)
+    
+    // Listen for relevant events and refresh
+    const handleEngineStateChange = () => {
+      console.log(`[v0] [Manager] Detected engine state change, refreshing...`)
+      checkGlobalEngine()
+    }
+    
+    if (typeof window !== 'undefined') {
+      window.addEventListener('engine-state-changed', handleEngineStateChange)
+    }
+    
     return () => {
       clearInterval(connInterval)
       clearInterval(engineInterval)
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('engine-state-changed', handleEngineStateChange)
+      }
     }
   }, [])
 
@@ -98,6 +113,8 @@ export function DashboardActiveConnectionsManager() {
       
       const data = await response.json()
       const allConnections: Connection[] = Array.isArray(data) ? data : (data?.connections || [])
+      console.log(`[v0] [Manager] Loaded ${allConnections.length} total connections`)
+      
       const activeConns: ActiveConnectionWithDetails[] = []
       const seenIds = new Set<string>()
       
@@ -125,11 +142,13 @@ export function DashboardActiveConnectionsManager() {
             addedAt: conn.created_at || new Date().toISOString(),
             details: conn,
           })
+          console.log(`[v0] [Manager] ✓ Added to active: ${conn.name} (active=${isDashboardActive})`)
         }
       }
       
-      if (activeConns.length === 0 && activeConnectionsRef.current.length > 0) {
-        setLoading(false)
+      console.log(`[v0] [Manager] Filtered ${activeConns.length} active connections from ${allConnections.length} total`)
+      updateActiveConnections(activeConns)
+      setLoading(false)
         return
       }
 

@@ -546,7 +546,7 @@ export class TradeEngineManager {
 
   /**
    * Update progression phase with detailed progress tracking
-   * Phases: initializing -> prehistoric_data -> indications -> strategies -> realtime -> live_trading
+   * Phases: idle -> initializing -> prehistoric_data -> indications -> strategies -> realtime -> live_trading
    */
   async updateProgressionPhase(
     phase: string, 
@@ -556,7 +556,7 @@ export class TradeEngineManager {
   ): Promise<void> {
     try {
       const key = `engine_progression:${this.connectionId}`
-      await setSettings(key, {
+      const progressionData = {
         phase,
         progress: Math.min(100, Math.max(0, progress)),
         detail,
@@ -565,7 +565,16 @@ export class TradeEngineManager {
         sub_item: subProgress?.item || "",
         connection_id: this.connectionId,
         updated_at: new Date().toISOString(),
-      })
+      }
+      
+      await setSettings(key, progressionData)
+      
+      // Log progression update with full details
+      const msg = subProgress && subProgress.total > 0 
+        ? `${detail} (${subProgress.current}/${subProgress.total}${subProgress.item ? ` - ${subProgress.item}` : ""})`
+        : detail
+      
+      console.log(`[v0] [Progression] ${this.connectionId}: ${phase} @ ${progress}% - ${msg}`)
     } catch (error) {
       console.error("[v0] Failed to update progression phase:", error)
     }

@@ -111,17 +111,24 @@ export function ActiveConnectionCard({
   // Poll progression
   const fetchProgression = useCallback(async () => {
     try {
-      const res = await fetch(`/api/connections/progression/${connection.connectionId}`)
+      console.log(`[v0] [Card] Fetching progression for: ${connection.exchangeName} (${connection.connectionId})`)
+      const res = await fetch(`/api/connections/progression/${connection.connectionId}`, {
+        cache: "no-store",
+        headers: { "Cache-Control": "no-cache, no-store, must-revalidate" },
+      })
       if (res.ok) {
         const data = await res.json()
         if (data.success && data.progression) {
+          console.log(`[v0] [Card] ✓ Progression received: phase=${data.progression.phase}, progress=${data.progression.progress}%, message="${data.progression.message}"`)
           setProgression(data.progression)
         }
+      } else {
+        console.warn(`[v0] [Card] ⚠ Progression API returned ${res.status}`)
       }
-    } catch {
-      // Silently fail
+    } catch (error) {
+      console.error("[v0] [Card] Failed to fetch progression:", error)
     }
-  }, [connection.connectionId])
+  }, [connection.connectionId, connection.exchangeName])
 
   useEffect(() => {
     fetchProgression()
@@ -131,7 +138,33 @@ export function ActiveConnectionCard({
         ? 1000
         : 5000
     )
-    return () => clearInterval(interval)
+    
+    // Listen for connection toggle events to refresh progression immediately
+    const handleConnectionToggled = () => {
+      console.log(`[v0] [Card] Detected connection toggle event, refreshing progression...`)
+      fetchProgression()
+    }
+    
+    const handleLiveTradeToggled = (event: Event) => {
+      const customEvent = event as CustomEvent
+      if (customEvent.detail?.connectionId === connection.connectionId) {
+        console.log(`[v0] [Card] Detected live trade toggle for this connection, refreshing progression...`)
+        fetchProgression()
+      }
+    }
+    
+    if (typeof window !== 'undefined') {
+      window.addEventListener('connection-toggled', handleConnectionToggled)
+      window.addEventListener('live-trade-toggled', handleLiveTradeToggled)
+    }
+    
+    return () => {
+      clearInterval(interval)
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('connection-toggled', handleConnectionToggled)
+        window.removeEventListener('live-trade-toggled', handleLiveTradeToggled)
+      }
+    }
   }, [fetchProgression, progression?.phase])
 
   // Handle Live Trade toggle
