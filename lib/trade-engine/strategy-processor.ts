@@ -1,10 +1,13 @@
 /**
  * Strategy Processor
- * Processes strategies asynchronously for symbols
+ * Processes independent strategy sets for each type (Base, Main, Real, Live)
+ * Each type evaluates with its own risk profile and maintains 250-entry pool
  */
 
 import { initRedis, getSettings } from "@/lib/redis-db"
 import { ProgressionStateManager } from "@/lib/progression-state-manager"
+import { StrategySetsProcessor } from "@/lib/strategy-sets-processor"
+import { logProgressionEvent } from "@/lib/engine-progression-logs"
 
 export class StrategyProcessor {
   private connectionId: string
@@ -16,7 +19,7 @@ export class StrategyProcessor {
   }
 
   /**
-   * Process strategy for a symbol in real-time with comprehensive error handling
+   * Process strategy - delegates to independent sets processor
    */
   async processStrategy(symbol: string): Promise<void> {
     try {
@@ -27,48 +30,42 @@ export class StrategyProcessor {
         return
       }
 
-      const settings = await this.getStrategySettings()
-      let processedCount = 0
-      let strategyProfit = 0
+      // Use independent strategy sets processor for all 4 types
+      const setsProcessor = new StrategySetsProcessor(this.connectionId)
+      await setsProcessor.processAllStrategySets(symbol, indications)
 
-      const batchSize = 5
-      for (let i = 0; i < indications.length; i += batchSize) {
-        const batch = indications.slice(i, i + batchSize)
+      // Track progression
+      const baseStats = await setsProcessor.getSetStats(symbol, "base")
+      const mainStats = await setsProcessor.getSetStats(symbol, "main")
+      const realStats = await setsProcessor.getSetStats(symbol, "real")
+      const liveStats = await setsProcessor.getSetStats(symbol, "live")
 
-        const results = await Promise.all(
-          batch.map(async (indication) => {
-            try {
-              const strategySignal = await this.evaluateStrategy(symbol, indication, settings)
+      const totalQualified =
+        (baseStats?.currentEntries || 0) +
+        (mainStats?.currentEntries || 0) +
+        (realStats?.currentEntries || 0) +
+        (liveStats?.currentEntries || 0)
 
-              if (strategySignal && strategySignal.profit_factor >= settings.minProfitFactor) {
-                await this.createPseudoPosition(symbol, indication, strategySignal)
-                processedCount++
-                strategyProfit += strategySignal.profit_factor || 0
-                return true
-              }
-              return false
-            } catch (error) {
-              console.error(`[v0] [Strategy] Error evaluating ${symbol}:`, error instanceof Error ? error.message : String(error))
-              return false
-            }
-          }),
+      if (totalQualified > 0) {
+        await ProgressionStateManager.incrementCycle(this.connectionId, true, totalQualified)
+        console.log(
+          `[v0] [Strategy] ${symbol}: Created ${totalQualified} strategies | Base=${baseStats?.currentEntries}/${baseStats?.maxEntries} Main=${mainStats?.currentEntries}/${mainStats?.maxEntries} Real=${realStats?.currentEntries}/${realStats?.maxEntries} Live=${liveStats?.currentEntries}/${liveStats?.maxEntries}`
         )
 
-        const successCount = results.filter(Boolean).length
-        if (successCount > 0) {
-          console.log(`[v0] [Strategy] ${symbol}: Batch processed ${successCount}/${batch.length} indications`)
-        }
-      }
-      
-      // Track progression: each successful strategy is a cycle
-      if (processedCount > 0) {
-        await ProgressionStateManager.incrementCycle(this.connectionId, true, strategyProfit)
-        console.log(`[v0] [Strategy] Created ${processedCount} strategies for ${symbol} | Total Profit: ${strategyProfit.toFixed(2)}`)
+        await logProgressionEvent(this.connectionId, "strategies_realtime", "info", `Strategy sets evaluated for ${symbol}`, {
+          base: baseStats,
+          main: mainStats,
+          real: realStats,
+          live: liveStats,
+          totalQualified,
+        })
       }
     } catch (error) {
-      // Track failed cycle on error
       await ProgressionStateManager.incrementCycle(this.connectionId, false, 0)
-      console.error(`[v0] [Strategy] Failed to process ${symbol}:`, error instanceof Error ? error.message : String(error))
+      console.error(
+        `[v0] [Strategy] Failed for ${symbol}:`,
+        error instanceof Error ? error.message : String(error)
+      )
     }
   }
 

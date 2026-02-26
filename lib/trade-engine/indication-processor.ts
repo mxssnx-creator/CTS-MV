@@ -1,7 +1,11 @@
 /**
  * Indication Processor
- * Processes indications asynchronously for symbols using Redis-backed market data
+ * Processes independent indication sets for each type (Direction, Move, Active, Optimal)
+ * Each type maintains its own 250-entry pool calculated independently
  */
+
+import { IndicationSetsProcessor } from "@/lib/indication-sets-processor"
+import { logProgressionEvent } from "@/lib/engine-progression-logs"
 
 // Dynamic imports to avoid build-time resolution issues
 async function getRedisHelpers() {
@@ -32,16 +36,17 @@ export class IndicationProcessor {
   /**
    * Process historical indications for a symbol over a date range
    */
+  /**
+   * Process historical indications - builds up all 4 independent type sets
+   */
   async processHistoricalIndications(symbol: string, startDate: Date, endDate: Date): Promise<void> {
     try {
       console.log(`[v0] [HistoricalIndication] Processing for ${symbol} | Period: ${startDate.toISOString()} to ${endDate.toISOString()}`)
 
-      // Fetch historical market data for the symbol
       const redis = await getRedisHelpers()
       await redis.initRedis()
       const rawData = await redis.getMarketData(symbol)
 
-      // getMarketData returns a single object or null, normalize to array
       const historicalData: any[] = Array.isArray(rawData)
         ? rawData
         : rawData
@@ -49,52 +54,41 @@ export class IndicationProcessor {
           : []
 
       if (historicalData.length === 0) {
-        // No market data yet - this is expected on first startup
         console.log(`[v0] [HistoricalIndication] No data available yet for ${symbol}`)
         return
       }
 
-      const settings = await this.getIndicationSettingsCached()
+      // Process historical data through independent sets
+      const setsProcessor = new IndicationSetsProcessor(this.connectionId)
 
-      // Process each data point as a historical indication
-      let successCount = 0
-      let typeBreakdown = { direction: 0, move: 0, active: 0, optimal: 0 }
-      
       for (const marketData of historicalData) {
-        const indication = await this.calculateIndication(symbol, marketData, settings)
-
-        if (indication && indication.profit_factor >= settings.minProfitFactor) {
-          await redis.saveIndication({
-            connection_id: this.connectionId,
-            symbol,
-            indication_type: indication.type,
-            timeframe: indication.timeframe,
-            mode: 'preset',
-            value: indication.value,
-            profit_factor: indication.profit_factor,
-            confidence: indication.confidence,
-            metadata: indication.metadata,
-            calculated_at: marketData.timestamp || new Date().toISOString(),
-          })
-          successCount++
-          typeBreakdown[indication.type as keyof typeof typeBreakdown]++
-        }
+        await setsProcessor.processAllIndicationSets(symbol, marketData)
       }
 
-      // Track progression for historical processing
-      if (successCount > 0) {
-        const ProgressionManager = await getProgressionManager()
-        await ProgressionManager.incrementCycle(this.connectionId, true, successCount)
-      }
+      // Log results
+      const directionStats = await setsProcessor.getSetStats(symbol, "direction")
+      const moveStats = await setsProcessor.getSetStats(symbol, "move")
+      const activeStats = await setsProcessor.getSetStats(symbol, "active")
+      const optimalStats = await setsProcessor.getSetStats(symbol, "optimal")
 
-      console.log(`[v0] [HistoricalIndication] ${symbol}: Processed ${historicalData.length} points | Qualified: ${successCount} | Types: Direction=${typeBreakdown.direction} Move=${typeBreakdown.move} Active=${typeBreakdown.active} Optimal=${typeBreakdown.optimal}`)
+      console.log(
+        `[v0] [HistoricalIndication] ${symbol}: Processed ${historicalData.length} points | Direction=${directionStats?.currentEntries || 0}/${directionStats?.maxEntries || 250} Move=${moveStats?.currentEntries || 0}/${moveStats?.maxEntries || 250} Active=${activeStats?.currentEntries || 0}/${activeStats?.maxEntries || 250} Optimal=${optimalStats?.currentEntries || 0}/${optimalStats?.maxEntries || 250}`
+      )
+
+      await logProgressionEvent(this.connectionId, "indications_historical", "info", `Historical indications processed for ${symbol}`, {
+        direction: directionStats,
+        move: moveStats,
+        active: activeStats,
+        optimal: optimalStats,
+        dataPoints: historicalData.length,
+      })
     } catch (error) {
       console.error(`[v0] [HistoricalIndication] Failed for ${symbol}:`, error instanceof Error ? error.message : String(error))
     }
   }
 
   /**
-   * Process indication in real-time
+   * Process real-time indication - delegates to independent sets processor
    */
   async processIndication(symbol: string): Promise<void> {
     try {
@@ -103,29 +97,17 @@ export class IndicationProcessor {
         return
       }
 
-      const settings = await this.getIndicationSettingsCached()
+      // Use independent sets processor for all 4 types
+      const setsProcessor = new IndicationSetsProcessor(this.connectionId)
+      await setsProcessor.processAllIndicationSets(symbol, marketData)
 
-      // Calculate indication asynchronously - all 4 types are evaluated internally
-      const indication = await this.calculateIndication(symbol, marketData, settings)
-
-      if (indication && indication.profit_factor >= settings.minProfitFactor) {
-        const redis = await getRedisHelpers()
-        await redis.saveIndication({
-          connection_id: this.connectionId,
-          symbol,
-          indication_type: indication.type,
-          timeframe: indication.timeframe,
-          mode: 'preset',
-          value: indication.value,
-          profit_factor: indication.profit_factor,
-          confidence: indication.confidence,
-          metadata: indication.metadata,
-          calculated_at: new Date().toISOString(),
-        })
-
-        // Log when indications are actually saved with full breakdown
-        console.log(`[v0] [RealtimeIndication] ${symbol}: Type=${indication.type} | PF=${indication.profit_factor.toFixed(2)} | Conf=${indication.confidence.toFixed(2)} | Threshold=${settings.minProfitFactor.toFixed(2)}`)
-      }
+      // Track progression
+      await logProgressionEvent(
+        this.connectionId,
+        "indication_realtime",
+        "info",
+        `Processed indication sets for ${symbol}`
+      )
     } catch (error) {
       console.error(`[v0] [RealtimeIndication] Failed for ${symbol}:`, error instanceof Error ? error.message : String(error))
     }

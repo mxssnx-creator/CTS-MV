@@ -394,22 +394,6 @@ function StatisticsCards({ stats }: { stats: ConnectionStats }) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="text-center text-muted-foreground">Loading...</div>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  if (error || !stats) {
-    return (
-      <Card className="col-span-1 lg:col-span-2">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Activity className="h-5 w-5" />
-            Statistics
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
           <div className="text-center text-destructive">{error || "No data available"}</div>
         </CardContent>
       </Card>
