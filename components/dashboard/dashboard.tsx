@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import React, { useState, useEffect, useMemo, ReactNode } from "react"
 import { useAuth } from "@/lib/auth-context"
 import { useExchange } from "@/lib/exchange-context"
 import { useConnectionState } from "@/lib/connection-state"
@@ -10,9 +10,50 @@ import { DashboardActiveConnectionsManager } from "./dashboard-active-connection
 import { IntervalsStrategiesOverview } from "./intervals-strategies-overview"
 import { StatisticsOverview } from "./statistics-overview"
 import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
 import { RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 import type { ExchangeConnection } from "@/lib/types"
+
+// Error Boundary Component
+interface ErrorBoundaryProps {
+  children: ReactNode
+  name: string
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean
+  error?: Error
+}
+
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props)
+    this.state = { hasError: false }
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error }
+  }
+
+  componentDidCatch(error: Error) {
+    console.error(`[v0] [ErrorBoundary] Error in ${this.props.name}:`, error)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <Card className="p-4 bg-red-50 border-red-200">
+          <p className="text-sm text-red-700">
+            Failed to load {this.props.name}. {this.state.error?.message}
+          </p>
+        </Card>
+      )
+    }
+
+    return this.props.children
+  }
+}
 
 export function Dashboard() {
   const { user } = useAuth()
@@ -128,23 +169,33 @@ export function Dashboard() {
       </div>
 
       {/* Smart Overview - Comprehensive system status */}
-      <SystemOverview />
+      <ErrorBoundary name="System Overview">
+        <SystemOverview />
+      </ErrorBoundary>
 
       {/* Trade Engine Controls */}
-      <GlobalTradeEngineControls />
+      <ErrorBoundary name="Global Trade Engine Controls">
+        <GlobalTradeEngineControls />
+      </ErrorBoundary>
 
       {/* Active Connections - With global engine guard, progression tracking, sticky state */}
-      <DashboardActiveConnectionsManager />
+      <ErrorBoundary name="Active Connections">
+        <DashboardActiveConnectionsManager />
+      </ErrorBoundary>
 
       {/* Intervals & Strategies Overview */}
       {filteredConnections.length > 0 && (
-        <IntervalsStrategiesOverview connections={filteredConnections} />
+        <ErrorBoundary name="Intervals & Strategies">
+          <IntervalsStrategiesOverview connections={filteredConnections} />
+        </ErrorBoundary>
       )}
 
       {/* Statistics Overview - Indications, Strategies, Performance Metrics for ALL connections */}
       {filteredConnections.length > 0 && (
         <div className="col-span-full">
-          <StatisticsOverview connections={filteredConnections} />
+          <ErrorBoundary name="Statistics Overview">
+            <StatisticsOverview connections={filteredConnections} />
+          </ErrorBoundary>
         </div>
       )}
 
