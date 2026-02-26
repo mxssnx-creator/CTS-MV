@@ -131,34 +131,6 @@ export class IndicationProcessor {
     }
   }
 
-      const settings = await this.getIndicationSettingsCached()
-
-      // Calculate indication asynchronously
-      const indication = await this.calculateIndication(symbol, marketData, settings)
-
-      if (indication && indication.profit_factor >= settings.minProfitFactor) {
-        const redis = await getRedisHelpers()
-        await redis.saveIndication({
-          connection_id: this.connectionId,
-          symbol,
-          indication_type: indication.type,
-          timeframe: indication.timeframe,
-          mode: 'preset',
-          value: indication.value,
-          profit_factor: indication.profit_factor,
-          confidence: indication.confidence,
-          metadata: indication.metadata,
-          calculated_at: new Date().toISOString(),
-        })
-
-        // Only log when indications are actually saved
-        console.log(`[v0] Indication stored for ${symbol}: ${indication.type} (PF: ${indication.profit_factor.toFixed(2)})`)
-      }
-    } catch (error) {
-      console.error(`[v0] Failed to process indication for ${symbol}:`, error)
-    }
-  }
-
   /**
    * Calculate indication based on market data
    */

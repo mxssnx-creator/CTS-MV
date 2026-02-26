@@ -8,6 +8,7 @@ import { SystemOverview } from "./system-overview"
 import { GlobalTradeEngineControls } from "./global-trade-engine-controls"
 import { DashboardActiveConnectionsManager } from "./dashboard-active-connections-manager"
 import { IntervalsStrategiesOverview } from "./intervals-strategies-overview"
+import { StatisticsOverview } from "./statistics-overview"
 import { Button } from "@/components/ui/button"
 import { RefreshCw } from "lucide-react"
 import { toast } from "sonner"
@@ -138,6 +139,13 @@ export function Dashboard() {
       {/* Intervals & Strategies Overview */}
       {filteredConnections.length > 0 && (
         <IntervalsStrategiesOverview connections={filteredConnections} />
+      )}
+
+      {/* Statistics Overview - Indications, Strategies, Performance Metrics */}
+      {filteredConnections.length > 0 && (
+        <div className="grid gap-6">
+          <StatisticsOverview connectionId={filteredConnections[0]?.id || ""} />
+        </div>
       )}
 
 
