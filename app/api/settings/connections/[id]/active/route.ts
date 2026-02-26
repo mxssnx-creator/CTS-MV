@@ -8,8 +8,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { id } = await params
     const connectionId = id
 
-    console.log("[v0] Adding connection to active:", connectionId)
-
     await initRedis()
     const connection = await getConnection(connectionId)
 
@@ -26,19 +24,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     await updateConnection(connectionId, updatedConnection)
 
-    console.log("[v0] Connection added to active connections:", connectionId)
-    await SystemLogger.logConnection("Added to active connections", connectionId, "info")
+    const logMsg = `[v0] [ActiveConnection] ✓ ENABLED: ${connection.name} (${connectionId}) | Exchange: ${connection.exchange} | Base: ${["bybit", "bingx", "pionex", "orangex", "binance", "okx"].includes((connection.exchange || "").toLowerCase())}`
+    console.log(logMsg)
+    await SystemLogger.logConnection("Dashboard: Enabled active connection", connectionId, "info")
 
     return NextResponse.json({
       success: true,
       connection: updatedConnection,
-      message: "Connection added to active connections",
+      message: "Connection enabled on dashboard",
     })
   } catch (error) {
-    console.error("[v0] Failed to add connection to active:", error)
+    console.error(`[v0] [ActiveConnection] ✗ FAILED to enable: ${error instanceof Error ? error.message : String(error)}`)
     await SystemLogger.logError(error, "api", "POST /api/settings/connections/[id]/active")
     return NextResponse.json(
-      { error: "Failed to add connection to active", details: error instanceof Error ? error.message : "Unknown error" },
+      { error: "Failed to enable connection", details: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 }
     )
   }
@@ -49,8 +48,6 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   try {
     const { id } = await params
     const connectionId = id
-
-    console.log("[v0] Removing connection from active:", connectionId)
 
     await initRedis()
     const connection = await getConnection(connectionId)
@@ -68,19 +65,20 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
     await updateConnection(connectionId, updatedConnection)
 
-    console.log("[v0] Connection removed from active connections:", connectionId)
-    await SystemLogger.logConnection("Removed from active connections", connectionId, "info")
+    const logMsg = `[v0] [ActiveConnection] ✗ DISABLED: ${connection.name} (${connectionId}) | Exchange: ${connection.exchange}`
+    console.log(logMsg)
+    await SystemLogger.logConnection("Dashboard: Disabled active connection", connectionId, "info")
 
     return NextResponse.json({
       success: true,
       connection: updatedConnection,
-      message: "Connection removed from active connections",
+      message: "Connection disabled on dashboard",
     })
   } catch (error) {
-    console.error("[v0] Failed to remove connection from active:", error)
+    console.error(`[v0] [ActiveConnection] ✗ FAILED to disable: ${error instanceof Error ? error.message : String(error)}`)
     await SystemLogger.logError(error, "api", "DELETE /api/settings/connections/[id]/active")
     return NextResponse.json(
-      { error: "Failed to remove connection from active", details: error instanceof Error ? error.message : "Unknown error" },
+      { error: "Failed to disable connection", details: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 }
     )
   }

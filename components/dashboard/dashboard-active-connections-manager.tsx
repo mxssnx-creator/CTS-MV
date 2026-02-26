@@ -139,7 +139,12 @@ export function DashboardActiveConnectionsManager() {
     
     setTogglingIds(prev => new Set(prev).add(connectionId))
     
+    const connInfo = activeConnections.find(ac => ac.connectionId === connectionId)
+    const connName = connInfo?.exchangeName ? `${connInfo.exchangeName} (${connectionId})` : connectionId
+    
     try {
+      console.log(`[v0] [Manager] ${newState ? "ENABLING" : "DISABLING"} connection: ${connName}`)
+      
       // 1. Toggle active state via API (independent from Settings base connections)
       await fetch(`/api/settings/connections/${connectionId}/toggle-dashboard`, {
         method: "POST",
@@ -155,6 +160,7 @@ export function DashboardActiveConnectionsManager() {
       // 3. Start or stop the trade engine for this connection
       if (newState) {
         // Enabling: Start the connection engine via live-trade endpoint
+        console.log(`[v0] [Manager] Starting engine for: ${connName}`)
         const startRes = await fetch(`/api/settings/connections/${connectionId}/live-trade`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -163,22 +169,26 @@ export function DashboardActiveConnectionsManager() {
         
         if (!startRes.ok) {
           const errorData = await startRes.json().catch(() => ({ error: "Unknown error" }))
+          console.warn(`[v0] [Manager] Engine start warning for ${connName}: ${errorData.error}`)
           toast.warning("Connection enabled", {
             description: `Active but engine: ${errorData.error || "could not start"}`,
           })
         } else {
+          console.log(`[v0] [Manager] ✓ Engine started for: ${connName}`)
           toast.success("Connection activated", {
             description: "Engine starting - loading historical data...",
           })
         }
       } else {
         // Disabling: Stop the connection engine
+        console.log(`[v0] [Manager] Stopping engine for: ${connName}`)
         await fetch(`/api/settings/connections/${connectionId}/live-trade`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ is_live_trade: false }),
         })
         
+        console.log(`[v0] [Manager] ✓ Engine stopped for: ${connName}`)
         toast.success("Connection deactivated", {
           description: "Engine stopped",
         })
@@ -190,8 +200,9 @@ export function DashboardActiveConnectionsManager() {
           detail: { connectionId, newState }
         }))
       }
+      console.log(`[v0] [Manager] ✓ Successfully toggled: ${connName} → ${newState ? "ACTIVE" : "INACTIVE"}`)
     } catch (error) {
-      console.error("[v0] Toggle error:", error)
+      console.error(`[v0] [Manager] ✗ Toggle error for ${connName}:`, error)
       // Revert local state on error
       updateActiveConnections(prev => prev.map(ac =>
         ac.connectionId === connectionId ? { ...ac, isActive: currentState } : ac

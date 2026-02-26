@@ -6,23 +6,20 @@ export async function GET() {
     await initRedis()
     const allConnections = await getAllConnections()
     
-    console.log(`[v0] [Active] Total connections available: ${allConnections.length}`)
-    
-    // Active connections = ONLY connections that are BOTH inserted AND enabled
-    // These are the only ones that can be processed by the engine
+    // Active connections = ONLY connections marked as enabled on dashboard
     const activeConnections = allConnections.filter((c: any) => {
-      const isInserted = c.is_inserted === "1" || c.is_inserted === true || c.is_inserted === 1
-      const isEnabled = c.is_enabled === "1" || c.is_enabled === true || c.is_enabled === 1
-      const shouldProcess = isInserted && isEnabled
-      
-      if (shouldProcess) {
-        console.log(`[v0] [Active] Connection ${c.id} qualifies: inserted=${isInserted}, enabled=${isEnabled}`)
-      }
-      
-      return shouldProcess
+      const isDashboardEnabled = c.is_enabled_dashboard === "1" || c.is_enabled_dashboard === true || c.is_enabled_dashboard === 1
+      return isDashboardEnabled
     })
     
-    console.log(`[v0] [Active] Total qualifying (inserted + enabled): ${activeConnections.length}`)
+    // Log which connections are active
+    if (activeConnections.length > 0) {
+      const activeIds = activeConnections.map((c: any) => `${c.name}(${c.id})`).join(", ")
+      console.log(`[v0] [API/ActiveConnections] GET: ${activeConnections.length}/${allConnections.length} active | Active: [${activeIds}]`)
+    } else {
+      const availableIds = allConnections.map((c: any) => `${c.name}(${c.id})`).join(", ")
+      console.log(`[v0] [API/ActiveConnections] GET: 0 active out of ${allConnections.length} | Available: [${availableIds}]`)
+    }
     
     return NextResponse.json({
       success: true,
@@ -32,7 +29,7 @@ export async function GET() {
       eligibleForEngine: activeConnections.length,
     })
   } catch (error) {
-    console.error("[v0] Failed to load active connections:", error)
+    console.error("[v0] [API/ActiveConnections] GET error:", error)
     return NextResponse.json(
       { success: false, error: "Failed to load active connections", connections: [], total: 0, active: 0 },
       { status: 500 }

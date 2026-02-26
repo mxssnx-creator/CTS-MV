@@ -727,18 +727,29 @@ export async function getBaseConnections(): Promise<any[]> {
 }
 
 /**
- * Get base connections - base exchanges are ALWAYS enabled
- * Base connections (bybit, bingx, pionex, orangex, binance, okx) are always active in Settings.
- * Their is_enabled flag is informational only; they cannot be disabled.
+ * Get active connections for trade engine
+ * Active = is_enabled_dashboard === true (visible on dashboard)
+ * These are the ONLY connections the trade engine should process
  */
-export async function getEnabledBaseConnections(): Promise<any[]> {
+export async function getActiveConnectionsForEngine(): Promise<any[]> {
   const all = await getAllConnections()
   const filtered = all.filter((c: any) => {
-    const isBase = _BASE_EXCHANGES.includes((c?.exchange || "").toLowerCase().trim())
-    // Base connections are ALWAYS enabled - no is_enabled check needed
-    return isBase
+    const d = c.is_enabled_dashboard
+    return d === true || d === "1" || d === "true"
   })
-  console.log(`[v0] [DB] getEnabledBaseConnections: ${filtered.length} base connections (always enabled)`)
+  
+  // Log with full detail: which connections are active vs inactive
+  if (filtered.length > 0) {
+    const activeIds = filtered.map((c: any) => c.id).join(", ")
+    console.log(`[v0] [DB] [ActiveConnections] ${filtered.length}/${all.length} active: [${activeIds}]`)
+  } else {
+    const baseIds = all.filter((c: any) => {
+      const isBase = ["bybit", "bingx", "pionex", "orangex", "binance", "okx"].includes((c.exchange || "").toLowerCase())
+      return isBase
+    }).map((c: any) => c.id).join(", ")
+    console.log(`[v0] [DB] [ActiveConnections] 0 active out of ${all.length} total | Base connections available: [${baseIds}]`)
+  }
+  
   return filtered
 }
 
