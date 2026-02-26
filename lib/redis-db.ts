@@ -11,6 +11,34 @@ import { RedisPersistenceManager, UpstashSync } from "./redis-persistence"
 
 // Inline the LocalRedis class to avoid cross-module sync export issues with Turbopack
 
+export interface Connection {
+  id: string
+  name: string
+  exchange: string
+  api_key?: string
+  api_secret?: string
+  api_passphrase?: string
+  api_type?: string
+  api_subtype?: string
+  connection_method?: string
+  connection_library?: string
+  margin_type?: string
+  position_mode?: string
+  is_testnet?: boolean | string
+  is_enabled?: boolean | string
+  is_enabled_dashboard?: boolean | string
+  is_inserted?: boolean | string
+  is_predefined?: boolean | string
+  is_live_trade?: boolean | string
+  is_preset_trade?: boolean | string
+  last_test_status?: string
+  last_test_time?: string
+  last_test_message?: string
+  created_at?: string
+  updated_at?: string
+  [key: string]: any
+}
+
 interface RedisDataValue {
   type: "string" | "hash" | "set"
   value: string | Record<string, string> | Set<string>

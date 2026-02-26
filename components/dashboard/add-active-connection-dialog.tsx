@@ -9,7 +9,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, AlertCircle } from "lucide-react"
 import { toast } from "@/lib/simple-toast"
-import { addActiveConnection } from "@/lib/active-connections"
 
 interface AddActiveConnectionDialogProps {
   open: boolean
@@ -93,8 +92,15 @@ export function AddActiveConnectionDialog({
 
     setAdding(true)
     try {
-      // Use the active-connections library function instead of API endpoint
-      await addActiveConnection(selectedConnection, connection.exchange)
+      // Use API to set is_enabled_dashboard=1 (works on client unlike direct Redis)
+      const res = await fetch(`/api/settings/connections/${selectedConnection}/toggle-dashboard`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_enabled_dashboard: true }),
+      })
+      if (!res.ok) {
+        throw new Error("Failed to add connection to active list")
+      }
 
       toast.success(`${connection.name} added to active list`)
 

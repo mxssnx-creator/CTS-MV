@@ -6,12 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Plus, AlertTriangle } from "lucide-react"
 import { toast } from "@/lib/simple-toast"
 import type { Connection } from "@/lib/redis-db"
-import { 
-  loadActiveConnections, 
-  removeActiveConnection, 
-  toggleActiveConnection,
-  type ActiveConnection 
-} from "@/lib/active-connections"
+import type { ActiveConnection } from "@/lib/active-connections"
+import { BASE_EXCHANGES } from "@/lib/connection-utils"
 import { AddActiveConnectionDialog } from "./add-active-connection-dialog"
 import { ActiveConnectionCard } from "./active-connection-card"
 
@@ -76,37 +72,53 @@ export function DashboardActiveConnectionsManager() {
 
   const loadConnections = async () => {
     try {
-      const active = await loadActiveConnections()
-      
-      // STICKY STATE: Never replace existing cards with empty data
-      if (active.length === 0 && activeConnectionsRef.current.length > 0) {
+      // Fetch ALL connections via API (works on the client, unlike direct Redis)
+      const response = await fetch("/api/settings/connections")
+      if (!response.ok) {
+        setLoading(false)
         return
       }
-      
-      let connectionsMap: Record<string, Connection> = {}
-      try {
-        const response = await fetch("/api/settings/connections")
-        if (response.ok) {
-          const data = await response.json()
-          const connections = Array.isArray(data) ? data : (data?.connections || [])
-          connectionsMap = connections.reduce((acc: Record<string, Connection>, c: Connection) => {
-            acc[c.id || ""] = c
-            return acc
-          }, {})
+      const data = await response.json()
+      const allConnections: Connection[] = Array.isArray(data) ? data : (data?.connections || [])
+      console.log("[v0] [Manager] API returned", allConnections.length, "total connections")
+
+      // Build active connection cards from API data
+      const activeConns: ActiveConnectionWithDetails[] = []
+      const seenIds = new Set<string>()
+
+      for (const conn of allConnections) {
+        const exchange = (conn.exchange || "").toLowerCase().trim()
+        const isInserted = conn.is_inserted === true || conn.is_inserted === "1" || (conn.is_inserted as string) === "true"
+        const isDashboardActive = conn.is_enabled_dashboard === true || conn.is_enabled_dashboard === "1" || (conn.is_enabled_dashboard as string) === "true"
+        const isSettingsEnabled = conn.is_enabled === true || conn.is_enabled === "1" || (conn.is_enabled as string) === "true"
+        const isBase = BASE_EXCHANGES.includes(exchange)
+
+        // Show if: base exchange, OR inserted, OR dashboard-active
+        if (isBase || isInserted || isDashboardActive) {
+          if (seenIds.has(conn.id)) continue
+          seenIds.add(conn.id)
+
+          activeConns.push({
+            id: `active-${conn.id}`,
+            connectionId: conn.id,
+            exchangeName: conn.exchange ? conn.exchange.charAt(0).toUpperCase() + conn.exchange.slice(1) : "Unknown",
+            isActive: isDashboardActive,
+            isBaseEnabled: isSettingsEnabled,
+            addedAt: conn.created_at || new Date().toISOString(),
+            details: conn,
+          })
         }
-      } catch {
-        // Keep existing details if fetch fails
       }
 
-      const enriched = active.map(ac => {
-        const existingConn = activeConnectionsRef.current.find(e => e.connectionId === ac.connectionId)
-        return {
-          ...ac,
-          details: connectionsMap[ac.connectionId] || existingConn?.details
-        }
-      })
+      console.log("[v0] [Manager] Filtered to", activeConns.length, "displayable connections")
+      
+      // STICKY STATE: Never replace existing cards with empty data on transient fetch issues
+      if (activeConns.length === 0 && activeConnectionsRef.current.length > 0) {
+        setLoading(false)
+        return
+      }
 
-      updateActiveConnections(enriched)
+      updateActiveConnections(activeConns)
     } catch (error) {
       console.error("[v0] Error loading connections:", error)
     } finally {
@@ -128,8 +140,12 @@ export function DashboardActiveConnectionsManager() {
     setTogglingIds(prev => new Set(prev).add(connectionId))
     
     try {
-      // 1. Toggle active state (independent from Settings base connections)
-      await toggleActiveConnection(connectionId, newState)
+      // 1. Toggle active state via API (independent from Settings base connections)
+      await fetch(`/api/settings/connections/${connectionId}/toggle-dashboard`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_enabled_dashboard: newState }),
+      })
       
       // 2. Update local state immediately for responsiveness
       updateActiveConnections(prev => prev.map(ac =>
@@ -199,7 +215,12 @@ export function DashboardActiveConnectionsManager() {
         body: JSON.stringify({ is_live_trade: false }),
       })
       
-      await removeActiveConnection(connectionId)
+      // Remove from dashboard via API
+      await fetch(`/api/settings/connections/${connectionId}/toggle-dashboard`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_enabled_dashboard: false }),
+      })
       updateActiveConnections(prev => prev.filter(ac => ac.connectionId !== connectionId))
       toast.success("Connection removed", {
         description: `${connectionName} has been removed from active connections`

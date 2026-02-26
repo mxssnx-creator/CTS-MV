@@ -131,25 +131,27 @@ export function ConnectionStateProvider({ children }: { children: ReactNode }) {
     loadingRef.current.active = true
     setIsExchangeConnectionsActiveLoading(true)
     try {
-      console.log("[v0] [ConnectionState] Loading base connections for Active list")
       const response = await fetch("/api/settings/connections")
       if (response.ok) {
         const data = await response.json()
         const allConnections = data.connections || []
         
-        // Use exchange name matching to identify the 4 base connections
+        // Show ALL inserted connections (not just 4 hardcoded exchanges)
+        // Matches the same logic as DashboardActiveConnectionsManager
         const BASE_EXCHANGES = ["bybit", "bingx", "pionex", "orangex"]
-        const baseConnections = allConnections.filter((c: any) => {
+        const activeConns = allConnections.filter((c: any) => {
           const exchange = (c.exchange || "").toLowerCase().trim()
-          return BASE_EXCHANGES.includes(exchange)
+          const isBase = BASE_EXCHANGES.includes(exchange)
+          const isInserted = c.is_inserted === true || c.is_inserted === "1" || c.is_inserted === "true"
+          const isDashboardActive = c.is_enabled_dashboard === true || c.is_enabled_dashboard === "1" || c.is_enabled_dashboard === "true"
+          return isBase || isInserted || isDashboardActive
         })
         
-        console.log("[v0] [ConnectionState] Loaded", baseConnections.length, "base connections for Active list (out of", allConnections.length, "total)")
-        setExchangeConnectionsActive(baseConnections)
+        setExchangeConnectionsActive(activeConns)
         
         // Initialize status map - use is_enabled_dashboard for the active toggle (independent)
         const statusMap = new Map<string, boolean>()
-        baseConnections.forEach((conn: ExchangeConnection) => {
+        activeConns.forEach((conn: ExchangeConnection) => {
           const isDashboardEnabled = (conn as any).is_enabled_dashboard === true || (conn as any).is_enabled_dashboard === "1" || (conn as any).is_enabled_dashboard === "true"
           statusMap.set(conn.id, isDashboardEnabled)
         })
