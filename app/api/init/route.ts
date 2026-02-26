@@ -37,20 +37,21 @@ export async function GET() {
     const connections = await getAllConnections()
     console.log("[v0] [Init] Found", connections.length, "existing connections")
     
-    // Define which predefined exchanges should be auto-created and enabled by default
-    const AUTO_CREATE_EXCHANGES = ["bybit", "bingx", "pionex", "orangex"]
+    // Define which predefined exchanges should be auto-inserted by default on dashboard
+    // Only bybit and bingx are inserted by default - others can be added manually
+    const AUTO_INSERT_EXCHANGES = ["bybit", "bingx"]
     
     // Seed all predefined connections if they don't exist
     const createdConnections = []
     
     for (const predefined of CONNECTION_PREDEFINITIONS) {
       const exists = connections.some(c => c.id === predefined.id)
-      const shouldAutoCreate = AUTO_CREATE_EXCHANGES.includes(predefined.exchange)
+      const shouldAutoInsert = AUTO_INSERT_EXCHANGES.includes(predefined.exchange)
       
-      // Only auto-create the 4 primary exchanges; others are informational templates
-      if (!exists && shouldAutoCreate) {
+      // Only auto-insert bybit and bingx; others are templates
+      if (!exists && shouldAutoInsert) {
         try {
-          console.log(`[v0] [Init] Auto-creating enabled connection: ${predefined.name} (${predefined.id})`)
+          console.log(`[v0] [Init] Auto-inserting connection: ${predefined.name} (${predefined.id})`)
           
           const connectionId = await createConnection({
             id: predefined.id,
@@ -62,8 +63,9 @@ export async function GET() {
             margin_type: predefined.marginType,
             position_mode: predefined.positionMode,
             is_testnet: false,
-            is_enabled: true, // These 4 are enabled by default
-            is_enabled_dashboard: "0", // But not active until user adds them
+            is_inserted: "1", // Mark as inserted for dashboard display
+            is_enabled: "1", // Base connections always enabled in Settings
+            is_enabled_dashboard: "0", // But not active until user activates them
             is_predefined: true,
             api_key: predefined.apiKey || "",
             api_secret: predefined.apiSecret || "",
@@ -76,12 +78,34 @@ export async function GET() {
             autoCreated: true
           })
           
-          console.log(`[v0] [Init] Auto-created and enabled: ${predefined.name}`)
+          console.log(`[v0] [Init] Auto-inserted: ${predefined.name}`)
         } catch (error) {
-          console.error(`[v0] [Init] Failed to create predefined connection ${predefined.id}:`, error)
+          console.error(`[v0] [Init] Failed to insert ${predefined.id}:`, error)
         }
-      } else if (!exists && !shouldAutoCreate) {
-        console.log(`[v0] [Init] Skipping non-primary exchange: ${predefined.name} (available as template only)`)
+      } else if (!exists && !shouldAutoInsert) {
+        // Create template connections for other exchanges (not inserted, just informational)
+        try {
+          console.log(`[v0] [Init] Creating template (not inserted): ${predefined.name}`)
+          await createConnection({
+            id: predefined.id,
+            name: predefined.name,
+            exchange: predefined.exchange,
+            api_type: predefined.apiType,
+            connection_method: predefined.connectionMethod,
+            connection_library: predefined.connectionLibrary,
+            margin_type: predefined.marginType,
+            position_mode: predefined.positionMode,
+            is_testnet: false,
+            is_inserted: "0", // Not inserted, template only
+            is_enabled: "1", // Will be enabled when needed
+            is_enabled_dashboard: "0",
+            is_predefined: true,
+            api_key: predefined.apiKey || "",
+            api_secret: predefined.apiSecret || "",
+          })
+        } catch (error) {
+          console.error(`[v0] [Init] Failed to create template ${predefined.id}:`, error)
+        }
       }
     }
     
