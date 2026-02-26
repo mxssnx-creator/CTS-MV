@@ -50,7 +50,6 @@ export function StatisticsOverview({ connections }: StatisticsOverviewProps) {
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("aggregate")
 
-  // Handle both old prop format (string) and new (array)
   const connectionsList = Array.isArray(connections)
     ? connections
     : typeof connections === "string" && connections
@@ -59,7 +58,7 @@ export function StatisticsOverview({ connections }: StatisticsOverviewProps) {
 
   useEffect(() => {
     loadStatistics()
-    const interval = setInterval(loadStatistics, 10000) // Refresh every 10 seconds
+    const interval = setInterval(loadStatistics, 10000)
     return () => clearInterval(interval)
   }, [connections])
 
@@ -74,7 +73,6 @@ export function StatisticsOverview({ connections }: StatisticsOverviewProps) {
         return
       }
 
-      // Fetch stats for all connections in parallel
       const statsPromises = connectionsList.map(async (conn) => {
         try {
           const response = await fetch(`/api/positions/stats?connection_id=${conn.id}`)
@@ -82,7 +80,6 @@ export function StatisticsOverview({ connections }: StatisticsOverviewProps) {
 
           const data = await response.json()
 
-          // Mock data for indications/strategies (replace with real API when available)
           return {
             connectionId: conn.id,
             connectionName: conn.name,
@@ -126,7 +123,6 @@ export function StatisticsOverview({ connections }: StatisticsOverviewProps) {
       const validStats = results.filter((s) => s !== null) as ConnectionStats[]
       setAllStats(validStats)
 
-      // Calculate aggregate statistics
       if (validStats.length > 0) {
         const aggregate: ConnectionStats = {
           connectionId: "aggregate",
@@ -225,7 +221,6 @@ function StatisticsCards({ stats }: { stats: ConnectionStats }) {
 
   return (
     <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-1">
-      {/* Indications Card */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
@@ -260,7 +255,6 @@ function StatisticsCards({ stats }: { stats: ConnectionStats }) {
         </CardContent>
       </Card>
 
-      {/* Strategies Card */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
@@ -297,7 +291,6 @@ function StatisticsCards({ stats }: { stats: ConnectionStats }) {
         </CardContent>
       </Card>
 
-      {/* Profit Factor Card */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Profit Factor</CardTitle>
@@ -339,7 +332,6 @@ function StatisticsCards({ stats }: { stats: ConnectionStats }) {
         </CardContent>
       </Card>
 
-      {/* Positions & Ratios Card */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Performance</CardTitle>
