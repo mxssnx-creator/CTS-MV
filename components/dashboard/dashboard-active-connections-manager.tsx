@@ -109,18 +109,16 @@ export function DashboardActiveConnectionsManager() {
         const exchange = (conn.exchange || "").toLowerCase().trim()
         const isBase = BASE_EXCHANGES.includes(exchange)
         
-        // IMPORTANT: Active connections show if they're:
-        // 1. A base exchange (bybit, bingx, pionex, orangex, binance, okx), OR
-        // 2. Marked as inserted (is_inserted=1), OR
-        // 3. Dashboard-active (is_enabled_dashboard=1)
-        const isInserted = conn.is_inserted === true || conn.is_inserted === "1" || conn.is_inserted === "true"
-        const isDashboardActive = conn.is_enabled_dashboard === true || conn.is_enabled_dashboard === "1" || conn.is_enabled_dashboard === "true"
-        const isSettingsEnabled = conn.is_enabled === true || conn.is_enabled === "1" || conn.is_enabled === "true"
+        // IMPORTANT: Active connections use ONLY dashboard-specific fields
+        // NOT base connection settings like is_enabled or is_inserted
+        const isDashboardInserted = conn.is_dashboard_inserted === true || conn.is_dashboard_inserted === "1"
+        const isDashboardActive = conn.is_enabled_dashboard === true || conn.is_enabled_dashboard === "1"
 
-        console.log(`[v0] [Manager] ${VERSION}: ${conn.name}: base=${isBase}, inserted=${isInserted}, dashboard_active=${isDashboardActive}`)
+        console.log(`[v0] [Manager] ${VERSION}: ${conn.name}: base=${isBase}, dashboard_inserted=${isDashboardInserted} (raw=${JSON.stringify(conn.is_dashboard_inserted)})`)
 
-        // Show if: it's a base exchange, OR it's inserted, OR it's dashboard-active
-        if (isBase || isInserted || isDashboardActive) {
+        // Show ONLY base connections that are inserted on DASHBOARD
+        // This is completely independent from Settings is_enabled status
+        if (isBase && isDashboardInserted) {
           if (seenIds.has(conn.id)) continue
           seenIds.add(conn.id)
 
@@ -128,12 +126,14 @@ export function DashboardActiveConnectionsManager() {
             id: `active-${conn.id}`,
             connectionId: conn.id,
             exchangeName: conn.exchange ? conn.exchange.charAt(0).toUpperCase() + conn.exchange.slice(1) : "Unknown",
-            isActive: isDashboardActive, // Uses ONLY is_enabled_dashboard
-            isBaseEnabled: isSettingsEnabled,
+            isActive: isDashboardActive, // Uses ONLY dashboard_enabled, not Settings is_enabled
+            isBaseEnabled: true,
             addedAt: conn.created_at || new Date().toISOString(),
             details: conn,
           })
-          console.log(`[v0] [Manager] ${VERSION} ✓ Added ${conn.name}: inserted=${isInserted}, active=${isDashboardActive}`)
+          console.log(`[v0] [Manager] ${VERSION} ✓ Added ${conn.name}: dashboard_inserted=1, dashboard_active=${isDashboardActive}`)
+        } else if (isBase && !isDashboardInserted) {
+          console.log(`[v0] [Manager] ${VERSION} - Skipped ${conn.name}: dashboard_inserted=0`)
         }
       }
       

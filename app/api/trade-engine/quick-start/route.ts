@@ -22,22 +22,22 @@ export async function POST() {
     
     console.log(`[v0] [QuickStart] ${API_VERSION}: Checking ${allConnections.length} connections`)
     
-    // Prefer BingX first (has proven API keys), fallback to bybit
+    // Find ANY BingX connection first (regardless of dashboard status), fallback to bybit
+    // Quick-start will INSERT it to dashboard AND enable it
     const connection = allConnections.find((c: any) => {
       const exch = (c.exchange || "").toLowerCase()
-      const isDashboardInserted = c.is_dashboard_inserted === "1" || c.is_dashboard_inserted === true
-      return exch === "bingx" && isDashboardInserted
+      return exch === "bingx"
     }) || allConnections.find((c: any) => {
       const exch = (c.exchange || "").toLowerCase()
-      const isDashboardInserted = c.is_dashboard_inserted === "1" || c.is_dashboard_inserted === true
-      return exch === "bybit" && isDashboardInserted
+      return exch === "bybit"
     })
     
     if (!connection) {
-      console.log(`[v0] [QuickStart] ${API_VERSION}: ✗ No bybit/bingx connections found on dashboard`)
+      console.log(`[v0] [QuickStart] ${API_VERSION}: ✗ No BingX/Bybit connections found at all`)
       return NextResponse.json(
         { 
-          error: "No BingX/Bybit connections found on dashboard",
+          success: false,
+          error: "No BingX/Bybit connections found",
           message: "Add a BingX or Bybit connection from Settings first",
           availableConnections: allConnections.map((c: any) => ({ 
             name: c.name, 
@@ -49,12 +49,18 @@ export async function POST() {
       )
     }
     
-    // Enable it
+    console.log(`[v0] [QuickStart] ${API_VERSION}: Found ${connection.name} (${connection.exchange})`)
+    
+    // CRITICAL: Set BOTH is_dashboard_inserted AND is_enabled_dashboard
+    // This ensures the connection appears on dashboard AND is active
     const updated = {
       ...connection,
-      is_enabled_dashboard: "1",
+      is_dashboard_inserted: "1",   // Show on dashboard
+      is_enabled_dashboard: "1",    // Enable for trading
       updated_at: new Date().toISOString(),
     }
+    
+    console.log(`[v0] [QuickStart] ${API_VERSION}: Setting is_dashboard_inserted=1 AND is_enabled_dashboard=1`)
     
     await updateConnection(connection.id, updated)
     
