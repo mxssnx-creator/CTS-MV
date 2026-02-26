@@ -4,8 +4,9 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Play, Pause, Square, Activity, Clock, Zap } from "lucide-react"
+import { Play, Pause, Square, Activity, Clock, Zap, Target } from "lucide-react"
 import { toast } from "@/lib/simple-toast"
+import { PresetSelectionDialog } from "./preset-selection-dialog"
 
 interface EngineStatus {
   running: boolean
@@ -32,6 +33,7 @@ export function GlobalTradeEngineControls() {
   const [isPausing, setIsPausing] = useState(false)
   const [isResuming, setIsResuming] = useState(false)
   const [isStopping, setIsStopping] = useState(false)
+  const [presetDialogOpen, setPresetDialogOpen] = useState(false)
 
   useEffect(() => {
     // Load initial status immediately
@@ -183,6 +185,33 @@ export function GlobalTradeEngineControls() {
     }
   }
 
+  const handleSelectPreset = async (presetId: string) => {
+    try {
+      console.log(`[v0] [PresetMode] Activating preset: ${presetId}`)
+      const response = await fetch("/api/presets/activate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ presetId }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        toast.success(`Preset activated: ${data.name || "Preset"}`)
+        
+        // Dispatch event to refresh all UI components
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("preset-activated", { detail: { presetId } }))
+        }
+      } else {
+        const data = await response.json()
+        throw new Error(data.error || "Failed to activate preset")
+      }
+    } catch (error) {
+      console.error("[v0] Failed to activate preset:", error)
+      throw error
+    }
+  }
+
   const formatUptime = (ms: number) => {
     const seconds = Math.floor(ms / 1000)
     const minutes = Math.floor(seconds / 60)
@@ -259,7 +288,24 @@ export function GlobalTradeEngineControls() {
               {isResuming ? "..." : "Resume"}
             </Button>
           )}
+
+          {/* Preset Selection Button */}
+          <Button
+            onClick={() => setPresetDialogOpen(true)}
+            variant="outline"
+            size="sm"
+            className="flex-1 text-xs"
+          >
+            <Target className="h-3 w-3 mr-1" />
+            Preset Mode
+          </Button>
         </div>
+
+        <PresetSelectionDialog
+          open={presetDialogOpen}
+          onOpenChange={setPresetDialogOpen}
+          onSelectPreset={handleSelectPreset}
+        />
       </CardContent>
     </Card>
   )
