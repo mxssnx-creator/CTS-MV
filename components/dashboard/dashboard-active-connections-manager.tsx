@@ -96,7 +96,9 @@ export function DashboardActiveConnectionsManager() {
         return
       }
       const data = await response.json()
+      console.log(`[v0] [Manager] ${VERSION}: API response structure:`, { success: data.success, count: data.count, hasConnections: !!data.connections, connectionType: typeof data.connections })
       const allConnections: Connection[] = Array.isArray(data) ? data : (data?.connections || [])
+      console.log(`[v0] [Manager] ${VERSION}: Parsed ${allConnections.length} connections`)
       
       // Build active connection cards from API data
       const activeConns: ActiveConnectionWithDetails[] = []
@@ -297,6 +299,8 @@ export function DashboardActiveConnectionsManager() {
       </div>
     )
   }
+
+  console.log(`[v0] [Manager] ${VERSION}: Rendering with ${activeConnections.length} active connections`)
 
   return (
     <div className="space-y-4">
