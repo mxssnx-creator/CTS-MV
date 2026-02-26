@@ -20,8 +20,8 @@ export function QuickStartButton() {
     { id: "init", name: "Initialize System", status: "pending" },
     { id: "migrate", name: "Run Migrations", status: "pending" },
     { id: "test", name: "Test BingX Connection", status: "pending" },
-    { id: "enable", name: "Enable BingX on Dashboard", status: "pending" },
     { id: "start", name: "Start Trade Engine", status: "pending" },
+    { id: "enable", name: "Enable BingX on Dashboard", status: "pending" },
   ])
 
   const updateStep = (stepId: string, status: QuickStartStep["status"], message?: string) => {
@@ -65,23 +65,9 @@ export function QuickStartButton() {
       console.log("[v0] [QuickStart] Step 3: BingX connection verified")
       updateStep("test", "success", `Balance: ${testData.balance} USDT`)
 
-      // STEP 4: Enable BingX on Dashboard
-      updateStep("enable", "loading")
-      console.log("[v0] [QuickStart] Step 4: Enabling BingX on dashboard...")
-      const enableRes = await fetch("/api/trade-engine/quick-start", { 
-        method: "POST", 
-        cache: "no-store",
-        headers: { "Content-Type": "application/json" }
-      })
-      if (!enableRes.ok) throw new Error(`Enable failed: ${enableRes.statusText}`)
-      const enableData = await enableRes.json()
-      if (!enableData.success) throw new Error(enableData.error || "Enable failed")
-      console.log("[v0] [QuickStart] Step 4: BingX enabled on dashboard")
-      updateStep("enable", "success", `${enableData.connection.name} enabled`)
-
-      // STEP 5: Start Trade Engine
+      // STEP 4: Start Trade Engine FIRST
       updateStep("start", "loading")
-      console.log("[v0] [QuickStart] Step 5: Starting trade engine...")
+      console.log("[v0] [QuickStart] Step 4: Starting trade engine...")
       const startRes = await fetch("/api/trade-engine/start", { 
         method: "POST",
         cache: "no-store",
@@ -90,8 +76,22 @@ export function QuickStartButton() {
       if (!startRes.ok) throw new Error(`Engine start failed: ${startRes.statusText}`)
       const startData = await startRes.json()
       if (!startData.success) throw new Error(startData.error || "Engine start failed")
-      console.log("[v0] [QuickStart] Step 5: Trade engine started")
+      console.log("[v0] [QuickStart] Step 4: Trade engine started")
       updateStep("start", "success", "Engine running")
+
+      // STEP 5: Enable BingX on Dashboard AFTER engine starts
+      updateStep("enable", "loading")
+      console.log("[v0] [QuickStart] Step 5: Enabling BingX on dashboard...")
+      const enableRes = await fetch("/api/trade-engine/quick-start", { 
+        method: "POST", 
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" }
+      })
+      if (!enableRes.ok) throw new Error(`Enable failed: ${enableRes.statusText}`)
+      const enableData = await enableRes.json()
+      if (!enableData.success) throw new Error(enableData.error || "Enable failed")
+      console.log("[v0] [QuickStart] Step 5: BingX enabled on dashboard")
+      updateStep("enable", "success", `${enableData.connection.name} enabled`)
 
       // Success
       toast.success("Quick Start Complete! Trade engine is running with BingX.")
@@ -195,8 +195,8 @@ export function QuickStartButton() {
             <li>Initialize the complete system</li>
             <li>Run database migrations</li>
             <li>Test BingX connection (0.05 USDT balance available)</li>
+            <li>Start the trade engine</li>
             <li>Enable BingX for active trading</li>
-            <li>Start the trade engine with BingX connection</li>
           </ul>
         </div>
       </CardContent>
