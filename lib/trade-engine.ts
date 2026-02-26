@@ -386,8 +386,8 @@ export class GlobalTradeEngineCoordinator {
    */
   private async ensureEngineState(connectionId: string): Promise<void> {
     try {
-      // Check if state exists in Redis
-      const stateKey = `engine_state:${connectionId}`
+      // Check if state exists in Redis (consistent with engine-manager's updateEngineState)
+      const stateKey = `trade_engine_state:${connectionId}`
       const existing = await getSettings(stateKey)
 
       if (!existing) {

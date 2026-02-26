@@ -4,20 +4,22 @@
  * Calculates position volume ONLY at Exchange level when actual orders are executed
  * This calculator is ONLY used by ExchangePositionManager
  * Base/Main/Real pseudo positions do NOT use volume - they use counts and ratios
+ * 
+ * Redis-native: All data stored in Redis via redis-db
  */
 
-import { sql } from "@/lib/db"
+import { initRedis, getSettings, setSettings, getRedisClient, getConnection } from "@/lib/redis-db"
 
 interface VolumeCalculationParams {
-  baseVolumeFactor?: number // 1-10, where 1 = lowest volume, 10 = highest volume
-  positionsAverage?: number // Target number of running positions
-  riskPercentage?: number // Market movement % that triggers loss at factor 1
-  maxLeverage?: number // Maximum leverage allowed
-  positionCost?: number // Position cost as ratio (e.g., 0.001 = 0.1%)
-  accountBalance: number // Account balance for calculation
-  currentPrice: number // Current market price
-  leverage?: number // Leverage to apply
-  exchangeMinVolume?: number // Exchange minimum volume requirement
+  baseVolumeFactor?: number
+  positionsAverage?: number
+  riskPercentage?: number
+  maxLeverage?: number
+  positionCost?: number
+  accountBalance: number
+  currentPrice: number
+  leverage?: number
+  exchangeMinVolume?: number
 }
 
 interface VolumeCalculationResult {
@@ -25,8 +27,8 @@ interface VolumeCalculationResult {
   finalVolume?: number
   leverage: number
   positionSize?: number
-  volume?: number // Final volume (quantity) to trade
-  volumeUsd?: number // Volume in USD
+  volume?: number
+  volumeUsd?: number
   volumeAdjusted: boolean
   adjustmentReason?: string
   riskAmount?: number
@@ -34,9 +36,7 @@ interface VolumeCalculationResult {
 
 export class VolumeCalculator {
   /**
-   * Calculate position volume with risk management
-   * Simplified to use position cost ratio directly
-   * Base/Main/Real levels pass through ratios/factors, not volumes
+   * Calculate position volume with risk management (pure math, no DB)
    */
   static calculatePositionVolume(params: VolumeCalculationParams): VolumeCalculationResult {
     const {
@@ -56,15 +56,8 @@ export class VolumeCalculator {
     let adjustmentReason: string | undefined
 
     if (positionCost) {
-      // Calculate position size in USD based on position cost ratio
-      // positionCost is a ratio (e.g., 0.001 = 0.1% of account balance)
       const positionSizeUsd = accountBalance * positionCost
-
-      // Calculate volume (quantity) with leverage
-      // Volume = Position Size USD / Current Price (leverage is applied to reduce margin requirement)
       const calculatedVolume = positionSizeUsd / currentPrice
-
-      // Check if volume meets exchange minimum
       finalVolume = calculatedVolume
 
       if (exchangeMinVolume > 0 && calculatedVolume < exchangeMinVolume) {
@@ -86,23 +79,12 @@ export class VolumeCalculator {
       }
 
       const calculatedLeverage = maxLeverage || leverage
-
-      // Calculate risk per position
-      // At factor 1 with positionsAverage positions, can lose if market goes riskPercentage% negative
       const totalRiskAmount = accountBalance * (riskPercentage / 100)
       const riskPerPosition = totalRiskAmount / positionsAverage
-
       const adjustedRisk = riskPerPosition * (baseVolumeFactor || 1)
-
-      // Calculate position size in USD
-      // Position size = risk amount / (risk percentage per position)
       const positionSize = adjustedRisk / (riskPercentage / 100)
-
-      // Calculate volume (quantity) with leverage
-      // Volume = Position Size / (Current Price * Leverage)
       finalVolume = positionSize / (currentPrice * calculatedLeverage)
 
-      // Check if volume meets exchange minimum
       if (exchangeMinVolume > 0 && finalVolume < exchangeMinVolume) {
         finalVolume = exchangeMinVolume
         volumeAdjusted = true
@@ -122,8 +104,7 @@ export class VolumeCalculator {
   }
 
   /**
-   * Calculate volume for a specific connection and symbol
-   * Called ONLY by ExchangePositionManager when mirroring Real positions to exchange
+   * Calculate volume for a specific connection and symbol using Redis settings
    */
   static async calculateVolumeForConnection(
     connectionId: string,
@@ -131,72 +112,52 @@ export class VolumeCalculator {
     currentPrice: number,
   ): Promise<VolumeCalculationResult> {
     try {
-      // Get position cost and leverage from system settings
-      const systemSettings = await sql<{ key: string; value: string }>`
-        SELECT key, value FROM system_settings
-        WHERE key IN ('exchangePositionCost', 'positionCost', 'max_leverage', 'leveragePercentage', 'useMaximalLeverage')
-      `
-      const settingsMap = new Map(systemSettings.map((s) => [s.key, s.value]))
+      await initRedis()
+      const client = getRedisClient()
 
-      // Position cost as percentage (e.g., 0.1 means 0.1%)
-      const positionCostPercent = Number.parseFloat(
-        String(settingsMap.get("exchangePositionCost") || settingsMap.get("positionCost") || "0.1"),
+      // Get settings from Redis
+      const settings = await getSettings("system_settings") || {}
+      const positionCostPercent = parseFloat(
+        String(settings.exchangePositionCost || settings.positionCost || "0.1")
       )
-      // Convert percentage to ratio
       const positionCost = positionCostPercent / 100
 
-      // Calculate effective leverage
-      const leveragePercentage = Number.parseFloat(String(settingsMap.get("leveragePercentage") || "100"))
-      const useMaxLeverage = settingsMap.get("useMaximalLeverage") === "true"
+      const leveragePercentage = parseFloat(String(settings.leveragePercentage || "100"))
+      const useMaxLeverage = settings.useMaximalLeverage === "true"
       const maxLeverage = useMaxLeverage ? 125 : Math.round(125 * (leveragePercentage / 100))
 
-      const [tradingPair] = await sql<{ min_order_size: string }>`
-        SELECT min_order_size FROM trading_pairs
-        WHERE symbol = ${symbol}
-        LIMIT 1
-      `
-
-      const exchangeMinVolume = tradingPair?.min_order_size ? Number.parseFloat(tradingPair.min_order_size) : undefined
+      // Get exchange min volume from Redis trading pair data
+      const tradingPair = await getSettings(`trading_pair:${symbol}`)
+      const exchangeMinVolume = tradingPair?.min_order_size ? parseFloat(tradingPair.min_order_size) : undefined
 
       let accountBalance = 10000 // Default fallback
 
       try {
-        // Try to get balance from connection's stored balance
-        const [connectionBalance] = await sql<{ balance: number }>`
-          SELECT balance FROM connection_balances
-          WHERE connection_id = ${connectionId}
-          ORDER BY updated_at DESC
-          LIMIT 1
-        `
-
-        if (connectionBalance?.balance) {
-          accountBalance = connectionBalance.balance
+        // Try to get cached balance from Redis
+        const cachedBalance = await getSettings(`connection_balance:${connectionId}`)
+        if (cachedBalance?.balance) {
+          accountBalance = parseFloat(String(cachedBalance.balance))
         } else {
           // Try to fetch from exchange via connector
-          const [connection] = await sql<any>`
-            SELECT * FROM connections WHERE id = ${connectionId}
-          `
-
-          if (connection?.api_key && connection?.api_secret) {
+          const connection = await getConnection(connectionId)
+          if (connection?.api_key && connection?.api_secret
+            && !connection.api_key.includes("PLACEHOLDER")
+            && connection.api_key.length >= 20) {
             const { createExchangeConnector } = await import("@/lib/exchange-connectors")
             const connector = await createExchangeConnector(connection.exchange, {
               apiKey: connection.api_key,
               apiSecret: connection.api_secret,
-              isTestnet: connection.is_testnet,
+              isTestnet: connection.is_testnet === true || connection.is_testnet === "true",
             })
 
             const balanceResult = await connector.getBalance()
             if (balanceResult?.balance) {
               accountBalance = balanceResult.balance
-
-              // Cache the balance
-              await sql`
-                INSERT INTO connection_balances (connection_id, balance, updated_at)
-                VALUES (${connectionId}, ${accountBalance}, CURRENT_TIMESTAMP)
-                ON CONFLICT (connection_id) DO UPDATE SET
-                  balance = EXCLUDED.balance,
-                  updated_at = CURRENT_TIMESTAMP
-              `
+              // Cache the balance in Redis
+              await setSettings(`connection_balance:${connectionId}`, {
+                balance: accountBalance,
+                updated_at: new Date().toISOString(),
+              })
             }
           }
         }
@@ -204,7 +165,6 @@ export class VolumeCalculator {
         console.warn("[v0] Failed to fetch account balance, using default:", balanceError)
       }
 
-      // Calculate volume
       const result = this.calculatePositionVolume({
         positionCost,
         accountBalance,
@@ -212,8 +172,6 @@ export class VolumeCalculator {
         leverage: maxLeverage,
         exchangeMinVolume,
       })
-
-      console.log(`[v0] Exchange volume calculated for ${symbol}: ${result.volume} (${result.volumeUsd} USD)`)
 
       return result
     } catch (error) {
@@ -223,7 +181,7 @@ export class VolumeCalculator {
   }
 
   /**
-   * Log volume calculation to database
+   * Log volume calculation to Redis
    */
   static async logVolumeCalculation(
     connectionId: string,
@@ -231,47 +189,54 @@ export class VolumeCalculator {
     calculation: VolumeCalculationResult,
   ): Promise<void> {
     try {
-      await sql`
-        INSERT INTO position_volume_calculations (
-          connection_id, symbol, base_volume_factor, leverage,
-          calculated_volume, final_volume,
-          volume_adjusted, adjustment_reason
-        )
-        VALUES (
-          ${connectionId}, ${symbol}, ${calculation.positionSize ? calculation.positionSize / 1000 : 0}, ${calculation.leverage},
-          ${calculation.calculatedVolume}, ${calculation.finalVolume},
-          ${calculation.volumeAdjusted}, ${calculation.adjustmentReason || null}
-        )
-      `
+      await initRedis()
+      const client = getRedisClient()
+      const logId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      const logKey = `volume_calc:${connectionId}:${logId}`
+
+      await client.set(logKey, JSON.stringify({
+        connection_id: connectionId,
+        symbol,
+        leverage: calculation.leverage,
+        calculated_volume: calculation.calculatedVolume,
+        final_volume: calculation.finalVolume || calculation.volume,
+        volume_usd: calculation.volumeUsd,
+        volume_adjusted: calculation.volumeAdjusted,
+        adjustment_reason: calculation.adjustmentReason || null,
+        created_at: new Date().toISOString(),
+      }))
+
+      // Add to sorted set for time-ordered lookups (auto-expire after 7 days)
+      await client.zadd(`volume_calcs:${connectionId}`, Date.now(), logId)
     } catch (error) {
       console.error("[v0] Failed to log volume calculation:", error)
     }
   }
 
   /**
-   * Get volume calculation history
+   * Get volume calculation history from Redis
    */
-  static async getVolumeHistory(connectionId: string, symbol?: string, limit = 100) {
+  static async getVolumeHistory(connectionId: string, _symbol?: string, limit = 100) {
     try {
-      let query = sql`
-        SELECT * FROM position_volume_calculations
-        WHERE connection_id = ${connectionId}
-      `
+      await initRedis()
+      const client = getRedisClient()
 
-      if (symbol) {
-        query = sql`
-          SELECT * FROM position_volume_calculations
-          WHERE connection_id = ${connectionId} AND symbol = ${symbol}
-        `
+      // Get recent log IDs from sorted set
+      const logIds = await client.zrange(`volume_calcs:${connectionId}`, -limit, -1)
+      if (!logIds || logIds.length === 0) return []
+
+      const history = []
+      for (const logId of logIds.reverse()) {
+        const data = await client.get(`volume_calc:${connectionId}:${logId}`)
+        if (data) {
+          const parsed = typeof data === "string" ? JSON.parse(data) : data
+          if (!_symbol || parsed.symbol === _symbol) {
+            history.push(parsed)
+          }
+        }
       }
 
-      const history = await sql`
-        ${query}
-        ORDER BY created_at DESC
-        LIMIT ${limit}
-      `
-
-      return history
+      return history.slice(0, limit)
     } catch (error) {
       console.error("[v0] Failed to get volume history:", error)
       return []
@@ -279,7 +244,7 @@ export class VolumeCalculator {
   }
 
   /**
-   * Calculate risk metrics for a position
+   * Calculate risk metrics for a position (pure math, no DB)
    */
   static calculateRiskMetrics(params: {
     entryPrice: number
@@ -292,10 +257,8 @@ export class VolumeCalculator {
   }) {
     const { entryPrice, currentPrice, volume, leverage, side, stopLossPrice, takeProfitPrice } = params
 
-    // Calculate position value
     const positionValue = volume * currentPrice
 
-    // Calculate unrealized PnL
     let unrealizedPnL = 0
     if (side === "long") {
       unrealizedPnL = (currentPrice - entryPrice) * volume * leverage
@@ -303,10 +266,8 @@ export class VolumeCalculator {
       unrealizedPnL = (entryPrice - currentPrice) * volume * leverage
     }
 
-    // Calculate unrealized PnL percentage
     const unrealizedPnLPercent = (unrealizedPnL / (entryPrice * volume)) * 100
 
-    // Calculate potential loss if stop loss hit
     let potentialLoss = 0
     if (stopLossPrice) {
       if (side === "long") {
@@ -316,7 +277,6 @@ export class VolumeCalculator {
       }
     }
 
-    // Calculate potential profit if take profit hit
     let potentialProfit = 0
     if (takeProfitPrice) {
       if (side === "long") {
@@ -326,7 +286,6 @@ export class VolumeCalculator {
       }
     }
 
-    // Calculate risk/reward ratio
     let riskRewardRatio = 0
     if (potentialLoss !== 0) {
       riskRewardRatio = Math.abs(potentialProfit / potentialLoss)

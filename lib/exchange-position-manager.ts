@@ -1,4 +1,12 @@
-import { sql, query as dbQuery } from "@/lib/db"
+/**
+ * Exchange Position Manager
+ * Redis-native: All data stored in Redis via redis-db
+ *
+ * SYSTEM INTERNAL - FOR REAL STRATEGY MIRRORING ONLY
+ * Logs actual exchange live positions for history and statistics.
+ */
+
+import { initRedis, getRedisClient, getSettings, setSettings } from "@/lib/redis-db"
 import { VolumeCalculator } from "./volume-calculator"
 
 export interface ExchangePositionCreateParams {
@@ -40,21 +48,6 @@ export interface ExchangePositionCloseParams {
   closeReason: "take_profit" | "stop_loss" | "manual" | "liquidated" | "trailing_stop"
 }
 
-/**
- * Exchange Position Manager
- *
- * SYSTEM INTERNAL - FOR REAL STRATEGY MIRRORING ONLY
- *
- * Purpose: Log actual exchange live positions for history and statistics.
- * This data is used to:
- * - Compare differences between Real mirroring pseudo positions and actual exchange positions
- * - Generate statistics of live trades independent from exchange history retrieval
- * - Track performance metrics per connection (connection_id)
- * - Monitor position coordination events and sync status
- *
- * NOTE: This is NOT displayed in Settings/Strategy - it's purely system internal logging.
- * Each active connection operates independently with its own exchange position data.
- */
 export class ExchangePositionManager {
   private connectionId: string
 
@@ -64,44 +57,72 @@ export class ExchangePositionManager {
 
   /**
    * Mirror a Real Pseudo Position to Active Exchange Position
-   * Called when position is validated and ready for exchange
    */
   async mirrorToExchange(params: ExchangePositionCreateParams): Promise<string> {
     const positionId = `aex_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 
     try {
+      await initRedis()
+      const client = getRedisClient()
+
       const volumeResult = await VolumeCalculator.calculateVolumeForConnection(
         params.connectionId,
         params.symbol,
         params.entryPrice,
       )
 
-      // Use calculated volume and leverage from volume calculator
       const finalQuantity = volumeResult.volume
       const finalVolumeUsd = volumeResult.volumeUsd
       const finalLeverage = volumeResult.leverage
 
-      await sql`
-        INSERT INTO active_exchange_positions (
-          id, connection_id, real_pseudo_position_id, main_pseudo_position_id,
-          base_pseudo_position_id, exchange_id, exchange_order_id, symbol, side,
-          entry_price, current_price, quantity, volume_usd, leverage,
-          takeprofit, stoploss, trailing_enabled, trail_start, trail_stop,
-          trade_mode, indication_type, status, sync_status
-        )
-        VALUES (
-          ${positionId}, ${params.connectionId}, ${params.realPseudoPositionId},
-          ${params.mainPseudoPositionId || null}, ${params.basePseudoPositionId || null},
-          ${params.exchangeId}, ${params.exchangeOrderId || null}, ${params.symbol},
-          ${params.side}, ${params.entryPrice}, ${params.entryPrice}, ${finalQuantity},
-          ${finalVolumeUsd}, ${finalLeverage}, ${params.takeprofit || null},
-          ${params.stoploss || null}, ${params.trailingEnabled ? 1 : 0},
-          ${params.trailStart || null}, ${params.trailStop || null}, ${params.tradeMode},
-          ${params.indicationType || null}, 'open', 'synced'
-        )
-      `
+      const position = {
+        id: positionId,
+        connection_id: params.connectionId,
+        real_pseudo_position_id: params.realPseudoPositionId,
+        main_pseudo_position_id: params.mainPseudoPositionId || null,
+        base_pseudo_position_id: params.basePseudoPositionId || null,
+        exchange_id: params.exchangeId,
+        exchange_order_id: params.exchangeOrderId || null,
+        symbol: params.symbol,
+        side: params.side,
+        entry_price: params.entryPrice,
+        current_price: params.entryPrice,
+        quantity: finalQuantity,
+        volume_usd: finalVolumeUsd,
+        leverage: finalLeverage,
+        takeprofit: params.takeprofit || null,
+        stoploss: params.stoploss || null,
+        trailing_enabled: params.trailingEnabled || false,
+        trail_start: params.trailStart || null,
+        trail_stop: params.trailStop || null,
+        trail_activated: false,
+        trail_high_price: null,
+        trade_mode: params.tradeMode,
+        indication_type: params.indicationType || null,
+        status: "open",
+        sync_status: "synced",
+        unrealized_pnl: 0,
+        realized_pnl: 0,
+        fees_paid: 0,
+        funding_fees: 0,
+        max_profit: 0,
+        max_loss: 0,
+        max_drawdown: 0,
+        price_high: params.entryPrice,
+        price_low: params.entryPrice,
+        opened_at: new Date().toISOString(),
+        closed_at: null,
+        hold_duration_seconds: 0,
+      }
 
-      // Log coordination event
+      await setSettings(`exchange_position:${positionId}`, position)
+      await client.sadd(`exchange_positions:${params.connectionId}`, positionId)
+      await client.sadd(`exchange_positions:${params.connectionId}:open`, positionId)
+      await client.sadd(`exchange_positions:${params.connectionId}:${params.symbol}`, positionId)
+
+      // Index by exchange ID for fast lookups
+      await setSettings(`exchange_position_by_eid:${params.exchangeId}`, { id: positionId })
+
       await this.logCoordinationEvent({
         connectionId: params.connectionId,
         exchangePositionId: positionId,
@@ -116,10 +137,7 @@ export class ExchangePositionManager {
         triggeredBy: "system",
       })
 
-      console.log(
-        `[v0] Mirrored position to exchange: ${positionId} (Volume: ${finalQuantity}, USD: ${finalVolumeUsd}, Leverage: ${finalLeverage}x)`,
-      )
-
+      console.log(`[v0] Mirrored position to exchange: ${positionId} (Vol: ${finalQuantity}, USD: ${finalVolumeUsd}, Lev: ${finalLeverage}x)`)
       return positionId
     } catch (error) {
       console.error("[v0] Failed to mirror position to exchange:", error)
@@ -129,35 +147,31 @@ export class ExchangePositionManager {
 
   /**
    * Update exchange position with current market data
-   * Called periodically to sync position state
    */
   async updatePosition(exchangeId: string, updates: ExchangePositionUpdateParams): Promise<void> {
     const startTime = Date.now()
 
     try {
-      // Get current position state
-      const [position] = await sql<any>`
-        SELECT * FROM active_exchange_positions
-        WHERE exchange_id = ${exchangeId} AND status = 'open'
-      `
+      await initRedis()
 
-      if (!position) {
+      // Find position by exchange ID
+      const lookup = await getSettings(`exchange_position_by_eid:${exchangeId}`)
+      if (!lookup?.id) {
         console.warn(`[v0] Position not found for exchange ID: ${exchangeId}`)
         return
       }
 
-      // Calculate statistics
+      const position = await getSettings(`exchange_position:${lookup.id}`)
+      if (!position || position.status !== "open") return
+
       const pnlChange = updates.unrealizedPnl - (position.unrealized_pnl || 0)
       const maxProfit = Math.max(position.max_profit || 0, updates.unrealizedPnl)
       const maxLoss = Math.min(position.max_loss || 0, updates.unrealizedPnl)
       const priceHigh = Math.max(position.price_high || position.entry_price, updates.currentPrice)
       const priceLow = Math.min(position.price_low || position.entry_price, updates.currentPrice)
-
-      // Calculate drawdown from peak
       const currentDrawdown = maxProfit > 0 ? ((maxProfit - updates.unrealizedPnl) / maxProfit) * 100 : 0
       const maxDrawdown = Math.max(position.max_drawdown || 0, currentDrawdown)
 
-      // Check trailing stop
       let trailActivated = position.trail_activated
       let trailHighPrice = position.trail_high_price
 
@@ -173,91 +187,87 @@ export class ExchangePositionManager {
         trailHighPrice = updates.currentPrice
       }
 
-      // Update position
-      await sql`
-        UPDATE active_exchange_positions
-        SET
-          current_price = ${updates.currentPrice},
-          unrealized_pnl = ${updates.unrealizedPnl},
-          realized_pnl = ${updates.realizedPnl || position.realized_pnl},
-          fees_paid = ${updates.feesPaid || position.fees_paid},
-          funding_fees = ${updates.fundingFees || position.funding_fees},
-          max_profit = ${maxProfit},
-          max_loss = ${maxLoss},
-          max_drawdown = ${maxDrawdown},
-          price_high = ${priceHigh},
-          price_low = ${priceLow},
-          trail_activated = ${trailActivated ? 1 : 0},
-          trail_high_price = ${trailHighPrice},
-          last_updated_at = CURRENT_TIMESTAMP,
-          last_sync_at = CURRENT_TIMESTAMP,
-          sync_status = 'synced'
-        WHERE exchange_id = ${exchangeId}
-      `
+      await setSettings(`exchange_position:${lookup.id}`, {
+        ...position,
+        current_price: updates.currentPrice,
+        unrealized_pnl: updates.unrealizedPnl,
+        realized_pnl: updates.realizedPnl ?? position.realized_pnl,
+        fees_paid: updates.feesPaid ?? position.fees_paid,
+        funding_fees: updates.fundingFees ?? position.funding_fees,
+        max_profit: maxProfit,
+        max_loss: maxLoss,
+        max_drawdown: maxDrawdown,
+        price_high: priceHigh,
+        price_low: priceLow,
+        trail_activated: trailActivated,
+        trail_high_price: trailHighPrice,
+        last_updated_at: new Date().toISOString(),
+        last_sync_at: new Date().toISOString(),
+        sync_status: "synced",
+      })
 
-      // Log price update
       await this.logCoordinationEvent({
         connectionId: position.connection_id,
-        exchangePositionId: position.id,
+        exchangePositionId: lookup.id,
         exchangeId,
         eventType: "price_updated",
-        eventData: JSON.stringify({
-          price: updates.currentPrice,
-          pnl: updates.unrealizedPnl,
-          pnlChange,
-        }),
+        eventData: JSON.stringify({ price: updates.currentPrice, pnl: updates.unrealizedPnl, pnlChange }),
         processingDurationMs: Date.now() - startTime,
         triggeredBy: "system",
       })
     } catch (error) {
       console.error(`[v0] Failed to update position ${exchangeId}:`, error)
 
-      // Mark sync error
-      await sql`
-        UPDATE active_exchange_positions
-        SET
-          sync_status = 'error',
-          sync_error_message = ${error instanceof Error ? error.message : "Unknown error"},
-          sync_retry_count = sync_retry_count + 1
-        WHERE exchange_id = ${exchangeId}
-      `
-
+      const lookup = await getSettings(`exchange_position_by_eid:${exchangeId}`)
+      if (lookup?.id) {
+        const pos = await getSettings(`exchange_position:${lookup.id}`)
+        if (pos) {
+          await setSettings(`exchange_position:${lookup.id}`, {
+            ...pos,
+            sync_status: "error",
+            sync_error_message: error instanceof Error ? error.message : "Unknown error",
+            sync_retry_count: (pos.sync_retry_count || 0) + 1,
+          })
+        }
+      }
       throw error
     }
   }
 
   /**
    * Close exchange position
-   * Called when position hits TP/SL or manually closed
    */
   async closePosition(exchangeId: string, closeParams: ExchangePositionCloseParams): Promise<void> {
     try {
-      const [position] = await sql<any>`
-        SELECT * FROM active_exchange_positions
-        WHERE exchange_id = ${exchangeId} AND status = 'open'
-      `
+      await initRedis()
+      const client = getRedisClient()
 
-      if (!position) {
+      const lookup = await getSettings(`exchange_position_by_eid:${exchangeId}`)
+      if (!lookup?.id) {
         console.warn(`[v0] Position not found for closing: ${exchangeId}`)
         return
       }
 
+      const position = await getSettings(`exchange_position:${lookup.id}`)
+      if (!position || position.status !== "open") return
+
       const holdDuration = Math.floor((Date.now() - new Date(position.opened_at).getTime()) / 1000)
 
-      await sql`
-        UPDATE active_exchange_positions
-        SET
-          current_price = ${closeParams.closedPrice},
-          realized_pnl = ${closeParams.realizedPnl},
-          fees_paid = ${closeParams.feesPaid},
-          status = 'closed',
-          closed_at = CURRENT_TIMESTAMP,
-          hold_duration_seconds = ${holdDuration},
-          last_updated_at = CURRENT_TIMESTAMP
-        WHERE exchange_id = ${exchangeId}
-      `
+      await setSettings(`exchange_position:${lookup.id}`, {
+        ...position,
+        current_price: closeParams.closedPrice,
+        realized_pnl: closeParams.realizedPnl,
+        fees_paid: closeParams.feesPaid,
+        status: "closed",
+        closed_at: new Date().toISOString(),
+        hold_duration_seconds: holdDuration,
+        last_updated_at: new Date().toISOString(),
+      })
 
-      // Update statistics
+      // Move from open set to closed set
+      await client.srem(`exchange_positions:${position.connection_id}:open`, lookup.id)
+      await client.sadd(`exchange_positions:${position.connection_id}:closed`, lookup.id)
+
       await this.updateStatistics(
         position.connection_id,
         position.symbol,
@@ -265,10 +275,9 @@ export class ExchangePositionManager {
         position.trade_mode,
       )
 
-      // Log coordination event
       await this.logCoordinationEvent({
         connectionId: position.connection_id,
-        exchangePositionId: position.id,
+        exchangePositionId: lookup.id,
         exchangeId,
         eventType: closeParams.closeReason.includes("profit")
           ? "take_profit_hit"
@@ -279,9 +288,7 @@ export class ExchangePositionManager {
         triggeredBy: closeParams.closeReason === "manual" ? "manual" : "system",
       })
 
-      console.log(
-        `[v0] Closed position ${exchangeId} (Reason: ${closeParams.closeReason}, PnL: ${closeParams.realizedPnl})`,
-      )
+      console.log(`[v0] Closed position ${exchangeId} (Reason: ${closeParams.closeReason}, PnL: ${closeParams.realizedPnl})`)
     } catch (error) {
       console.error(`[v0] Failed to close position ${exchangeId}:`, error)
       throw error
@@ -289,7 +296,7 @@ export class ExchangePositionManager {
   }
 
   /**
-   * Update statistics for a symbol/indication type combination
+   * Update statistics using Redis
    */
   private async updateStatistics(
     connectionId: string,
@@ -298,130 +305,61 @@ export class ExchangePositionManager {
     tradeMode: "preset" | "main",
   ): Promise<void> {
     try {
-      // Calculate statistics for last 24 hours
-      const periodStart = new Date(Date.now() - 24 * 60 * 60 * 1000)
-      const periodEnd = new Date()
+      await initRedis()
+      const client = getRedisClient()
 
-      const positions = await sql<any>`
-        SELECT
-          id, side, entry_price, current_price, quantity, realized_pnl,
-          fees_paid, max_profit, max_loss, max_drawdown, hold_duration_seconds,
-          status, opened_at, closed_at
-        FROM active_exchange_positions
-        WHERE connection_id = ${connectionId}
-          AND symbol = ${symbol}
-          AND indication_type IS ${indicationType}
-          AND trade_mode = ${tradeMode}
-          AND opened_at >= ${periodStart.toISOString()}
-        ORDER BY opened_at DESC
-      `
+      // Get all positions for this connection+symbol from the last 24h
+      const allPosIds = await client.smembers(`exchange_positions:${connectionId}:${symbol}`)
+      const periodStart = Date.now() - 24 * 60 * 60 * 1000
+      const positions: any[] = []
+
+      for (const posId of allPosIds) {
+        const pos = await getSettings(`exchange_position:${posId}`)
+        if (!pos) continue
+        if (pos.indication_type !== indicationType || pos.trade_mode !== tradeMode) continue
+        if (new Date(pos.opened_at).getTime() < periodStart) continue
+        positions.push(pos)
+      }
 
       if (positions.length === 0) return
 
-      // Calculate metrics
-      const totalPositions = positions.length
-      const winningPositions = positions.filter((p: any) => p.realized_pnl > 0).length
-      const losingPositions = positions.filter((p: any) => p.realized_pnl < 0).length
-      const closedPositions = positions.filter((p: any) => p.status === "closed")
+      const closedPositions = positions.filter((p) => p.status === "closed")
+      const winningPositions = closedPositions.filter((p) => (p.realized_pnl || 0) > 0).length
+      const losingPositions = closedPositions.filter((p) => (p.realized_pnl || 0) < 0).length
 
-      const totalPnl = closedPositions.reduce((sum: number, p: any) => sum + p.realized_pnl, 0)
-      const totalFees = closedPositions.reduce((sum: number, p: any) => sum + p.fees_paid, 0)
+      const totalPnl = closedPositions.reduce((sum, p) => sum + (p.realized_pnl || 0), 0)
+      const totalFees = closedPositions.reduce((sum, p) => sum + (p.fees_paid || 0), 0)
       const netPnl = totalPnl - totalFees
 
-      const winRate =
-        losingPositions + winningPositions > 0 ? winningPositions / (winningPositions + losingPositions) : 0
+      const winRate = (winningPositions + losingPositions) > 0 ? winningPositions / (winningPositions + losingPositions) : 0
 
-      const totalWins = closedPositions
-        .filter((p: any) => p.realized_pnl > 0)
-        .reduce((sum: number, p: any) => sum + p.realized_pnl, 0)
-      const totalLosses = Math.abs(
-        closedPositions.filter((p: any) => p.realized_pnl < 0).reduce((sum: number, p: any) => sum + p.realized_pnl, 0),
-      )
+      const totalWins = closedPositions.filter((p) => (p.realized_pnl || 0) > 0).reduce((sum, p) => sum + (p.realized_pnl || 0), 0)
+      const totalLosses = Math.abs(closedPositions.filter((p) => (p.realized_pnl || 0) < 0).reduce((sum, p) => sum + (p.realized_pnl || 0), 0))
       const profitFactor = totalLosses > 0 ? totalWins / totalLosses : totalWins > 0 ? 999 : 0
 
-      const avgWinningPnl =
-        winningPositions > 0
-          ? closedPositions
-              .filter((p: any) => p.realized_pnl > 0)
-              .reduce((sum: number, p: any) => sum + p.realized_pnl, 0) / winningPositions
-          : 0
-
-      const avgLosingPnl =
-        losingPositions > 0
-          ? closedPositions
-              .filter((p: any) => p.realized_pnl < 0)
-              .reduce((sum: number, p: any) => sum + p.realized_pnl, 0) / losingPositions
-          : 0
-
-      const avgHoldDuration =
-        closedPositions.length > 0
-          ? closedPositions.reduce((sum: number, p: any) => sum + (p.hold_duration_seconds || 0), 0) /
-            closedPositions.length
-          : 0
-
-      const bestTrade = Math.max(...closedPositions.map((p: any) => p.realized_pnl || 0))
-      const worstTrade = Math.min(...closedPositions.map((p: any) => p.realized_pnl || 0))
-      const maxDrawdown = Math.max(...positions.map((p: any) => p.max_drawdown || 0))
-
-      const totalVolume = positions.reduce((sum: number, p: any) => sum + p.entry_price * p.quantity, 0)
-      const avgPositionSize = totalPositions > 0 ? totalVolume / totalPositions : 0
-
-      // Upsert statistics
-      const statsId = `stats_${connectionId}_${symbol}_${indicationType || "preset"}_${tradeMode}_${periodStart.getTime()}`
-
-      await sql`
-        INSERT INTO exchange_position_statistics (
-          id, connection_id, symbol, indication_type, trade_mode,
-          period_start, period_end, period_hours,
-          total_positions, winning_positions, losing_positions,
-          total_pnl, total_fees, net_pnl, win_rate, profit_factor,
-          avg_winning_pnl, avg_losing_pnl, avg_hold_duration_seconds,
-          best_trade_pnl, worst_trade_pnl, max_drawdown,
-          total_volume_usd, avg_position_size_usd,
-          last_calculated_at, position_count_at_calc
-        )
-        VALUES (
-          ${statsId}, ${connectionId}, ${symbol}, ${indicationType}, ${tradeMode},
-          ${periodStart.toISOString()}, ${periodEnd.toISOString()}, 24,
-          ${totalPositions}, ${winningPositions}, ${losingPositions},
-          ${totalPnl}, ${totalFees}, ${netPnl}, ${winRate}, ${profitFactor},
-          ${avgWinningPnl}, ${avgLosingPnl}, ${Math.floor(avgHoldDuration)},
-          ${bestTrade}, ${worstTrade}, ${maxDrawdown},
-          ${totalVolume}, ${avgPositionSize},
-          CURRENT_TIMESTAMP, ${totalPositions}
-        )
-        ON CONFLICT (connection_id, symbol, indication_type, trade_mode, period_start)
-        DO UPDATE SET
-          total_positions = ${totalPositions},
-          winning_positions = ${winningPositions},
-          losing_positions = ${losingPositions},
-          total_pnl = ${totalPnl},
-          total_fees = ${totalFees},
-          net_pnl = ${netPnl},
-          win_rate = ${winRate},
-          profit_factor = ${profitFactor},
-          avg_winning_pnl = ${avgWinningPnl},
-          avg_losing_pnl = ${avgLosingPnl},
-          avg_hold_duration_seconds = ${Math.floor(avgHoldDuration)},
-          best_trade_pnl = ${bestTrade},
-          worst_trade_pnl = ${worstTrade},
-          max_drawdown = ${maxDrawdown},
-          total_volume_usd = ${totalVolume},
-          avg_position_size_usd = ${avgPositionSize},
-          last_calculated_at = CURRENT_TIMESTAMP,
-          position_count_at_calc = ${totalPositions}
-      `
-
-      console.log(
-        `[v0] Updated statistics for ${symbol} (${indicationType || "preset"}/${tradeMode}): ${totalPositions} positions, ${winRate.toFixed(2)} win rate`,
-      )
+      const statsKey = `exchange_stats:${connectionId}:${symbol}:${indicationType || "preset"}:${tradeMode}`
+      await setSettings(statsKey, {
+        connection_id: connectionId,
+        symbol,
+        indication_type: indicationType,
+        trade_mode: tradeMode,
+        total_positions: positions.length,
+        winning_positions: winningPositions,
+        losing_positions: losingPositions,
+        total_pnl: totalPnl,
+        total_fees: totalFees,
+        net_pnl: netPnl,
+        win_rate: winRate,
+        profit_factor: profitFactor,
+        last_calculated_at: new Date().toISOString(),
+      })
     } catch (error) {
       console.error("[v0] Failed to update statistics:", error)
     }
   }
 
   /**
-   * Log coordination event
+   * Log coordination event to Redis
    */
   private async logCoordinationEvent(params: {
     connectionId: string
@@ -437,27 +375,35 @@ export class ExchangePositionManager {
     triggeredBy: string
   }): Promise<void> {
     try {
-      await sql`
-        INSERT INTO exchange_position_coordination_log (
-          connection_id, exchange_position_id, exchange_id, event_type,
-          event_data, old_state, new_state, success, error_message,
-          processing_duration_ms, triggered_by
-        )
-        VALUES (
-          ${params.connectionId}, ${params.exchangePositionId || null},
-          ${params.exchangeId}, ${params.eventType}, ${params.eventData || null},
-          ${params.oldState || null}, ${params.newState || null},
-          ${params.success !== false ? 1 : 0}, ${params.errorMessage || null},
-          ${params.processingDurationMs || null}, ${params.triggeredBy}
-        )
-      `
+      await initRedis()
+      const client = getRedisClient()
+      const logId = `coord_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+
+      await setSettings(`coord_log:${params.connectionId}:${logId}`, {
+        ...params,
+        success: params.success !== false,
+        timestamp: new Date().toISOString(),
+      })
+
+      // Sorted set for time-ordered lookups
+      await client.zadd(`coord_logs:${params.connectionId}`, Date.now(), logId)
+
+      // Trim to last 500 entries
+      const count = await client.zcard(`coord_logs:${params.connectionId}`)
+      if (count > 500) {
+        const toRemove = await client.zrange(`coord_logs:${params.connectionId}`, 0, count - 501)
+        for (const id of toRemove) {
+          await client.del(`coord_log:${params.connectionId}:${id}`)
+        }
+        await client.zremrangebyrank(`coord_logs:${params.connectionId}`, 0, count - 501)
+      }
     } catch (error) {
       console.error("[v0] Failed to log coordination event:", error)
     }
   }
 
   /**
-   * Get active positions for a connection
+   * Get active positions for a connection from Redis
    */
   async getActivePositions(filters?: {
     symbol?: string
@@ -465,77 +411,68 @@ export class ExchangePositionManager {
     tradeMode?: "preset" | "main"
     indicationType?: string
   }): Promise<any[]> {
-    let query = `
-      SELECT * FROM v_active_exchange_positions_monitoring
-      WHERE connection_id = $1
-    `
-    const params: any[] = [this.connectionId]
-    let paramIndex = 2
+    try {
+      await initRedis()
+      const client = getRedisClient()
 
-    if (filters?.symbol) {
-      query += ` AND symbol = $${paramIndex++}`
-      params.push(filters.symbol)
+      const openIds = await client.smembers(`exchange_positions:${this.connectionId}:open`)
+      const positions: any[] = []
+
+      for (const posId of openIds) {
+        const pos = await getSettings(`exchange_position:${posId}`)
+        if (!pos) continue
+
+        if (filters?.symbol && pos.symbol !== filters.symbol) continue
+        if (filters?.side && pos.side !== filters.side) continue
+        if (filters?.tradeMode && pos.trade_mode !== filters.tradeMode) continue
+        if (filters?.indicationType && pos.indication_type !== filters.indicationType) continue
+
+        positions.push(pos)
+      }
+
+      return positions.sort((a, b) => new Date(b.opened_at).getTime() - new Date(a.opened_at).getTime())
+    } catch (error) {
+      console.error("[v0] Failed to get active positions:", error)
+      return []
     }
-
-    if (filters?.side) {
-      query += ` AND side = $${paramIndex++}`
-      params.push(filters.side)
-    }
-
-    if (filters?.tradeMode) {
-      query += ` AND trade_mode = $${paramIndex++}`
-      params.push(filters.tradeMode)
-    }
-
-    if (filters?.indicationType) {
-      query += ` AND indication_type = $${paramIndex++}`
-      params.push(filters.indicationType)
-    }
-
-    query += ` ORDER BY opened_at DESC`
-
-    const positions = await dbQuery(query, params)
-    return positions as any[]
   }
 
   /**
-   * Get statistics for a symbol
+   * Get statistics for a symbol from Redis
    */
-  async getStatistics(symbol: string, indicationType?: string, hours = 24): Promise<any> {
-    const periodStart = new Date(Date.now() - hours * 60 * 60 * 1000)
-
-    const [stats] = await sql<any>`
-      SELECT * FROM exchange_position_statistics
-      WHERE connection_id = ${this.connectionId}
-        AND symbol = ${symbol}
-        AND indication_type IS ${indicationType || null}
-        AND period_start >= ${periodStart.toISOString()}
-      ORDER BY period_start DESC
-      LIMIT 1
-    `
-
-    return stats || null
+  async getStatistics(symbol: string, indicationType?: string, _hours = 24): Promise<any> {
+    try {
+      await initRedis()
+      const statsKey = `exchange_stats:${this.connectionId}:${symbol}:${indicationType || "preset"}:preset`
+      return await getSettings(statsKey) || null
+    } catch (error) {
+      console.error("[v0] Failed to get statistics:", error)
+      return null
+    }
   }
 
   /**
-   * Get coordination logs for debugging
+   * Get coordination logs from Redis
    */
   async getCoordinationLogs(exchangeId?: string, limit = 100): Promise<any[]> {
-    if (exchangeId) {
-      return await sql<any>`
-        SELECT * FROM exchange_position_coordination_log
-        WHERE connection_id = ${this.connectionId}
-          AND exchange_id = ${exchangeId}
-        ORDER BY event_timestamp DESC
-        LIMIT ${limit}
-      `
-    }
+    try {
+      await initRedis()
+      const client = getRedisClient()
 
-    return await sql<any>`
-      SELECT * FROM exchange_position_coordination_log
-      WHERE connection_id = ${this.connectionId}
-      ORDER BY event_timestamp DESC
-      LIMIT ${limit}
-    `
+      const logIds = await client.zrange(`coord_logs:${this.connectionId}`, -limit, -1)
+      const logs: any[] = []
+
+      for (const logId of logIds.reverse()) {
+        const log = await getSettings(`coord_log:${this.connectionId}:${logId}`)
+        if (!log) continue
+        if (exchangeId && log.exchangeId !== exchangeId) continue
+        logs.push(log)
+      }
+
+      return logs.slice(0, limit)
+    } catch (error) {
+      console.error("[v0] Failed to get coordination logs:", error)
+      return []
+    }
   }
 }

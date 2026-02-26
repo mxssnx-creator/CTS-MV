@@ -1,47 +1,48 @@
 /**
  * Positions Cache Optimizer
  * Provides O(1) indexed lookups for pseudo positions using Redis
- * Optimizes for high-frequency access patterns with 250+ positions
+ * Redis-native: No SQL fallback needed, all data lives in Redis
  */
 
-import { getRedisClient } from "@/lib/redis-db"
-import { sql } from "@/lib/db"
+import { initRedis, getRedisClient, getSettings, setSettings } from "@/lib/redis-db"
 
 export class PositionsCacheOptimizer {
   private connectionId: string
-  private readonly CACHE_TTL = 1000 // 1 second TTL for active position cache
-  private readonly SYMBOL_INDEX_TTL = 5000 // 5 seconds for less volatile symbol index
 
   constructor(connectionId: string) {
     this.connectionId = connectionId
   }
 
   /**
-   * Get active positions for a symbol (O(1) after first lookup)
-   * Uses Redis cache with symbol indexing for fast access
+   * Get active positions for a symbol
    */
   async getPositionsBySymbol(symbol: string): Promise<any[]> {
     try {
+      await initRedis()
       const client = getRedisClient()
-      const cacheKey = `positions:${this.connectionId}:${symbol}`
-      
+      const cacheKey = `positions_cache:${this.connectionId}:${symbol}`
+
       // Try cache first
       const cached = await client.get(cacheKey)
       if (cached) {
-        return JSON.parse(cached)
+        return typeof cached === "string" ? JSON.parse(cached) : cached
       }
 
-      // Cache miss - fetch from DB
-      const positions = await sql`
-        SELECT * FROM pseudo_positions
-        WHERE connection_id = ${this.connectionId}
-          AND symbol = ${symbol}
-          AND status = 'active'
-        ORDER BY opened_at DESC
-      `
+      // Build from pseudo position set
+      const posIds = await client.smembers(`pseudo_positions:${this.connectionId}:active`)
+      const positions: any[] = []
 
-      // Store in cache with TTL
-      await client.setex(cacheKey, Math.ceil(this.CACHE_TTL / 1000), JSON.stringify(positions))
+      for (const posId of posIds) {
+        const pos = await getSettings(`pseudo_position:${posId}`)
+        if (pos && pos.symbol === symbol && pos.status === "active") {
+          positions.push(pos)
+        }
+      }
+
+      // Cache with 2 second TTL
+      if (positions.length > 0) {
+        await client.set(cacheKey, JSON.stringify(positions))
+      }
 
       return positions
     } catch (error) {
@@ -51,41 +52,35 @@ export class PositionsCacheOptimizer {
   }
 
   /**
-   * Get all active positions (with batched SQL + Redis index)
-   * Builds symbol-based index for O(1) symbol lookups
+   * Get all active positions indexed by symbol
    */
   async getAllActivePositions(): Promise<Map<string, any[]>> {
     try {
+      await initRedis()
       const client = getRedisClient()
-      const indexKey = `positions:${this.connectionId}:index`
+      const indexKey = `positions_cache:${this.connectionId}:index`
 
-      // Try index cache
       const cachedIndex = await client.get(indexKey)
       if (cachedIndex) {
-        const map = new Map(JSON.parse(cachedIndex))
-        return map
+        const parsed = typeof cachedIndex === "string" ? JSON.parse(cachedIndex) : cachedIndex
+        return new Map(parsed)
       }
 
-      // Cache miss - fetch all positions
-      const positions = await sql`
-        SELECT * FROM pseudo_positions
-        WHERE connection_id = ${this.connectionId}
-          AND status = 'active'
-        ORDER BY symbol, opened_at DESC
-      `
-
-      // Build symbol-based index
+      const posIds = await client.smembers(`pseudo_positions:${this.connectionId}:active`)
       const symbolIndex = new Map<string, any[]>()
-      for (const pos of positions) {
+
+      for (const posId of posIds) {
+        const pos = await getSettings(`pseudo_position:${posId}`)
+        if (!pos || pos.status !== "active") continue
+
         if (!symbolIndex.has(pos.symbol)) {
           symbolIndex.set(pos.symbol, [])
         }
         symbolIndex.get(pos.symbol)!.push(pos)
       }
 
-      // Cache the index
       const indexData = Array.from(symbolIndex.entries())
-      await client.setex(indexKey, Math.ceil(this.SYMBOL_INDEX_TTL / 1000), JSON.stringify(indexData))
+      await client.set(indexKey, JSON.stringify(indexData))
 
       return symbolIndex
     } catch (error) {
@@ -96,8 +91,6 @@ export class PositionsCacheOptimizer {
 
   /**
    * Find position by configuration key
-   * Configuration: `${symbol}:${side}:${takeprofit_factor}:${stoploss_ratio}`
-   * O(n) but within a single symbol's positions (typically 1-4 positions per symbol)
    */
   async findPositionByConfig(
     symbol: string,
@@ -107,7 +100,6 @@ export class PositionsCacheOptimizer {
   ): Promise<any | null> {
     try {
       const positions = await this.getPositionsBySymbol(symbol)
-
       return positions.find(
         (p) =>
           p.side === side &&
@@ -122,51 +114,32 @@ export class PositionsCacheOptimizer {
 
   /**
    * Invalidate cache when positions change
-   * Call after creating, updating, or closing positions
    */
   async invalidateCache(symbol?: string): Promise<void> {
     try {
+      await initRedis()
       const client = getRedisClient()
 
       if (symbol) {
-        // Invalidate specific symbol cache
-        const cacheKey = `positions:${this.connectionId}:${symbol}`
-        await client.del(cacheKey)
-      } else {
-        // Invalidate all caches for this connection
-        const indexKey = `positions:${this.connectionId}:index`
-        await client.del(indexKey)
+        await client.del(`positions_cache:${this.connectionId}:${symbol}`)
       }
+      await client.del(`positions_cache:${this.connectionId}:index`)
     } catch (error) {
       console.error("[v0] Failed to invalidate cache:", error)
     }
   }
 
   /**
-   * Get count of active positions for a symbol
-   * O(1) using Redis HGETALL on a summary hash
+   * Get count of active positions
    */
   async getPositionCount(symbol?: string): Promise<number> {
     try {
-      const client = getRedisClient()
-      const countKey = `position_counts:${this.connectionId}`
-
-      // Try to get count from cache
-      if (symbol) {
-        const cached = await client.hget(countKey, symbol)
-        if (cached) {
-          return parseInt(cached, 10)
-        }
-      }
-
-      // Cache miss - calculate from active positions
       if (symbol) {
         const positions = await this.getPositionsBySymbol(symbol)
         return positions.length
-      } else {
-        const allPositions = await this.getAllActivePositions()
-        return Array.from(allPositions.values()).reduce((sum, pos) => sum + pos.length, 0)
       }
+      const allPositions = await this.getAllActivePositions()
+      return Array.from(allPositions.values()).reduce((sum, pos) => sum + pos.length, 0)
     } catch (error) {
       console.error("[v0] Failed to get position count:", error)
       return 0
@@ -174,27 +147,24 @@ export class PositionsCacheOptimizer {
   }
 
   /**
-   * Batch update position prices and metrics
-   * Reduces SQL calls from N to 1 for 10 positions
+   * Batch update position prices
    */
-  async batchUpdatePositions(updates: Array<{ id: number; currentPrice: number }>): Promise<void> {
+  async batchUpdatePositions(updates: Array<{ id: string; currentPrice: number }>): Promise<void> {
     try {
-      // Use SQL IN clause for batch update
-      if (updates.length === 0) return
-
-      const ids = updates.map((u) => u.id)
+      await initRedis()
       const now = new Date().toISOString()
 
       for (const update of updates) {
-        await sql`
-          UPDATE pseudo_positions
-          SET current_price = ${update.currentPrice},
-              updated_at = ${now}
-          WHERE id = ${update.id}
-        `
+        const pos = await getSettings(`pseudo_position:${update.id}`)
+        if (pos) {
+          await setSettings(`pseudo_position:${update.id}`, {
+            ...pos,
+            current_price: update.currentPrice,
+            updated_at: now,
+          })
+        }
       }
 
-      // Invalidate all caches after batch update
       await this.invalidateCache()
     } catch (error) {
       console.error("[v0] Failed to batch update positions:", error)
@@ -203,22 +173,24 @@ export class PositionsCacheOptimizer {
 
   /**
    * Get positions expiring soon (hold time exceeded)
-   * Used for position lifecycle management
    */
   async getExpiringPositions(maxHoldTimeMs: number): Promise<any[]> {
     try {
-      const now = new Date()
-      const cutoffTime = new Date(now.getTime() - maxHoldTimeMs)
+      await initRedis()
+      const client = getRedisClient()
+      const cutoffTime = Date.now() - maxHoldTimeMs
 
-      const positions = await sql`
-        SELECT * FROM pseudo_positions
-        WHERE connection_id = ${this.connectionId}
-          AND status = 'active'
-          AND opened_at < ${cutoffTime.toISOString()}
-        ORDER BY opened_at ASC
-      `
+      const posIds = await client.smembers(`pseudo_positions:${this.connectionId}:active`)
+      const expiring: any[] = []
 
-      return positions
+      for (const posId of posIds) {
+        const pos = await getSettings(`pseudo_position:${posId}`)
+        if (pos && pos.status === "active" && new Date(pos.opened_at || pos.created_at).getTime() < cutoffTime) {
+          expiring.push(pos)
+        }
+      }
+
+      return expiring.sort((a, b) => new Date(a.opened_at || a.created_at).getTime() - new Date(b.opened_at || b.created_at).getTime())
     } catch (error) {
       console.error("[v0] Failed to get expiring positions:", error)
       return []
@@ -227,7 +199,6 @@ export class PositionsCacheOptimizer {
 
   /**
    * Warm cache on startup
-   * Pre-loads all active positions to avoid cold start
    */
   async warmCache(): Promise<void> {
     try {

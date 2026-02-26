@@ -271,8 +271,8 @@ export class TradeEngineManager {
         this.componentHealth.indications.successRate = ((cycleCount - errorCount) / cycleCount) * 100
 
         // Update engine state in Redis
-        const engineState = (await getSettings(`engine_state:${this.connectionId}`)) || {}
-        await setSettings(`engine_state:${this.connectionId}`, {
+        const engineState = (await getSettings(`trade_engine_state:${this.connectionId}`)) || {}
+        await setSettings(`trade_engine_state:${this.connectionId}`, {
           ...engineState,
           last_indication_run: new Date().toISOString(),
           indication_cycle_count: cycleCount,
@@ -313,8 +313,8 @@ export class TradeEngineManager {
         this.componentHealth.strategies.successRate = ((cycleCount - errorCount) / cycleCount) * 100
 
         // Update engine state in Redis
-        const engineState = (await getSettings(`engine_state:${this.connectionId}`)) || {}
-        await setSettings(`engine_state:${this.connectionId}`, {
+        const engineState = (await getSettings(`trade_engine_state:${this.connectionId}`)) || {}
+        await setSettings(`trade_engine_state:${this.connectionId}`, {
           ...engineState,
           last_strategy_run: new Date().toISOString(),
           strategy_cycle_count: cycleCount,
@@ -353,8 +353,8 @@ export class TradeEngineManager {
         this.componentHealth.realtime.successRate = ((cycleCount - errorCount) / cycleCount) * 100
 
         // Update engine state in Redis
-        const engineState = (await getSettings(`engine_state:${this.connectionId}`)) || {}
-        await setSettings(`engine_state:${this.connectionId}`, {
+        const engineState = (await getSettings(`trade_engine_state:${this.connectionId}`)) || {}
+        await setSettings(`trade_engine_state:${this.connectionId}`, {
           ...engineState,
           last_realtime_run: new Date().toISOString(),
           realtime_cycle_count: cycleCount,
@@ -402,9 +402,9 @@ export class TradeEngineManager {
         // Calculate overall health
         const overallHealth = this.calculateOverallHealth()
 
-        // Update health status in Redis
-        const engineState = (await getSettings(`engine_state:${this.connectionId}`)) || {}
-        await setSettings(`engine_state:${this.connectionId}`, {
+        // Update health status in Redis (same key as updateEngineState)
+        const engineState = (await getSettings(`trade_engine_state:${this.connectionId}`)) || {}
+        await setSettings(`trade_engine_state:${this.connectionId}`, {
           ...engineState,
           manager_health_status: overallHealth,
           indications_health: this.componentHealth.indications.status,
@@ -591,7 +591,7 @@ export class TradeEngineManager {
    */
   async getStatus() {
     try {
-      const stateKey = `engine_state:${this.connectionId}`
+      const stateKey = `trade_engine_state:${this.connectionId}`
       const state = (await getSettings(stateKey)) || {}
       return {
         ...state,

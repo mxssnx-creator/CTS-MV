@@ -1,15 +1,16 @@
-import { query, execute } from "@/lib/db"
-import { db } from "@/lib/database"
+/**
+ * Data Cleanup Manager
+ * Redis-native: Archives and cleans up old data from Redis
+ */
+
+import { initRedis, getRedisClient, getSettings, setSettings } from "@/lib/redis-db"
 
 export class DataCleanupManager {
   private static instance: DataCleanupManager | null = null
   private cleanupInterval: NodeJS.Timeout | null = null
   private isRunning = false
-  private dbManager = db
 
-  private constructor() {
-    // Private constructor for singleton pattern
-  }
+  private constructor() {}
 
   public static getInstance(): DataCleanupManager {
     if (!DataCleanupManager.instance) {
@@ -19,18 +20,12 @@ export class DataCleanupManager {
   }
 
   public static getOptimalQueryWindow(indicationType: string): number {
-    // Return time window in minutes based on indication type
     switch (indicationType) {
-      case "direction":
-        return 60 // 1 hour for direction calculations
-      case "move":
-        return 30 // 30 minutes for move calculations
-      case "optimal":
-        return 120 // 2 hours for optimal calculations
-      case "active_advanced":
-        return 90 // 1.5 hours for active advanced calculations
-      default:
-        return 60 // Default 1 hour
+      case "direction": return 60
+      case "move": return 30
+      case "optimal": return 120
+      case "active_advanced": return 90
+      default: return 60
     }
   }
 
@@ -54,82 +49,106 @@ export class DataCleanupManager {
   public async startAutoCleanup(): Promise<void> {
     console.log("[v0] Starting data cleanup manager...")
 
-    const settingsRows = await query<{ value: string }>(
-      `SELECT value FROM system_settings WHERE key = 'cleanupIntervalHours'`,
-    )
-    const intervalHours = settingsRows[0] ? Number.parseInt(settingsRows[0].value) : 24
+    try {
+      await initRedis()
+      const settings = await getSettings("system_settings") || {}
+      const intervalHours = parseInt(String(settings.cleanupIntervalHours || "24"), 10)
+      const enabled = settings.enableAutoCleanup === "true" || settings.enableAutoCleanup === true
 
-    const enabledRows = await query<{ value: string }>(
-      `SELECT value FROM system_settings WHERE key = 'enableAutoCleanup'`,
-    )
-    const enabled = enabledRows[0]?.value === "true"
+      if (!enabled) {
+        console.log("[v0] Auto cleanup is disabled in settings")
+        return
+      }
 
-    if (!enabled) {
-      console.log("[v0] Auto cleanup is disabled in settings")
-      return
-    }
+      this.isRunning = true
+      await this.runCleanup()
 
-    this.isRunning = true
-
-    // Run cleanup immediately
-    await this.runCleanup()
-
-    // Schedule periodic cleanup
-    this.cleanupInterval = setInterval(
-      async () => {
+      this.cleanupInterval = setInterval(async () => {
         await this.runCleanup()
-      },
-      intervalHours * 60 * 60 * 1000,
-    ) // Convert hours to milliseconds
+      }, intervalHours * 60 * 60 * 1000)
 
-    console.log(`[v0] Auto cleanup scheduled every ${intervalHours} hour(s)`)
+      console.log(`[v0] Auto cleanup scheduled every ${intervalHours} hour(s)`)
+    } catch (error) {
+      console.error("[v0] Failed to start auto cleanup:", error)
+    }
   }
 
   private async runCleanup(): Promise<void> {
     console.log("[v0] Running data cleanup...")
 
     try {
-      const settings = await this.dbManager.getAllSettings()
-      const maxPositionAge = Number.parseInt(settings.maxPositionAgeDays || "90")
-      const maxMarketDataAge = Number.parseInt(settings.maxMarketDataDays || "30")
+      await initRedis()
+      const client = getRedisClient()
+      const settings = await getSettings("system_settings") || {}
+      const maxPositionAgeDays = parseInt(String(settings.maxPositionAgeDays || "90"), 10)
+      const maxMarketDataAgeDays = parseInt(String(settings.maxMarketDataDays || "30"), 10)
 
-      const now = new Date()
-      const positionCutoff = new Date(now.getTime() - maxPositionAge * 24 * 60 * 60 * 1000)
-      const marketDataCutoff = new Date(now.getTime() - maxMarketDataAge * 24 * 60 * 60 * 1000)
+      const now = Date.now()
+      const positionCutoff = now - maxPositionAgeDays * 24 * 60 * 60 * 1000
+      const marketDataCutoff = now - maxMarketDataAgeDays * 24 * 60 * 60 * 1000
 
-      // Archive and delete old positions
-      console.log(`[v0] Archiving positions older than ${positionCutoff.toISOString()}`)
+      let archivedPositions = 0
+      let cleanedMarketData = 0
 
-      await execute(
-        `INSERT INTO archived_positions 
-         SELECT *, NOW() as archived_at FROM positions 
-         WHERE closed_at < ? AND status = 'closed'`,
-        [positionCutoff.toISOString()],
-      )
+      // Clean old closed exchange positions
+      const connectionKeys = await client.keys("exchange_positions:*:closed")
+      for (const key of connectionKeys) {
+        const closedIds = await client.smembers(key)
+        for (const posId of closedIds) {
+          const pos = await getSettings(`exchange_position:${posId}`)
+          if (pos && pos.closed_at && new Date(pos.closed_at).getTime() < positionCutoff) {
+            // Archive to a compressed summary
+            const archiveKey = `archived_positions:${pos.connection_id}`
+            const existing = await getSettings(archiveKey) || { positions: [] }
+            existing.positions.push({
+              id: pos.id,
+              symbol: pos.symbol,
+              side: pos.side,
+              realized_pnl: pos.realized_pnl,
+              closed_at: pos.closed_at,
+            })
+            await setSettings(archiveKey, existing)
 
-      const positionsDeleted = await execute(
-        `DELETE FROM positions 
-         WHERE closed_at < ? AND status = 'closed'`,
-        [positionCutoff.toISOString()],
-      )
+            // Remove full position data
+            await client.del(`exchange_position:${posId}`)
+            await client.srem(key, posId)
+            archivedPositions++
+          }
+        }
+      }
 
-      console.log(`[v0] Archived and deleted ${positionsDeleted.rowCount} old positions`)
+      // Clean old market data (sorted sets with timestamps)
+      const marketKeys = await client.keys("market_data:*")
+      for (const key of marketKeys) {
+        const removed = await client.zremrangebyscore(key, 0, marketDataCutoff)
+        if (typeof removed === "number") {
+          cleanedMarketData += removed
+        }
+      }
 
-      // Archive and delete old market data
-      console.log(`[v0] Archiving market data older than ${marketDataCutoff.toISOString()}`)
+      // Clean old coordination logs
+      const coordLogKeys = await client.keys("coord_logs:*")
+      for (const key of coordLogKeys) {
+        const oldLogIds = await client.zrangebyscore(key, 0, positionCutoff)
+        for (const logId of oldLogIds) {
+          const connId = key.replace("coord_logs:", "")
+          await client.del(`coord_log:${connId}:${logId}`)
+        }
+        await client.zremrangebyscore(key, 0, positionCutoff)
+      }
 
-      await execute(
-        `INSERT INTO archived_market_data 
-         SELECT *, NOW() as archived_at FROM market_data 
-         WHERE timestamp < ?`,
-        [marketDataCutoff.toISOString()],
-      )
+      // Clean old volume calculation logs
+      const volumeLogKeys = await client.keys("volume_calcs:*")
+      for (const key of volumeLogKeys) {
+        const oldIds = await client.zrangebyscore(key, 0, positionCutoff)
+        for (const logId of oldIds) {
+          const connId = key.replace("volume_calcs:", "")
+          await client.del(`volume_calc:${connId}:${logId}`)
+        }
+        await client.zremrangebyscore(key, 0, positionCutoff)
+      }
 
-      const marketDataDeleted = await execute(`DELETE FROM market_data WHERE timestamp < ?`, [
-        marketDataCutoff.toISOString(),
-      ])
-
-      console.log(`[v0] Archived and deleted ${marketDataDeleted.rowCount} old market data records`)
+      console.log(`[v0] Cleanup complete: archived ${archivedPositions} positions, cleaned ${cleanedMarketData} market data records`)
     } catch (error) {
       console.error("[v0] Error during cleanup:", error)
     }
@@ -138,27 +157,31 @@ export class DataCleanupManager {
   public async cleanupHistoricalDataPerExchange(connectionId: string, retentionHours: number): Promise<number> {
     console.log(`[v0] Cleaning up historical data for connection ${connectionId} (retention: ${retentionHours}h)`)
 
-    const cutoffTime = new Date(Date.now() - retentionHours * 60 * 60 * 1000)
+    try {
+      await initRedis()
+      const client = getRedisClient()
+      const cutoffTime = Date.now() - retentionHours * 60 * 60 * 1000
 
-    // Archive old data before deletion
-    await execute(
-      `INSERT INTO archived_market_data (connection_id, symbol, timeframe, timestamp, open, high, low, close, volume, archived_at)
-       SELECT connection_id, symbol, timeframe, timestamp, open, high, low, close, volume, NOW()
-       FROM market_data
-       WHERE connection_id = ? AND timestamp < ?`,
-      [connectionId, cutoffTime.toISOString()],
-    )
+      let cleaned = 0
 
-    // Delete old data
-    const result = await execute(
-      `DELETE FROM market_data 
-       WHERE connection_id = ? AND timestamp < ?`,
-      [connectionId, cutoffTime.toISOString()],
-    )
+      // Clean market data for this connection
+      const marketKey = `market_data:${connectionId}`
+      const removed = await client.zremrangebyscore(marketKey, 0, cutoffTime)
+      cleaned += typeof removed === "number" ? removed : 0
 
-    console.log(`[v0] Cleaned up ${result.rowCount} historical records for connection ${connectionId}`)
+      // Clean connection-specific symbol market data
+      const symbolKeys = await client.keys(`market_data:${connectionId}:*`)
+      for (const key of symbolKeys) {
+        const r = await client.zremrangebyscore(key, 0, cutoffTime)
+        cleaned += typeof r === "number" ? r : 0
+      }
 
-    return result.rowCount
+      console.log(`[v0] Cleaned up ${cleaned} historical records for connection ${connectionId}`)
+      return cleaned
+    } catch (error) {
+      console.error("[v0] Error during per-exchange cleanup:", error)
+      return 0
+    }
   }
 
   public isCleanupRunning(): boolean {

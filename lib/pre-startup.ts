@@ -11,7 +11,11 @@ import { getGlobalTradeEngineCoordinator } from "@/lib/trade-engine"
 import { getDefaultSettings } from "@/lib/settings-storage"
 import { createExchangeConnector } from "@/lib/exchange-connectors"
 
-let preStartupCompleted = false
+// Use globalThis to survive module re-evaluation across Next.js compilations
+const globalStore = globalThis as any
+if (!globalStore.__cts_startup_guard) {
+  globalStore.__cts_startup_guard = { completed: false }
+}
 
 async function seedMarketData() {
   console.log("[v0] [Seed] Starting market data seeding...")
@@ -329,11 +333,11 @@ async function autoStartGlobalEngine() {
 
 export async function runPreStartup() {
   // Prevent double execution (Next.js calls register() for each compilation)
-  if (preStartupCompleted) {
+  if (globalStore.__cts_startup_guard.completed) {
     console.log("[v0] Pre-startup already completed, skipping duplicate call")
     return
   }
-  preStartupCompleted = true
+  globalStore.__cts_startup_guard.completed = true
 
   try {
     console.log("[v0] ==========================================")
