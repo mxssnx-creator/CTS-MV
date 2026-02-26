@@ -115,27 +115,31 @@ export async function GET() {
     
     console.log(`[v0] [Init] Created ${createdConnections.length} new predefined connections`)
     
-    // Force-enable ALL base connections (they must always be enabled)
+    // MIGRATION: Ensure all bybit and bingx connections have is_inserted and is_enabled set
     const allConns = await getAllConnections()
-    let forceEnabledCount = 0
+    let migratedCount = 0
     for (const conn of allConns) {
       const exchange = (conn.exchange || "").toLowerCase().trim()
-      const isBase = AUTO_CREATE_EXCHANGES.includes(exchange)
-      if (isBase) {
-        const isCurrentlyEnabled = conn.is_enabled === true || conn.is_enabled === "1" || conn.is_enabled === "true"
-        if (!isCurrentlyEnabled) {
+      const isAutoInserted = AUTO_INSERT_EXCHANGES.includes(exchange)
+      
+      if (isAutoInserted) {
+        const needsInserted = conn.is_inserted !== "1" && conn.is_inserted !== true
+        const needsEnabled = conn.is_enabled !== "1" && conn.is_enabled !== true && conn.is_enabled !== "true"
+        
+        if (needsInserted || needsEnabled) {
           await updateConnection(conn.id, {
             ...conn,
+            is_inserted: "1",
             is_enabled: "1",
             updated_at: new Date().toISOString(),
           })
-          forceEnabledCount++
-          console.log(`[v0] [Init] Force-enabled base connection: ${conn.name} (${conn.id})`)
+          migratedCount++
+          console.log(`[v0] [Init] Migrated connection: ${conn.name} (${conn.id}) - inserted=${!needsInserted}, enabled=${!needsEnabled}`)
         }
       }
     }
-    if (forceEnabledCount > 0) {
-      console.log(`[v0] [Init] Force-enabled ${forceEnabledCount} base connections`)
+    if (migratedCount > 0) {
+      console.log(`[v0] [Init] Migrated ${migratedCount} auto-inserted connections (bybit, bingx)`)
     }
     
     // Trigger initial auto-test for all base connections (non-blocking)
