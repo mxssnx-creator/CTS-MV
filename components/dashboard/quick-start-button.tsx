@@ -31,17 +31,42 @@ export function QuickStartButton() {
   const handleQuickStart = async () => {
     setIsRunning(true)
     try {
-      // STEP 1: Initialize System
+      // STEP 1: Initialize System (calls /api/init which runs base migrations)
       updateStep("init", "loading")
       console.log("[v0] [QuickStart] Step 1: Initializing system...")
       const initRes = await fetch("/api/init", { method: "GET", cache: "no-store" })
       if (!initRes.ok) throw new Error(`Init failed: ${initRes.statusText}`)
-      updateStep("init", "success", "System initialized")
-      console.log("[v0] [QuickStart] Step 1: Complete")
+      const initData = await initRes.json()
+      console.log("[v0] [QuickStart] Step 1: Init complete -", initData.message)
+      updateStep("init", "success", initData.message || "System initialized")
 
-      // STEP 2: Run Migrations
+      // STEP 2: Run ALL Database Migrations (settings/install style complete migrations)
       updateStep("migrate", "loading")
-      console.log("[v0] [QuickStart] Step 2: Running migrations...")
+      console.log("[v0] [QuickStart] Step 2: Running complete database migrations...")
+      
+      // 2a: Run install/database/migrate for full DB migrations
+      const dbMigrateRes = await fetch("/api/install/database/migrate", { 
+        method: "POST", 
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" }
+      })
+      if (dbMigrateRes.ok) {
+        const dbMigrateData = await dbMigrateRes.json()
+        console.log("[v0] [QuickStart] Step 2a: DB migrations complete -", dbMigrateData.status?.schema_version)
+      }
+      
+      // 2b: Run startup/initialize to ensure connection states are correct
+      const startupRes = await fetch("/api/startup/initialize", { 
+        method: "POST", 
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" }
+      })
+      if (startupRes.ok) {
+        const startupData = await startupRes.json()
+        console.log("[v0] [QuickStart] Step 2b: Startup init -", startupData.results)
+      }
+      
+      // 2c: Reload connections to get fresh state
       const migrateRes = await fetch("/api/settings/connections", { 
         method: "GET", 
         cache: "no-store",
@@ -49,8 +74,8 @@ export function QuickStartButton() {
       })
       if (!migrateRes.ok) throw new Error(`Migrations failed: ${migrateRes.statusText}`)
       const migrateData = await migrateRes.json()
-      console.log(`[v0] [QuickStart] Step 2: ${migrateData.count} connections loaded`)
-      updateStep("migrate", "success", `${migrateData.count} connections loaded`)
+      console.log(`[v0] [QuickStart] Step 2c: ${migrateData.count} connections loaded`)
+      updateStep("migrate", "success", `${migrateData.count} connections migrated`)
 
       // STEP 3: Test BingX
       updateStep("test", "loading")
@@ -192,9 +217,10 @@ export function QuickStartButton() {
         <div className="bg-white rounded border border-blue-200 p-3 text-xs text-gray-600">
           <p className="mb-2 font-semibold text-gray-700">This quick start will:</p>
           <ul className="list-disc list-inside space-y-1">
-            <li>Initialize the complete system</li>
-            <li>Run database migrations</li>
-            <li>Test BingX connection (0.05 USDT balance available)</li>
+            <li>Initialize the complete system (preset types, connections)</li>
+            <li>Run ALL database migrations (schema, indexes, TTL policies)</li>
+            <li>Set dashboard states for BingX/Bybit</li>
+            <li>Test BingX API connection (balance check)</li>
             <li>Start the trade engine</li>
             <li>Enable BingX for active trading</li>
           </ul>
