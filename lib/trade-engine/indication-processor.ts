@@ -27,14 +27,15 @@ export class IndicationProcessor {
   private connectionId: string
   private marketDataCache: Map<string, { data: any; timestamp: number }> = new Map()
   private settingsCache: { data: any; timestamp: number } | null = null
-  private readonly CACHE_TTL = 30000 // 30 seconds
+  private readonly CACHE_TTL = 30000
 
   constructor(connectionId: string) {
     this.connectionId = connectionId
   }
 
   /**
-   * Process historical indications - builds up all 4 independent type sets (prehistoric phase only, evaluation)
+   * Process historical indications - builds up all 4 independent type sets
+   * Prehistoric phase only: evaluation, no trade execution
    */
   async processHistoricalIndications(symbol: string, startDate: Date, endDate: Date): Promise<void> {
     try {
@@ -55,20 +56,17 @@ export class IndicationProcessor {
         return
       }
 
-      // Process historical data through independent sets
       const setsProcessor = new IndicationSetsProcessor(this.connectionId)
 
       for (const marketData of historicalData) {
         await setsProcessor.processAllIndicationSets(symbol, marketData)
       }
 
-      // Get set statistics
       const directionStats = await setsProcessor.getSetStats(symbol, "direction")
       const moveStats = await setsProcessor.getSetStats(symbol, "move")
       const activeStats = await setsProcessor.getSetStats(symbol, "active")
       const optimalStats = await setsProcessor.getSetStats(symbol, "optimal")
 
-      // Track prehistoric progress (separate from realtime)
       const ProgressionManager = await getProgressionManager()
       await ProgressionManager.incrementPrehistoricCycle(this.connectionId, symbol)
 
@@ -91,6 +89,7 @@ export class IndicationProcessor {
 
   /**
    * Process real-time indication - delegates to independent sets processor
+   * Same calculation logic as prehistoric, but with trade execution enabled
    */
   async processIndication(symbol: string): Promise<void> {
     try {
@@ -99,11 +98,9 @@ export class IndicationProcessor {
         return
       }
 
-      // Use independent sets processor for all 4 types
       const setsProcessor = new IndicationSetsProcessor(this.connectionId)
       await setsProcessor.processAllIndicationSets(symbol, marketData)
 
-      // Track progression
       await logProgressionEvent(
         this.connectionId,
         "indication_realtime",
@@ -118,49 +115,29 @@ export class IndicationProcessor {
   /**
    * Calculate indication - evaluates all 4 types and returns strongest
    */
-  async calculateIndication(symbol: string, marketData: any, settings: any): Promise<any> {
+  async calculateIndication(symbol: string, marketData: any, _settings: any): Promise<any> {
     const price = marketData.price || marketData.close || 0
-    const open = marketData.open || price
-    const high = marketData.high || price
-    const low = marketData.low || price
     const volume = marketData.volume || 0
 
-    // Get historical prices for technical analysis
     const historicalPrices = await this.getRecentPrices(symbol, 30)
 
     if (historicalPrices.length < 10) {
-      return null // Not enough data
+      return null
     }
 
-    // Evaluate all 4 indication types in parallel
     const [directionIndication, moveIndication, activeIndication] = await Promise.all([
       Promise.resolve(this.calculateDirectionIndication(historicalPrices, price)),
       Promise.resolve(this.calculateMoveIndication(historicalPrices, price)),
       Promise.resolve(this.calculateActiveIndication(historicalPrices, volume)),
     ])
 
-    // Calculate optimal based on parallel results
     const optimalIndication = this.calculateOptimalIndication(directionIndication, moveIndication, activeIndication)
 
-    // Return the strongest indication (best profit factor)
     const indications = [directionIndication, moveIndication, activeIndication, optimalIndication]
       .filter((i) => i !== null)
       .sort((a, b) => b.profit_factor - a.profit_factor)
 
-    const selected = indications[0] || null
-    
-    // Log all 4 types for debugging
-    if (selected) {
-      const typeStats = {
-        direction: directionIndication ? `PF=${directionIndication.profit_factor.toFixed(2)}` : "null",
-        move: moveIndication ? `PF=${moveIndication.profit_factor.toFixed(2)}` : "null",
-        active: activeIndication ? `PF=${activeIndication.profit_factor.toFixed(2)}` : "null",
-        optimal: optimalIndication ? `PF=${optimalIndication.profit_factor.toFixed(2)}` : "null",
-      }
-      console.log(`[v0] [CalcIndication] ${symbol}: All Types Evaluated | Direction=${typeStats.direction} Move=${typeStats.move} Active=${typeStats.active} Optimal=${typeStats.optimal} | Selected=${selected.type.toUpperCase()}`)
-    }
-
-    return selected
+    return indications[0] || null
   }
 
   private calculateDirectionIndication(prices: number[], currentPrice: number): any {
@@ -177,11 +154,7 @@ export class IndicationProcessor {
       value: trend === "long" ? 1 : -1,
       profit_factor: 1 + strength,
       confidence: Math.min(0.9, 0.5 + strength),
-      metadata: {
-        direction: trend,
-        strength,
-        avgPrice: avg,
-      },
+      metadata: { direction: trend, strength, avgPrice: avg },
     }
   }
 
@@ -198,10 +171,7 @@ export class IndicationProcessor {
       value: relativeVolatility * 100,
       profit_factor: 1 + relativeVolatility * 2,
       confidence: Math.min(0.85, 0.4 + relativeVolatility),
-      metadata: {
-        volatility,
-        relativeVolatility,
-      },
+      metadata: { volatility, relativeVolatility },
     }
   }
 
@@ -217,10 +187,7 @@ export class IndicationProcessor {
       value: activity,
       profit_factor: 1 + Math.min(activity / 1000, 0.5),
       confidence: Math.min(0.8, 0.3 + activity / 2000),
-      metadata: {
-        volume,
-        activity,
-      },
+      metadata: { volume, activity },
     }
   }
 
@@ -251,7 +218,6 @@ export class IndicationProcessor {
       await redis.initRedis()
       const rawData = await redis.getMarketData(symbol)
 
-      // getMarketData returns a single object or null, normalize to array
       const dataList: any[] = Array.isArray(rawData)
         ? rawData
         : rawData
@@ -277,10 +243,7 @@ export class IndicationProcessor {
       await redis.initRedis()
       const rawData = await redis.getMarketData(symbol)
 
-      // getMarketData returns a single object or null - EXPLICITLY GUARD
       if (!rawData) {
-        // Silently return null - market data is not available yet
-        // This is expected behavior during startup phase
         return null
       }
 
