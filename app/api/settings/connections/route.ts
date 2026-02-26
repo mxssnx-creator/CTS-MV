@@ -2,10 +2,11 @@ import { type NextRequest, NextResponse } from "next/server"
 import { getAllConnections, initRedis, createConnection, updateConnection } from "@/lib/redis-db"
 import { generateConnectionIdFromApiKey, isApiKeyInUse } from "@/lib/connection-id-manager"
 import { CONNECTION_PREDEFINITIONS } from "@/lib/connection-predefinitions"
+import { API_VERSIONS } from "@/lib/system-version"
 
 export const runtime = "nodejs"
 
-// Dashboard auto-inserted exchanges - ONLY these show on dashboard by default
+const API_VERSION = API_VERSIONS.connections
 const DASHBOARD_AUTO_INSERTED = ["bybit", "bingx"]
 
 export async function GET(request: NextRequest) {
@@ -15,19 +16,23 @@ export async function GET(request: NextRequest) {
       "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
       "Pragma": "no-cache",
       "Expires": "0",
+      "X-API-Version": API_VERSION,
     }
     
     const { searchParams } = new URL(request.url)
+    const clientVersion = searchParams.get("v")
     const exchange = searchParams.get("exchange")
     const enabled = searchParams.get("enabled")
     const dashboard = searchParams.get("dashboard")
+
+    console.log(`[v0] [API] [Connections] ${API_VERSION} - Client version: ${clientVersion}`)
 
     await initRedis()
     let connections = await getAllConnections()
 
     // CRITICAL MIGRATION: Enforce ONLY bybit and bingx on dashboard
     // This must run on EVERY request to ensure consistency
-    console.log(`[v0] [API] [Migration] Checking ${connections.length} connections...`)
+    console.log(`[v0] [API] [Connections] ${API_VERSION}: Checking ${connections.length} connections for migration...`)
     let migratedCount = 0
     for (const c of connections) {
       const exch = (c.exchange || "").toLowerCase().trim()
@@ -46,11 +51,11 @@ export async function GET(request: NextRequest) {
           updated_at: new Date().toISOString(),
         })
         migratedCount++
-        console.log(`[v0] [API] [Migration] ${c.exchange}: dashboard_inserted=${needsDashboardSet ? "SET to 1" : "RESET to 0"}`)
+        console.log(`[v0] [API] [Connections] ${API_VERSION}: ${c.exchange}: dashboard_inserted=${needsDashboardSet ? "SET to 1" : "RESET to 0"}`)
       }
     }
     if (migratedCount > 0) {
-      console.log(`[v0] [API] [Migration] Updated ${migratedCount} connections`)
+      console.log(`[v0] [API] [Connections] ${API_VERSION}: Updated ${migratedCount} connections`)
       // Reload after updates
       connections = await getAllConnections()
     }
@@ -121,14 +126,16 @@ export async function GET(request: NextRequest) {
 
     // Log what we're returning
     const bybitBingx = connections.filter(c => ["bybit", "bingx"].includes((c.exchange || "").toLowerCase()))
-    console.log(`[v0] [API] Returning ${connections.length} total connections. Bybit/BingX dashboard_inserted:`, 
-      bybitBingx.map(c => ({ name: c.name, is_dashboard_inserted: c.is_dashboard_inserted })))
+    console.log(`[v0] [API] [Connections] ${API_VERSION}: Returning ${connections.length} total connections`)
+    console.log(`[v0] [API] [Connections] ${API_VERSION}: Dashboard-inserted (bybit/bingx):`, 
+      bybitBingx.map(c => ({ name: c.name, exchange: c.exchange, is_dashboard_inserted: c.is_dashboard_inserted })))
     
-    return NextResponse.json({ success: true, count: connections.length, connections }, { headers })
+    return NextResponse.json({ success: true, count: connections.length, connections, version: API_VERSION }, { headers })
   } catch (error) {
-    console.error("[v0] Error fetching connections:", error instanceof Error ? error.message : String(error))
-    return NextResponse.json({ success: false, error: "Failed to fetch connections", connections: [] }, { status: 500, headers: {
+    console.error(`[v0] [API] [Connections] ${API_VERSION}: Error:`, error instanceof Error ? error.message : String(error))
+    return NextResponse.json({ success: false, error: "Failed to fetch connections", connections: [], version: API_VERSION }, { status: 500, headers: {
       "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+      "X-API-Version": API_VERSION,
     }})
   }
 }

@@ -8,6 +8,7 @@ import { toast } from "@/lib/simple-toast"
 import type { Connection } from "@/lib/redis-db"
 import type { ActiveConnection } from "@/lib/active-connections"
 import { BASE_EXCHANGES } from "@/lib/connection-utils"
+import { COMPONENT_VERSIONS } from "@/lib/system-version"
 import { AddActiveConnectionDialog } from "./add-active-connection-dialog"
 import { ActiveConnectionCard } from "./active-connection-card"
 
@@ -16,8 +17,8 @@ interface ActiveConnectionWithDetails extends ActiveConnection {
 }
 
 export function DashboardActiveConnectionsManager() {
-  // Version marker: v4 - ensures browser cache refresh
-  const VERSION = "v4-20260226-fix-add-connection-refresh"
+  // Version marker with system version tracking - forces browser cache refresh
+  const VERSION = `${COMPONENT_VERSIONS.dashboardManager}-20260226`
   
   const [activeConnections, setActiveConnections] = useState<ActiveConnectionWithDetails[]>([])
   const [loading, setLoading] = useState(true)
@@ -79,10 +80,16 @@ export function DashboardActiveConnectionsManager() {
 
   const loadConnections = async () => {
     try {
-      // Fetch ALL connections via API (works on the client, unlike direct Redis)
-      // Add cache-bust query to force fresh data
+      // Fetch ALL connections via API with version tracking and cache-bust
       const timestamp = new Date().getTime()
-      const response = await fetch(`/api/settings/connections?t=${timestamp}`)
+      const response = await fetch(`/api/settings/connections?v=${VERSION}&t=${timestamp}`, {
+        cache: "no-store",
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache",
+          "X-Component-Version": VERSION,
+        },
+      })
       if (!response.ok) {
         setLoading(false)
         return
@@ -94,7 +101,8 @@ export function DashboardActiveConnectionsManager() {
       const activeConns: ActiveConnectionWithDetails[] = []
       const seenIds = new Set<string>()
 
-      console.log(`[v0] [Manager] Processing ${allConnections.length} connections from API [v3]`)
+      console.log(`[v0] [Manager] ${VERSION}: Processing ${allConnections.length} connections from API`)
+      console.log(`[v0] [Manager] ${VERSION}: Using ONLY is_dashboard_inserted field (base/main/real/live-independent)`)
       
       for (const conn of allConnections) {
         const exchange = (conn.exchange || "").toLowerCase().trim()
@@ -104,6 +112,8 @@ export function DashboardActiveConnectionsManager() {
         // NOT base connection settings like is_enabled or is_inserted
         const isDashboardInserted = conn.is_dashboard_inserted === true || conn.is_dashboard_inserted === "1"
         const isDashboardActive = conn.is_enabled_dashboard === true || conn.is_enabled_dashboard === "1"
+
+        console.log(`[v0] [Manager] ${VERSION}: ${conn.name}: base=${isBase}, dashboard_inserted=${isDashboardInserted} (raw=${JSON.stringify(conn.is_dashboard_inserted)})`)
 
         // Show ONLY base connections that are inserted on DASHBOARD
         // This is completely independent from Settings is_enabled status
@@ -120,13 +130,13 @@ export function DashboardActiveConnectionsManager() {
             addedAt: conn.created_at || new Date().toISOString(),
             details: conn,
           })
-          console.log(`[v0] [Manager] ✓ Added ${conn.name} to dashboard (dashboard_inserted=${isDashboardInserted}, dashboard_active=${isDashboardActive})`)
+          console.log(`[v0] [Manager] ${VERSION} ✓ Added ${conn.name}: dashboard_inserted=1, dashboard_active=${isDashboardActive}`)
         } else if (isBase && !isDashboardInserted) {
-          console.log(`[v0] [Manager] - ${conn.name}: not on dashboard (dashboard_inserted=${isDashboardInserted})`)
+          console.log(`[v0] [Manager] ${VERSION} - Skipped ${conn.name}: dashboard_inserted=0`)
         }
       }
       
-      console.log(`[v0] [Manager] Final: ${activeConns.length} connections on dashboard`)
+      console.log(`[v0] [Manager] ${VERSION}: Final: ${activeConns.length} active connections loaded`)
       
       // STICKY STATE: Never replace existing cards with empty data on transient fetch issues
       if (activeConns.length === 0 && activeConnectionsRef.current.length > 0) {
