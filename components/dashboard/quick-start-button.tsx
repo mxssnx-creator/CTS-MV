@@ -134,6 +134,17 @@ export function QuickStartButton() {
       // Success
       toast.success("Quick Start Complete! Trade engine is running with BingX.")
       console.log("[v0] [QuickStart] ✓ All steps completed successfully")
+      
+      // Force refresh the global engine controls by triggering a status update
+      // Dispatch event for global-trade-engine-controls to refresh immediately
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("engine-state-changed", { detail: { running: true } }))
+      }
+      
+      // Callback to parent to refresh connection lists
+      if (onQuickStartComplete) {
+        onQuickStartComplete()
+      }
 
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : "Unknown error"

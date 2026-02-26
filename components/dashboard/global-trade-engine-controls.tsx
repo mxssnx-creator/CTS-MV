@@ -34,20 +34,39 @@ export function GlobalTradeEngineControls() {
   const [isStopping, setIsStopping] = useState(false)
 
   useEffect(() => {
+    // Load initial status immediately
     loadStatus()
-    const interval = setInterval(loadStatus, 2000) // Poll every 2 seconds for faster updates
-    return () => clearInterval(interval)
+    // Poll every 1 second for faster updates after changes
+    const interval = setInterval(loadStatus, 1000)
+    
+    // Listen for engine state change events (from quick-start button, etc)
+    const handleEngineStateChange = () => {
+      console.log("[v0] [Engine] Detected engine state change event, refreshing...")
+      loadStatus()
+    }
+    
+    window.addEventListener("engine-state-changed", handleEngineStateChange)
+    window.addEventListener("connection-toggled", handleEngineStateChange)
+    
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener("engine-state-changed", handleEngineStateChange)
+      window.removeEventListener("connection-toggled", handleEngineStateChange)
+    }
   }, [])
 
   const loadStatus = async () => {
     try {
       const response = await fetch("/api/trade-engine/status", {
         cache: "no-store",
-        headers: { "Cache-Control": "no-cache" },
+        headers: { 
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache",
+        },
       })
       if (response.ok) {
         const data = await response.json()
-        console.log(`[v0] [Engine] Status check: running=${data.running}, paused=${data.paused}, connected=${data.connectedExchanges}`)
+        console.log(`[v0] [Engine] Status check: running=${data.running}, paused=${data.paused}, status=${data.status}`)
         const statusData: EngineStatus = {
           running: data.running === true || data.running === "true" || data.status === "running",
           paused: data.paused === true || data.paused === "true",
