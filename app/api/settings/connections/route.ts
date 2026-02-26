@@ -18,18 +18,28 @@ export async function GET(request: NextRequest) {
     await initRedis()
     let connections = await getAllConnections()
 
-    // MIGRATION: Set is_dashboard_inserted for bybit and bingx ONLY (one-time)
-    // This is separate from Settings is_enabled/is_inserted
+    // MIGRATION: Ensure ONLY bybit and bingx have is_dashboard_inserted="1"
+    // All other exchanges should have is_dashboard_inserted="0"
     for (const c of connections) {
       const exch = (c.exchange || "").toLowerCase().trim()
-      const isAutoInserted = DASHBOARD_AUTO_INSERTED.includes(exch)
+      const shouldBeOnDashboard = DASHBOARD_AUTO_INSERTED.includes(exch)
+      const currentlyInserted = c.is_dashboard_inserted === "1" || c.is_dashboard_inserted === true
       
-      // Only set is_dashboard_inserted if not already set
-      if (isAutoInserted && c.is_dashboard_inserted === undefined) {
+      // Set bybit/bingx to inserted if not already
+      if (shouldBeOnDashboard && !currentlyInserted) {
         await updateConnection(c.id, {
           ...c,
-          is_dashboard_inserted: "1", // Inserted on dashboard
-          is_enabled_dashboard: "0",   // But disabled by default
+          is_dashboard_inserted: "1",
+          is_enabled_dashboard: "0", // Disabled by default
+          updated_at: new Date().toISOString(),
+        })
+      }
+      // Remove other exchanges from dashboard if incorrectly inserted
+      else if (!shouldBeOnDashboard && currentlyInserted) {
+        await updateConnection(c.id, {
+          ...c,
+          is_dashboard_inserted: "0",
+          is_enabled_dashboard: "0",
           updated_at: new Date().toISOString(),
         })
       }

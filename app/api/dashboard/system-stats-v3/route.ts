@@ -24,7 +24,11 @@ export async function GET() {
       const e = c.is_enabled
       return e === true || e === "1" || e === "true" || e === undefined || e === null
     })
-    const workingBase = baseConnections.filter((c: any) => c.last_test_status === "success")
+    // Check multiple test status field names and values
+    const workingBase = baseConnections.filter((c: any) => {
+      const status = c.last_test_status || c.test_status || c.connection_status
+      return status === "success" || status === "ok" || status === "connected"
+    })
     
     // ACTIVE = connections with is_enabled_dashboard = "1" (independent state)
     const activeConnections = allConnections.filter((c: any) => {
