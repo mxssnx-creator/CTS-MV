@@ -385,21 +385,6 @@ function StatisticsCards({ stats }: { stats: ConnectionStats }) {
   )
 }
 
-    return (
-      <Card className="col-span-1 lg:col-span-2">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Activity className="h-5 w-5" />
-            Statistics
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-center text-destructive">{error || "No data available"}</div>
-        </CardContent>
-      </Card>
-    )
-  }
-
   return (
     <div className="col-span-1 lg:col-span-2 space-y-4">
       {/* Main Statistics Cards Row */}
