@@ -8,40 +8,29 @@ export const revalidate = 0
 export const fetchCache = "force-no-store"
 
 export async function GET() {
-  console.log("[v0] [Status] === TRADE ENGINE STATUS ENDPOINT CALLED (NEW VERSION) ===")
   try {
     await initRedis()
-    console.log("[v0] [Status] Redis initialized")
-
     const client = getRedisClient()
     const coordinator = getGlobalTradeEngineCoordinator()
-    console.log("[v0] [Status] Got client and coordinator")
     
-    // Check global engine status from Redis hash (start endpoint writes with hset)
+    // Read global engine state from Redis hash
     const engineHash = await client.hgetall("trade_engine:global") || {}
     const isGloballyRunning = engineHash.status === "running"
     const isGloballyPaused = engineHash.status === "paused"
     
-    console.log(`[v0] [Status] Redis Engine Hash:`, JSON.stringify(engineHash))
-    console.log(`[v0] [Status] Global Engine State - Running: ${isGloballyRunning}, Paused: ${isGloballyPaused}`)
-    
-    // Get ONLY Active Connections (is_enabled_dashboard = true) - independent from base connections
-    console.log("[v0] [Status] Calling getActiveConnectionsForEngine()...")
+    // Get active connections
     const connections = await getActiveConnectionsForEngine()
     
-    console.log(`[v0] [Status] *** ACTIVE CONNECTIONS COUNT: ${connections.length} ***`)
-    
-    // If no active connections, return status based on global engine state
     if (connections.length === 0) {
-      console.log("[v0] [Status] No active connections - returning status based on global engine state")
       return NextResponse.json({
         success: true,
         running: isGloballyRunning,
+        isRunning: isGloballyRunning,
         paused: isGloballyPaused,
         status: isGloballyRunning ? "running" : (isGloballyPaused ? "paused" : "stopped"),
+        activeEngineCount: coordinator?.getActiveEngineCount() || 0,
         connections: [],
         summary: { total: 0, running: 0, stopped: 0, totalTrades: 0, totalPositions: 0, errors: 0 },
-        message: isGloballyRunning ? "Trade engine running but no active connections to process" : undefined
       })
     }
 

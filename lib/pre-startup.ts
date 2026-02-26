@@ -3,13 +3,15 @@
  * Runs once on first deploy or server start
  */
 
-import { initRedis, createConnection, getAllConnections, saveMarketData, setSettings, getSettings, updateConnection } from "@/lib/redis-db"
+import { initRedis, createConnection, getAllConnections, saveMarketData, setSettings, getSettings, updateConnection, getRedisClient } from "@/lib/redis-db"
 import { runMigrations } from "@/lib/redis-migrations"
 import { getPredefinedAsExchangeConnections } from "@/lib/connection-predefinitions"
 import { initializeTradeEngineAutoStart } from "@/lib/trade-engine-auto-start"
 import { getGlobalTradeEngineCoordinator } from "@/lib/trade-engine"
 import { getDefaultSettings } from "@/lib/settings-storage"
 import { createExchangeConnector } from "@/lib/exchange-connectors"
+
+let preStartupCompleted = false
 
 async function seedMarketData() {
   console.log("[v0] [Seed] Starting market data seeding...")
@@ -291,47 +293,92 @@ async function initializeDefaultActiveConnections() {
   }
 }
 
+/**
+ * Auto-start the Global Trade Engine Coordinator at startup.
+ * Sets trade_engine:global status to "running" so individual connection
+ * engines can be activated without manual intervention.
+ */
+async function autoStartGlobalEngine() {
+  try {
+    const client = getRedisClient()
+    const globalState = await client.hgetall("trade_engine:global")
+    
+    // If already running (persisted from previous session), skip
+    if (globalState?.status === "running") {
+      console.log("[v0] [Global Engine] Already running from previous session")
+      return
+    }
+    
+    // Start global coordinator
+    const coordinator = getGlobalTradeEngineCoordinator()
+    
+    // Set global state to running in Redis
+    await client.hset("trade_engine:global", {
+      status: "running",
+      started_at: new Date().toISOString(),
+      coordinator_ready: "true",
+      auto_started: "true",
+    })
+    
+    console.log("[v0] [Global Engine] Auto-started Global Trade Engine Coordinator")
+  } catch (error) {
+    console.error("[v0] [Global Engine] Failed to auto-start:", error instanceof Error ? error.message : String(error))
+    // Non-fatal - user can start manually from the UI
+  }
+}
+
 export async function runPreStartup() {
+  // Prevent double execution (Next.js calls register() for each compilation)
+  if (preStartupCompleted) {
+    console.log("[v0] Pre-startup already completed, skipping duplicate call")
+    return
+  }
+  preStartupCompleted = true
+
   try {
     console.log("[v0] ==========================================")
     console.log("[v0] PRE-STARTUP INITIALIZATION STARTED")
     console.log("[v0] ==========================================")
     
-    console.log("[v0] [1/9] Initializing Redis with Upstash persistence...")
+    console.log("[v0] [1/10] Initializing Redis with Upstash persistence...")
     await initRedis()
-    console.log("[v0] [1/9] ✓ Redis initialized")
+    console.log("[v0] [1/10] ✓ Redis initialized")
     
-    console.log("[v0] [2/9] Running ALL Redis migrations (automatic)...")
+    console.log("[v0] [2/10] Running ALL Redis migrations (automatic)...")
     const migrationResult = await runMigrations()
-    console.log(`[v0] [2/9] ✓ Migrations: ${migrationResult.message} (schema v${migrationResult.version})`)
+    console.log(`[v0] [2/10] ✓ Migrations: ${migrationResult.message} (schema v${migrationResult.version})`)
     
-    console.log("[v0] [3/9] Initializing settings...")
+    console.log("[v0] [3/10] Initializing settings...")
     await initializeDefaultSettings()
-    console.log("[v0] [3/9] ✓ Settings initialized")
+    console.log("[v0] [3/10] ✓ Settings initialized")
     
-    console.log("[v0] [4/9] Seeding exchange connections...")
+    console.log("[v0] [4/10] Seeding exchange connections...")
     await seedPredefinedConnections()
-    console.log("[v0] [4/9] ✓ Connections seeded")
+    console.log("[v0] [4/10] ✓ Connections seeded")
     
-    console.log("[v0] [5/9] Seeding market data...")
+    console.log("[v0] [5/10] Seeding market data...")
     await seedMarketData()
-    console.log("[v0] [5/9] ✓ Market data seeded")
+    console.log("[v0] [5/10] ✓ Market data seeded")
     
-    console.log("[v0] [6/9] Initializing default active connections...")
+    console.log("[v0] [6/10] Initializing default active connections...")
     await initializeDefaultActiveConnections()
-    console.log("[v0] [6/9] ✓ Default active connections initialized")
+    console.log("[v0] [6/10] ✓ Default active connections initialized")
     
-    console.log("[v0] [7/9] Testing exchange connections (direct connector test)...")
+    console.log("[v0] [7/10] Testing exchange connections (direct connector test)...")
     const testResults = await testAllExchangeConnections()
-    console.log(`[v0] [7/9] ✓ Connection testing done: ${testResults?.passed || 0} passed, ${testResults?.failed || 0} failed`)
+    console.log(`[v0] [7/10] ✓ Connection testing done: ${testResults?.passed || 0} passed, ${testResults?.failed || 0} failed`)
     
-    console.log("[v0] [8/9] Initializing Trade Engine...")
+    console.log("[v0] [8/10] Starting Global Trade Engine Coordinator...")
+    await autoStartGlobalEngine()
+    console.log("[v0] [8/10] ✓ Global Trade Engine Coordinator running")
+    
+    console.log("[v0] [9/10] Initializing Trade Engines for active connections...")
     await initializeTradeEngineAutoStart()
-    console.log("[v0] [8/9] ✓ Trade Engine initialized and auto-start activated")
+    console.log("[v0] [9/10] ✓ Trade Engines initialized and auto-start activated")
     
-    console.log("[v0] [9/9] Starting periodic connection monitoring...")
+    console.log("[v0] [10/10] Starting periodic connection monitoring...")
     startPeriodicConnectionTesting()
-    console.log("[v0] [9/9] ✓ Periodic testing active (every 5 minutes)")
+    console.log("[v0] [10/10] ✓ Periodic testing active (every 5 minutes)")
     
     console.log("[v0] ==========================================")
     console.log("[v0] PRE-STARTUP COMPLETE - SYSTEM READY")

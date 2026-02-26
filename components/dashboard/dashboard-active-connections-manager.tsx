@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Plus, AlertTriangle } from "lucide-react"
 import { toast } from "@/lib/simple-toast"
-import type { Connection } from "@/lib/file-storage"
+import type { Connection } from "@/lib/redis-db"
 import { 
   loadActiveConnections, 
   removeActiveConnection, 
@@ -28,6 +28,20 @@ export function DashboardActiveConnectionsManager() {
   const [globalEngineRunning, setGlobalEngineRunning] = useState(false)
   const [globalEngineLoading, setGlobalEngineLoading] = useState(true)
   const globalEngineRef = React.useRef(false)
+  const activeConnectionsRef = React.useRef<ActiveConnectionWithDetails[]>([])
+
+  const updateActiveConnections = (updater: ActiveConnectionWithDetails[] | ((prev: ActiveConnectionWithDetails[]) => ActiveConnectionWithDetails[])) => {
+    if (typeof updater === "function") {
+      setActiveConnections(prev => {
+        const next = updater(prev)
+        activeConnectionsRef.current = next
+        return next
+      })
+    } else {
+      activeConnectionsRef.current = updater
+      setActiveConnections(updater)
+    }
+  }
 
   const checkGlobalEngine = async () => {
     try {
@@ -65,7 +79,7 @@ export function DashboardActiveConnectionsManager() {
       const active = await loadActiveConnections()
       
       // STICKY STATE: Never replace existing cards with empty data
-      if (active.length === 0 && activeConnections.length > 0) {
+      if (active.length === 0 && activeConnectionsRef.current.length > 0) {
         return
       }
       
@@ -85,18 +99,16 @@ export function DashboardActiveConnectionsManager() {
       }
 
       const enriched = active.map(ac => {
-        // Preserve existing details if new fetch didn't return this connection
-        const existingConn = activeConnections.find(e => e.connectionId === ac.connectionId)
+        const existingConn = activeConnectionsRef.current.find(e => e.connectionId === ac.connectionId)
         return {
           ...ac,
           details: connectionsMap[ac.connectionId] || existingConn?.details
         }
       })
 
-      setActiveConnections(enriched)
+      updateActiveConnections(enriched)
     } catch (error) {
       console.error("[v0] Error loading connections:", error)
-      // On error: keep existing state, never clear cards
     } finally {
       setLoading(false)
     }
@@ -120,7 +132,7 @@ export function DashboardActiveConnectionsManager() {
       await toggleActiveConnection(connectionId, newState)
       
       // 2. Update local state immediately for responsiveness
-      setActiveConnections(prev => prev.map(ac =>
+      updateActiveConnections(prev => prev.map(ac =>
         ac.connectionId === connectionId ? { ...ac, isActive: newState } : ac
       ))
 
@@ -165,7 +177,7 @@ export function DashboardActiveConnectionsManager() {
     } catch (error) {
       console.error("[v0] Toggle error:", error)
       // Revert local state on error
-      setActiveConnections(prev => prev.map(ac =>
+      updateActiveConnections(prev => prev.map(ac =>
         ac.connectionId === connectionId ? { ...ac, isActive: currentState } : ac
       ))
       toast.error("Failed to update connection status")
@@ -188,7 +200,7 @@ export function DashboardActiveConnectionsManager() {
       })
       
       await removeActiveConnection(connectionId)
-      setActiveConnections(activeConnections.filter(ac => ac.connectionId !== connectionId))
+      updateActiveConnections(prev => prev.filter(ac => ac.connectionId !== connectionId))
       toast.success("Connection removed", {
         description: `${connectionName} has been removed from active connections`
       })

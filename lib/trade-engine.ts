@@ -183,80 +183,26 @@ export class GlobalTradeEngineCoordinator {
   }
 
   /**
-   * Start all engines (for all active connections)
+   * Start all engines - alias for startAll()
    */
   async startAllEngines(): Promise<void> {
-    console.log("[v0] Starting all TradeEngines with optimized coordination...")
-
-    try {
-      let connections: any[] = []
-
-      try {
-        const { loadConnections } = await import("@/lib/file-storage")
-        const allConnections = loadConnections()
-        connections = allConnections.filter((c) => c.is_active && c.is_enabled)
-        console.log(`[v0] Loaded ${connections.length} active connections from file storage`)
-      } catch (fileError) {
-        console.log("[v0] File storage not available, trying database:", fileError)
-        try {
-          connections = await sql<any>`
-            SELECT id, exchange, api_key, api_secret 
-            FROM exchange_connections 
-            WHERE (is_enabled = 1 OR is_enabled = true)
-              AND (is_active = 1 OR is_active = true)
-          `
-          console.log(`[v0] Loaded ${connections.length} active connections from database`)
-        } catch (dbError) {
-          console.error("[v0] Database also failed:", dbError)
-          console.warn("[v0] No connections available to start")
-          return
-        }
-      }
-
-      console.log(`[v0] Found ${connections.length} active connections`)
-
-      const engineStarts = connections.map(async (connection) => {
-        try {
-          const config: EngineConfig = {
-            connectionId: connection.id,
-            indicationInterval: 5,
-            strategyInterval: 10,
-            realtimeInterval: 3,
-          }
-
-          await this.startEngine(connection.id, config)
-        } catch (error) {
-          console.error(`[v0] Failed to start engine for connection ${connection.id}:`, error)
-        }
-      })
-
-      await Promise.allSettled(engineStarts)
-
-      this.isGloballyRunning = true
-      this.startGlobalHealthMonitoring()
-      this.startCoordinationMetricsTracking()
-
-      console.log("[v0] All TradeEngines started with advanced coordination")
-    } catch (error) {
-      console.error("[v0] Failed to start all engines:", error)
-      throw error
-    }
+    return this.startAll()
   }
 
   /**
    * Stop all engines
    */
-  async stopAllEngines(): Promise<void> {
+  async stopAll(): Promise<void> {
     console.log("[v0] Stopping all TradeEngines...")
 
     if (this.healthCheckTimer) {
       clearInterval(this.healthCheckTimer)
     }
 
-    // Stop all engine managers
     for (const [connectionId, manager] of this.engineManagers.entries()) {
       try {
         await manager.stop()
+        console.log(`[v0] Stopped engine: ${connectionId}`)
       } catch (error) {
         console.error(`[v0] Failed to stop engine for connection ${connectionId}:`, error)
       }
@@ -264,8 +210,14 @@ export class GlobalTradeEngineCoordinator {
 
     this.engineManagers.clear()
     this.isGloballyRunning = false
+    this.isPaused = false
 
     console.log("[v0] All TradeEngines stopped")
+  }
+
+  // Alias for backward compat
+  async stopAllEngines(): Promise<void> {
+    return this.stopAll()
   }
 
   /**
