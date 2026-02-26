@@ -384,59 +384,7 @@ function StatisticsCards({ stats }: { stats: ConnectionStats }) {
     </div>
   )
 }
-          base: Math.floor(Math.random() * 80) + 15,
-          main: Math.floor(Math.random() * 60) + 10,
-          real: Math.floor(Math.random() * 40) + 8,
-          live: Math.floor(Math.random() * 20) + 3,
-          total: 0,
-          evaluated: 0,
-          drawdown_max: parseFloat((Math.random() * 15).toFixed(2)),
-          drawdown_time_hours: Math.floor(Math.random() * 48),
-        },
-        profit_factor: {
-          last_5: parseFloat((1.2 + Math.random() * 0.8).toFixed(2)),
-          last_15: parseFloat((1.1 + Math.random() * 0.9).toFixed(2)),
-          last_50: parseFloat((1.0 + Math.random() * 1.0).toFixed(2)),
-        },
-        positions: {
-          total_evaluated: data.stats?.total_positions || 0,
-          winning: data.stats?.win_count || 0,
-          losing: data.stats?.loss_count || 0,
-          win_rate: data.stats?.win_rate || 0,
-        },
-        ratios: {
-          indication_to_strategy: "2.5:1",
-          strategy_to_position: "1.8:1",
-          win_rate_percentage: (data.stats?.win_rate || 0) * 100,
-        },
-      }
 
-      // Calculate totals
-      statsData.indications.total =
-        statsData.indications.base +
-        statsData.indications.main +
-        statsData.indications.real +
-        statsData.indications.live
-      statsData.indications.evaluated = Math.floor(statsData.indications.total * 0.85)
-
-      statsData.strategies.total =
-        statsData.strategies.base +
-        statsData.strategies.main +
-        statsData.strategies.real +
-        statsData.strategies.live
-      statsData.strategies.evaluated = Math.floor(statsData.strategies.total * 0.75)
-
-      setStats(statsData)
-      setError(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error")
-      console.error("[v0] Failed to load statistics:", err)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  if (loading && !stats) {
     return (
       <Card className="col-span-1 lg:col-span-2">
         <CardHeader>
