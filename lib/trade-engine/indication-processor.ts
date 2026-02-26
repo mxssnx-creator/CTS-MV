@@ -34,7 +34,7 @@ export class IndicationProcessor {
    */
   async processHistoricalIndications(symbol: string, startDate: Date, endDate: Date): Promise<void> {
     try {
-      console.log(`[v0] Processing historical indications for ${symbol} from ${startDate.toISOString()} to ${endDate.toISOString()}`)
+      console.log(`[v0] [HistoricalIndication] Processing for ${symbol} | Period: ${startDate.toISOString()} to ${endDate.toISOString()}`)
 
       // Fetch historical market data for the symbol
       const redis = await getRedisHelpers()
@@ -50,10 +50,7 @@ export class IndicationProcessor {
 
       if (historicalData.length === 0) {
         // No market data yet - this is expected on first startup
-        // Log at debug level only (not every symbol)
-        if (Math.random() < 0.1) {
-          console.log(`[v0] [Indication] Historical data not available yet - trade engine in startup phase`)
-        }
+        console.log(`[v0] [HistoricalIndication] No data available yet for ${symbol}`)
         return
       }
 
@@ -61,6 +58,8 @@ export class IndicationProcessor {
 
       // Process each data point as a historical indication
       let successCount = 0
+      let typeBreakdown = { direction: 0, move: 0, active: 0, optimal: 0 }
+      
       for (const marketData of historicalData) {
         const indication = await this.calculateIndication(symbol, marketData, settings)
 
@@ -78,6 +77,7 @@ export class IndicationProcessor {
             calculated_at: marketData.timestamp || new Date().toISOString(),
           })
           successCount++
+          typeBreakdown[indication.type as keyof typeof typeBreakdown]++
         }
       }
 
@@ -87,9 +87,9 @@ export class IndicationProcessor {
         await ProgressionManager.incrementCycle(this.connectionId, true, successCount)
       }
 
-      console.log(`[v0] Processed ${historicalData.length} historical indications for ${symbol}`)
+      console.log(`[v0] [HistoricalIndication] ${symbol}: Processed ${historicalData.length} points | Qualified: ${successCount} | Types: Direction=${typeBreakdown.direction} Move=${typeBreakdown.move} Active=${typeBreakdown.active} Optimal=${typeBreakdown.optimal}`)
     } catch (error) {
-      console.error(`[v0] Failed to process historical indications for ${symbol}:`, error)
+      console.error(`[v0] [HistoricalIndication] Failed for ${symbol}:`, error instanceof Error ? error.message : String(error))
     }
   }
 
@@ -105,7 +105,7 @@ export class IndicationProcessor {
 
       const settings = await this.getIndicationSettingsCached()
 
-      // Calculate indication asynchronously
+      // Calculate indication asynchronously - all 4 types are evaluated internally
       const indication = await this.calculateIndication(symbol, marketData, settings)
 
       if (indication && indication.profit_factor >= settings.minProfitFactor) {
@@ -123,18 +123,18 @@ export class IndicationProcessor {
           calculated_at: new Date().toISOString(),
         })
 
-        // Only log when indications are actually saved
-        console.log(`[v0] [Indication] ${symbol}: ${indication.type} (PF: ${indication.profit_factor.toFixed(2)}, Conf: ${indication.confidence.toFixed(2)})`)
+        // Log when indications are actually saved with full breakdown
+        console.log(`[v0] [RealtimeIndication] ${symbol}: Type=${indication.type} | PF=${indication.profit_factor.toFixed(2)} | Conf=${indication.confidence.toFixed(2)} | Threshold=${settings.minProfitFactor.toFixed(2)}`)
       }
     } catch (error) {
-      console.error(`[v0] [Indication] Failed to process ${symbol}:`, error instanceof Error ? error.message : String(error))
+      console.error(`[v0] [RealtimeIndication] Failed for ${symbol}:`, error instanceof Error ? error.message : String(error))
     }
   }
 
   /**
-   * Calculate indication based on market data
+   * Calculate indication - evaluates all 4 types and returns strongest
    */
-  private async calculateIndication(symbol: string, marketData: any, settings: any): Promise<any> {
+  async calculateIndication(symbol: string, marketData: any, settings: any): Promise<any> {
     const price = marketData.price || marketData.close || 0
     const open = marketData.open || price
     const high = marketData.high || price
@@ -148,6 +148,7 @@ export class IndicationProcessor {
       return null // Not enough data
     }
 
+    // Evaluate all 4 indication types in parallel
     const [directionIndication, moveIndication, activeIndication] = await Promise.all([
       Promise.resolve(this.calculateDirectionIndication(historicalPrices, price)),
       Promise.resolve(this.calculateMoveIndication(historicalPrices, price)),
@@ -157,12 +158,25 @@ export class IndicationProcessor {
     // Calculate optimal based on parallel results
     const optimalIndication = this.calculateOptimalIndication(directionIndication, moveIndication, activeIndication)
 
-    // Return the strongest indication
+    // Return the strongest indication (best profit factor)
     const indications = [directionIndication, moveIndication, activeIndication, optimalIndication]
       .filter((i) => i !== null)
       .sort((a, b) => b.profit_factor - a.profit_factor)
 
-    return indications[0] || null
+    const selected = indications[0] || null
+    
+    // Log all 4 types for debugging
+    if (selected) {
+      const typeStats = {
+        direction: directionIndication ? `PF=${directionIndication.profit_factor.toFixed(2)}` : "null",
+        move: moveIndication ? `PF=${moveIndication.profit_factor.toFixed(2)}` : "null",
+        active: activeIndication ? `PF=${activeIndication.profit_factor.toFixed(2)}` : "null",
+        optimal: optimalIndication ? `PF=${optimalIndication.profit_factor.toFixed(2)}` : "null",
+      }
+      console.log(`[v0] [CalcIndication] ${symbol}: All Types Evaluated | Direction=${typeStats.direction} Move=${typeStats.move} Active=${typeStats.active} Optimal=${typeStats.optimal} | Selected=${selected.type.toUpperCase()}`)
+    }
+
+    return selected
   }
 
   private calculateDirectionIndication(prices: number[], currentPrice: number): any {
