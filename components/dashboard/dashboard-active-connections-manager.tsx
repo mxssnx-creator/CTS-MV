@@ -136,7 +136,6 @@ export function DashboardActiveConnectionsManager() {
           console.log(`[v0] [Manager] ${VERSION} ✓ Added ${conn.name}: base=${isBase}, inserted=${isDashboardInserted}, active=${isDashboardActive}`)
         }
       }
-      }
       
       console.log(`[v0] [Manager] ${VERSION}: Final: ${activeConns.length} active connections loaded`)
       
