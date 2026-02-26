@@ -16,6 +16,9 @@ interface ActiveConnectionWithDetails extends ActiveConnection {
 }
 
 export function DashboardActiveConnectionsManager() {
+  // Version marker: v4 - ensures browser cache refresh
+  const VERSION = "v4-20260226-fix-add-connection-refresh"
+  
   const [activeConnections, setActiveConnections] = useState<ActiveConnectionWithDetails[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -25,6 +28,10 @@ export function DashboardActiveConnectionsManager() {
   const [globalEngineLoading, setGlobalEngineLoading] = useState(true)
   const globalEngineRef = React.useRef(false)
   const activeConnectionsRef = React.useRef<ActiveConnectionWithDetails[]>([])
+
+  useEffect(() => {
+    console.log(`[v0] [Manager] Component loaded - ${VERSION}`)
+  }, [])
 
   const updateActiveConnections = (updater: ActiveConnectionWithDetails[] | ((prev: ActiveConnectionWithDetails[]) => ActiveConnectionWithDetails[])) => {
     if (typeof updater === "function") {

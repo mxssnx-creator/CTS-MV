@@ -112,14 +112,22 @@ export function AddActiveConnectionDialog({
       }
 
       toast.success(`${connection.name} added to active list`)
-
+      
+      // Wait a moment for backend to update
+      await new Promise(resolve => setTimeout(resolve, 500))
+      
+      console.log("[v0] [AddDialog] Connection added, triggering refresh...")
+      
       if (onConnectionAdded) {
+        console.log("[v0] [AddDialog] Calling onConnectionAdded callback")
         await onConnectionAdded(selectedConnection)
       }
       if (onSuccess) {
+        console.log("[v0] [AddDialog] Calling onSuccess callback")
         onSuccess(selectedConnection)
       }
 
+      console.log("[v0] [AddDialog] Closing dialog")
       onOpenChange(false)
       setSelectedConnection("")
     } catch (error: any) {
