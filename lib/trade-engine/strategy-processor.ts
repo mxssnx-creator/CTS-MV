@@ -16,7 +16,7 @@ export class StrategyProcessor {
   }
 
   /**
-   * Process strategy for a symbol in real-time
+   * Process strategy for a symbol in real-time with comprehensive error handling
    */
   async processStrategy(symbol: string): Promise<void> {
     try {
@@ -35,28 +35,40 @@ export class StrategyProcessor {
       for (let i = 0; i < indications.length; i += batchSize) {
         const batch = indications.slice(i, i + batchSize)
 
-        await Promise.all(
+        const results = await Promise.all(
           batch.map(async (indication) => {
-            const strategySignal = await this.evaluateStrategy(symbol, indication, settings)
+            try {
+              const strategySignal = await this.evaluateStrategy(symbol, indication, settings)
 
-            if (strategySignal && strategySignal.profit_factor >= settings.minProfitFactor) {
-              await this.createPseudoPosition(symbol, indication, strategySignal)
-              processedCount++
-              strategyProfit += strategySignal.profit_factor || 0
+              if (strategySignal && strategySignal.profit_factor >= settings.minProfitFactor) {
+                await this.createPseudoPosition(symbol, indication, strategySignal)
+                processedCount++
+                strategyProfit += strategySignal.profit_factor || 0
+                return true
+              }
+              return false
+            } catch (error) {
+              console.error(`[v0] [Strategy] Error evaluating ${symbol}:`, error instanceof Error ? error.message : String(error))
+              return false
             }
           }),
         )
+
+        const successCount = results.filter(Boolean).length
+        if (successCount > 0) {
+          console.log(`[v0] [Strategy] ${symbol}: Batch processed ${successCount}/${batch.length} indications`)
+        }
       }
       
       // Track progression: each successful strategy is a cycle
       if (processedCount > 0) {
         await ProgressionStateManager.incrementCycle(this.connectionId, true, strategyProfit)
-        console.log(`[v0] [Progression] Created ${processedCount} strategies for ${symbol} | Profit: ${strategyProfit.toFixed(2)}`)
+        console.log(`[v0] [Strategy] Created ${processedCount} strategies for ${symbol} | Total Profit: ${strategyProfit.toFixed(2)}`)
       }
     } catch (error) {
       // Track failed cycle on error
       await ProgressionStateManager.incrementCycle(this.connectionId, false, 0)
-      console.error(`[v0] Failed to process strategy for ${symbol}:`, error)
+      console.error(`[v0] [Strategy] Failed to process ${symbol}:`, error instanceof Error ? error.message : String(error))
     }
   }
 

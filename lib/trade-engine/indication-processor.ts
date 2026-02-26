@@ -94,7 +94,7 @@ export class IndicationProcessor {
   }
 
   /**
-   * Process indication for a symbol in real-time
+   * Process indication in real-time
    */
   async processIndication(symbol: string): Promise<void> {
     try {
@@ -102,6 +102,34 @@ export class IndicationProcessor {
       if (!marketData) {
         return
       }
+
+      const settings = await this.getIndicationSettingsCached()
+
+      // Calculate indication asynchronously
+      const indication = await this.calculateIndication(symbol, marketData, settings)
+
+      if (indication && indication.profit_factor >= settings.minProfitFactor) {
+        const redis = await getRedisHelpers()
+        await redis.saveIndication({
+          connection_id: this.connectionId,
+          symbol,
+          indication_type: indication.type,
+          timeframe: indication.timeframe,
+          mode: 'preset',
+          value: indication.value,
+          profit_factor: indication.profit_factor,
+          confidence: indication.confidence,
+          metadata: indication.metadata,
+          calculated_at: new Date().toISOString(),
+        })
+
+        // Only log when indications are actually saved
+        console.log(`[v0] [Indication] ${symbol}: ${indication.type} (PF: ${indication.profit_factor.toFixed(2)}, Conf: ${indication.confidence.toFixed(2)})`)
+      }
+    } catch (error) {
+      console.error(`[v0] [Indication] Failed to process ${symbol}:`, error instanceof Error ? error.message : String(error))
+    }
+  }
 
       const settings = await this.getIndicationSettingsCached()
 

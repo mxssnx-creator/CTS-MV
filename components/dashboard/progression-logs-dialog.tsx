@@ -81,7 +81,6 @@ export function ProgressionLogsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogTrigger asChild>
       <DialogContent className="max-w-4xl max-h-96">
         <DialogHeader>
           <DialogTitle>Progression Logs - {connectionName}</DialogTitle>
