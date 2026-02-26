@@ -5,64 +5,81 @@ import { query } from "@/lib/db"
 
 export async function GET() {
   try {
-    console.log("[v0] Fetching trading statistics")
+    console.log("[v0] Fetching detailed trading statistics")
     
     const connections = loadConnections()
     const enabledConnections = connections.filter((c) => c.is_enabled && c.is_live_trade)
     
-    if (enabledConnections.length === 0) {
-      return NextResponse.json({
-        total_positions: 0,
-        open_positions: 0,
-        closed_positions: 0,
-        total_volume: 0,
-        total_pnl: 0,
-        win_rate: 0,
-        avg_hold_time: 0,
-        balance: 0,
-        equity: 0,
-      })
-    }
-
+    // Return comprehensive stats with last250, last50, and last32h
     try {
-      // Get stats from database
-      const stats = await query(
+      // Get last 250 positions
+      const last250 = await query(
         `SELECT 
-          COUNT(CASE WHEN is_open = true THEN 1 END) as open_count,
-          COUNT(CASE WHEN is_open = false THEN 1 END) as closed_count,
-          COALESCE(SUM(quantity * entry_price), 0) as total_volume,
-          COALESCE(SUM(pnl), 0) as total_pnl,
-          COALESCE(AVG(CASE WHEN pnl > 0 THEN 1 ELSE 0 END), 0) as win_rate
-         FROM pseudo_positions`
+          COUNT(*) as total,
+          SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins,
+          SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losses,
+          COALESCE(SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) / COUNT(*), 0) as winRate,
+          COALESCE(SUM(CASE WHEN pnl > 0 THEN pnl ELSE 0 END) / NULLIF(SUM(CASE WHEN pnl < 0 THEN ABS(pnl) ELSE 0 END), 0), 0) as profitFactor,
+          COALESCE(SUM(pnl), 0) as totalProfit
+         FROM pseudo_positions ORDER BY created_at DESC LIMIT 250`
       )
       
-      const row = (stats as any[])[0]
+      // Get last 50 positions
+      const last50 = await query(
+        `SELECT 
+          COUNT(*) as total,
+          SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins,
+          SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losses,
+          COALESCE(SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) / COUNT(*), 0) as winRate,
+          COALESCE(SUM(CASE WHEN pnl > 0 THEN pnl ELSE 0 END) / NULLIF(SUM(CASE WHEN pnl < 0 THEN ABS(pnl) ELSE 0 END), 0), 0) as profitFactor,
+          COALESCE(SUM(pnl), 0) as totalProfit
+         FROM pseudo_positions ORDER BY created_at DESC LIMIT 50`
+      )
       
-      console.log(`[v0] Trading stats - Open: ${row.open_count}, Closed: ${row.closed_count}, PnL: ${row.total_pnl}`)
+      // Get last 32 hours
+      const last32h = await query(
+        `SELECT 
+          COUNT(*) as total,
+          COALESCE(SUM(pnl), 0) as totalProfit,
+          COALESCE(SUM(CASE WHEN pnl > 0 THEN pnl ELSE 0 END) / NULLIF(SUM(CASE WHEN pnl < 0 THEN ABS(pnl) ELSE 0 END), 0), 0) as profitFactor
+         FROM pseudo_positions WHERE created_at >= datetime('now', '-32 hours')`
+      )
+      
+      const l250 = (last250 as any[])[0]
+      const l50 = (last50 as any[])[0]
+      const l32 = (last32h as any[])[0]
+      
+      console.log(`[v0] Trading stats - Last250: ${l250?.total || 0}, Last50: ${l50?.total || 0}, Last32h: ${l32?.total || 0}`)
       
       return NextResponse.json({
-        total_positions: (row.open_count || 0) + (row.closed_count || 0),
-        open_positions: row.open_count || 0,
-        closed_positions: row.closed_count || 0,
-        total_volume: row.total_volume || 0,
-        total_pnl: row.total_pnl || 0,
-        win_rate: row.win_rate || 0,
-        avg_hold_time: 0,
-        balance: 10000,
-        equity: 10000,
+        last250: {
+          total: l250?.total || 0,
+          wins: l250?.wins || 0,
+          losses: l250?.losses || 0,
+          winRate: l250?.winRate || 0,
+          profitFactor: l250?.profitFactor || 0,
+          totalProfit: l250?.totalProfit || 0,
+        },
+        last50: {
+          total: l50?.total || 0,
+          wins: l50?.wins || 0,
+          losses: l50?.losses || 0,
+          winRate: l50?.winRate || 0,
+          profitFactor: l50?.profitFactor || 0,
+          totalProfit: l50?.totalProfit || 0,
+        },
+        last32h: {
+          total: l32?.total || 0,
+          totalProfit: l32?.totalProfit || 0,
+          profitFactor: l32?.profitFactor || 0,
+        },
       })
     } catch (dbError) {
       console.warn("[v0] Database stats not available:", dbError)
       return NextResponse.json({
-        total_positions: 0,
-        open_positions: 0,
-        closed_positions: 0,
-        total_volume: 0,
-        total_pnl: 0,
-        win_rate: 0,
-        avg_hold_time: 0,
-        balance: 0,
-        equity: 0,
+        last250: { total: 0, wins: 0, losses: 0, winRate: 0, profitFactor: 0, totalProfit: 0 },
+        last50: { total: 0, wins: 0, losses: 0, winRate: 0, profitFactor: 0, totalProfit: 0 },
+        last32h: { total: 0, totalProfit: 0, profitFactor: 0 },
       })
     }
   } catch (error) {

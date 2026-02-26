@@ -8,7 +8,7 @@ import { SystemOverview } from "./system-overview"
 import { GlobalTradeEngineControls } from "./global-trade-engine-controls"
 import { DashboardActiveConnectionsManager } from "./dashboard-active-connections-manager"
 import { IntervalsStrategiesOverview } from "./intervals-strategies-overview"
-import { StatisticsOverview } from "./statistics-overview"
+import { StatisticsOverviewV2 } from "./statistics-overview-v2"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { RefreshCw } from "lucide-react"
@@ -190,11 +190,11 @@ export function Dashboard() {
         </ErrorBoundary>
       )}
 
-      {/* Statistics Overview - Indications, Strategies, Performance Metrics for ALL connections */}
+      {/* Statistics Overview V2 - Unified widget with all metrics */}
       {filteredConnections.length > 0 && (
         <div className="col-span-full">
           <ErrorBoundary name="Statistics Overview">
-            <StatisticsOverview connections={filteredConnections} />
+            <StatisticsOverviewV2 connections={filteredConnections} />
           </ErrorBoundary>
         </div>
       )}
