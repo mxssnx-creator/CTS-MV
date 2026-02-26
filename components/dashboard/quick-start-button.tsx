@@ -104,18 +104,31 @@ export function QuickStartButton() {
       console.log("[v0] [QuickStart] Step 4: Trade engine started")
       updateStep("start", "success", "Engine running")
 
-      // STEP 5: Enable BingX on Dashboard AFTER engine starts
+      // STEP 5: Disable BingX connections first (clean state)
       updateStep("enable", "loading")
-      console.log("[v0] [QuickStart] Step 5: Enabling BingX on dashboard...")
+      console.log("[v0] [QuickStart] Step 5a: Disabling any existing BingX connections...")
+      const disableRes = await fetch("/api/trade-engine/quick-start", { 
+        method: "POST", 
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "disable" })
+      })
+      if (disableRes.ok) {
+        console.log("[v0] [QuickStart] Step 5a: Existing connections disabled")
+      }
+      
+      // STEP 5b: Re-enable BingX on Dashboard AFTER engine starts
+      console.log("[v0] [QuickStart] Step 5b: Enabling BingX on dashboard...")
       const enableRes = await fetch("/api/trade-engine/quick-start", { 
         method: "POST", 
         cache: "no-store",
-        headers: { "Content-Type": "application/json" }
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "enable" })
       })
       if (!enableRes.ok) throw new Error(`Enable failed: ${enableRes.statusText}`)
       const enableData = await enableRes.json()
       if (!enableData.success) throw new Error(enableData.error || "Enable failed")
-      console.log("[v0] [QuickStart] Step 5: BingX enabled on dashboard")
+      console.log("[v0] [QuickStart] Step 5b: BingX enabled on dashboard")
       updateStep("enable", "success", `${enableData.connection.name} enabled`)
 
       // Success

@@ -344,7 +344,10 @@ export function ActiveConnectionCard({
                 <Switch
                   id={`enable-${connection.connectionId}`}
                   checked={connection.isActive}
-                  onCheckedChange={() => onToggle(connection.connectionId, connection.isActive)}
+                  onCheckedChange={() => {
+                    console.log(`[v0] [Card] Toggle clicked for ${connName}: ${connection.isActive} → ${!connection.isActive}`)
+                    onToggle(connection.connectionId, connection.isActive)
+                  }}
                   disabled={isToggling || (!globalEngineRunning && !connection.isActive)}
                   className="scale-[0.8]"
                 />
