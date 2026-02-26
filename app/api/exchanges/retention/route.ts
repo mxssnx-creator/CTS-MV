@@ -11,7 +11,7 @@ export async function GET() {
     const retentionSettings = []
 
     for (const key of keys) {
-      const data = await (client as any).hGetAll(key)
+      const data = await (client as any).hgetall(key)
       if (data && Object.keys(data).length > 0) {
         retentionSettings.push({
           connection_id: data.connection_id,
@@ -51,11 +51,10 @@ export async function POST(request: Request) {
     }
 
     // Store in Redis
-    const fields = Object.entries(setting).flat()
-    await (client as any).hSet(key, ...fields)
+    await (client as any).hset(key, setting)
 
     // Add to index
-    await (client as any).sAdd("exchange_retention_settings:all", connectionId)
+    await (client as any).sadd("exchange_retention_settings:all", connectionId)
     
     // Set TTL (30 days)
     await (client as any).expire(key, 30 * 24 * 60 * 60)

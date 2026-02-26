@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
     // Check if user already exists
     const userKeys = await (client as any).keys("user:*")
     for (const key of userKeys) {
-      const userData = await (client as any).hGetAll(key)
+      const userData = await (client as any).hgetall(key)
       if (userData?.email === email || userData?.username === username) {
         return NextResponse.json({ success: false, error: "User already exists" }, { status: 409 })
       }
@@ -45,11 +45,10 @@ export async function POST(request: NextRequest) {
 
     // Store user in Redis
     const userKey = `user:${userId}`
-    const fields = Object.entries(user).flat()
-    await (client as any).hSet(userKey, ...fields)
+    await (client as any).hset(userKey, user)
     
     // Add to users index
-    await (client as any).sAdd("users:all", userId)
+    await (client as any).sadd("users:all", userId)
 
     // Create JWT token
     const token = await createToken({

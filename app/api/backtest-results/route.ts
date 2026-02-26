@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     const results = []
 
     for (const key of keys) {
-      const data = await (client as any).hGetAll(key)
+      const data = await (client as any).hgetall(key)
       if (data && Object.keys(data).length > 0) {
         // Apply filters
         if (presetId && data.preset_id !== presetId) continue

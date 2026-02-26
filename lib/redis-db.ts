@@ -7,7 +7,7 @@
  * Server Action requirement for files in the instrumentation import chain.
  */
 
-import { RedisPersistenceManager } from "./redis-persistence"
+import { RedisPersistenceManager, UpstashSync } from "./redis-persistence"
 
 // Inline the LocalRedis class to avoid cross-module sync export issues with Turbopack
 
@@ -99,7 +99,13 @@ class InlineLocalRedis {
 
   async get(key: string): Promise<string | null> {
     const entry = this.getEntry(key)
-    return entry?.type === "string" ? entry.value as string : null
+    if (entry?.type === "string") return entry.value as string
+    // Upstash read-through for persistent keys not yet in memory
+    const remote = await UpstashSync.get(key)
+    if (remote !== null) {
+      this.store.set(key, { type: "string", value: remote })
+    }
+    return remote
   }
 
   async set(key: string, value: string, options?: { ex?: number }): Promise<"OK"> {
@@ -109,6 +115,8 @@ class InlineLocalRedis {
       value,
       expiresAt: options?.ex ? Date.now() + options.ex * 1000 : undefined,
     })
+    // Upstash write-through for persistent keys
+    UpstashSync.set(key, value).catch(() => {})
     return "OK"
   }
 
@@ -167,10 +175,14 @@ class InlineLocalRedis {
         if (!(f in hash)) count++
         hash[f] = String(v ?? "")
       }
+      // Upstash write-through for persistent keys
+      UpstashSync.hset(key, hash).catch(() => {})
       return count
     }
     const isNew = !(fieldOrObj in hash)
     hash[fieldOrObj] = String(value ?? "")
+    // Upstash write-through for persistent keys
+    UpstashSync.hset(key, { [fieldOrObj]: String(value ?? "") }).catch(() => {})
     return isNew ? 1 : 0
   }
 
@@ -183,8 +195,16 @@ class InlineLocalRedis {
 
   async hgetall(key: string): Promise<Record<string, string>> {
     const entry = this.getEntry(key)
-    if (entry?.type !== "hash") return {}
-    return { ...(entry.value as Record<string, string>) }
+    if (entry?.type === "hash") {
+      return { ...(entry.value as Record<string, string>) }
+    }
+    // Upstash read-through for persistent keys not yet in memory
+    const remote = await UpstashSync.hgetall(key)
+    if (remote && Object.keys(remote).length > 0) {
+      this.store.set(key, { type: "hash", value: remote })
+      return { ...remote }
+    }
+    return {}
   }
 
   async hmset(key: string, ...args: string[]): Promise<"OK"> {
@@ -233,37 +253,19 @@ class InlineLocalRedis {
     const s = entry.value as Set<string>
     let count = 0
     for (const m of members) {
-      if (!s.has(m)) { 
-        s.add(m)
-        count++
-        console.log(`[v0] [Redis] Added ${m} to set ${key}, total now: ${s.size}`)
-      }
+  if (!s.has(m)) {
+  s.add(m)
+  count++
+  }
     }
     return count
   }
 
   async smembers(key: string): Promise<string[]> {
     const entry = this.getEntry(key)
-    if (!entry) {
-      // Don't log for indications - they're optional and expected to not exist frequently
-      if (!key.startsWith("indication")) {
-        console.log(`[v0] [Redis] smembers(${key}): entry not found`)
-      }
-      return []
-    }
-    if (entry.type !== "set") {
-      // Don't log for indications - expected behavior
-      if (!key.startsWith("indication")) {
-        console.log(`[v0] [Redis] smembers(${key}): entry is type ${entry.type}, not a set`)
-      }
-      return []
-    }
-    const members = Array.from(entry.value as Set<string>)
-    // Only log for non-indication sets to reduce noise
-    if (!key.startsWith("indication")) {
-      console.log(`[v0] [Redis] smembers(${key}): returning ${members.length} members`)
-    }
-    return members
+    if (!entry) return []
+    if (entry.type !== "set") return []
+    return Array.from(entry.value as Set<string>)
   }
 
   async sismember(key: string, member: string): Promise<number> {

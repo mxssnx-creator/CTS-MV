@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     let user = null
     
     for (const key of userKeys) {
-      const userData = await (client as any).hGetAll(key)
+      const userData = await (client as any).hgetall(key)
       if (userData?.email === email) {
         user = userData
         break

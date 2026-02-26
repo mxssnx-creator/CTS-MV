@@ -8,7 +8,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     await initRedis()
     const client = getRedisClient()
 
-    const result = await (client as any).hGetAll(`backtest_result:${id}`)
+    const result = await (client as any).hgetall(`backtest_result:${id}`)
 
     if (!result || Object.keys(result).length === 0) {
       return NextResponse.json({ error: "Backtest result not found" }, { status: 404 })

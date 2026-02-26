@@ -68,43 +68,9 @@ export async function getClient(): Promise<any> {
 }
 
 /**
- * Compatibility wrapper for execute() - Redis version
+ * SQL-to-Redis routing shim -- delegates to @/lib/db which has full SQL parsing
  */
-export async function execute(query: string, params: any[] = []): Promise<{ rowCount: number }> {
-  try {
-    await initRedisDb()
-    return { rowCount: 0 }
-  } catch (error) {
-    console.error("[v0] Execute error:", error)
-    return { rowCount: 0 }
-  }
-}
-
-/**
- * Compatibility wrapper for query() - Redis version
- */
-export async function query<T = any>(queryText: string, params: any[] = []): Promise<T[]> {
-  try {
-    await initRedisDb()
-    return []
-  } catch (error) {
-    console.error("[v0] Query error:", error)
-    return []
-  }
-}
-
-/**
- * Compatibility wrapper for queryOne() - Redis version
- */
-export async function queryOne<T = any>(queryText: string, params: any[] = []): Promise<T | null> {
-  try {
-    const results = await query<T>(queryText, params)
-    return results.length > 0 ? results[0] : null
-  } catch (error) {
-    console.error("[v0] QueryOne error:", error)
-    return null
-  }
-}
+export { execute, query, queryOne } from "./db"
 
 /**
  * Connection management - Redis backed
@@ -160,28 +126,31 @@ class DatabaseManagerClass {
     return this
   }
 
-  async query<T = any>(sql: string, params: any[] = []): Promise<T[]> {
-    return query<T>(sql, params)
+  async query<T = any>(sqlStr: string, params: any[] = []): Promise<T[]> {
+    const { query: dbQuery } = await import("./db")
+    return dbQuery<T>(sqlStr, params)
   }
 
-  async queryOne<T = any>(sql: string, params: any[] = []): Promise<T | null> {
-    return queryOne<T>(sql, params)
+  async queryOne<T = any>(sqlStr: string, params: any[] = []): Promise<T | null> {
+    const { queryOne: dbQueryOne } = await import("./db")
+    return dbQueryOne<T>(sqlStr, params)
   }
 
-  async execute(sql: string, params: any[] = []): Promise<{ rowCount: number }> {
-    return execute(sql, params)
+  async execute(sqlStr: string, params: any[] = []): Promise<{ rowCount: number }> {
+    const { execute: dbExecute } = await import("./db")
+    return dbExecute(sqlStr, params)
   }
 
-  async all(sql: string, params: any[] = []) {
-    return query(sql, params)
+  async all(sqlStr: string, params: any[] = []) {
+    return this.query(sqlStr, params)
   }
 
-  async get(sql: string, params: any[] = []) {
-    return queryOne(sql, params)
+  async get(sqlStr: string, params: any[] = []) {
+    return this.queryOne(sqlStr, params)
   }
 
-  async run(sql: string, params: any[] = []) {
-    return execute(sql, params)
+  async run(sqlStr: string, params: any[] = []) {
+    return this.execute(sqlStr, params)
   }
 
   getDatabaseType(): string {
@@ -199,18 +168,18 @@ class DatabaseManagerClass {
     const id = data.id || `${entityType}:${subType}:${Date.now()}:${Math.random().toString(36).substr(2, 9)}`
     const record = { ...data, id, entity_type: entityType, sub_type: subType, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }
     const key = `entity:${entityType}:${subType}:${id}`
-    await client.hSet(key, Object.fromEntries(Object.entries(record).map(([k, v]) => [k, typeof v === "string" ? v : JSON.stringify(v)])))
-    await client.sAdd(`entities:${entityType}:${subType}`, id)
+    await client.hset(key, Object.fromEntries(Object.entries(record).map(([k, v]) => [k, typeof v === "string" ? v : JSON.stringify(v)])))
+    await client.sadd(`entities:${entityType}:${subType}`, id)
     return record
   }
 
   async getAll(entityType: string, subType: string): Promise<any[]> {
     const { getRedisClient } = await import("./redis-db")
     const client = getRedisClient()
-    const ids = await client.sMembers(`entities:${entityType}:${subType}`)
+    const ids = await client.smembers(`entities:${entityType}:${subType}`)
     if (ids.length === 0) return []
-    const results = await Promise.all(ids.map(async (id) => {
-      const data = await client.hGetAll(`entity:${entityType}:${subType}:${id}`)
+    const results = await Promise.all(ids.map(async (id: string) => {
+      const data = await client.hgetall(`entity:${entityType}:${subType}:${id}`)
       return Object.keys(data).length > 0 ? data : null
     }))
     return results.filter(Boolean)
@@ -219,13 +188,13 @@ class DatabaseManagerClass {
   async getById(entityType: string, subType: string, id: string): Promise<any | null> {
     const { getRedisClient } = await import("./redis-db")
     const client = getRedisClient()
-    const data = await client.hGetAll(`entity:${entityType}:${subType}:${id}`)
+    const data = await client.hgetall(`entity:${entityType}:${subType}:${id}`)
     return Object.keys(data).length > 0 ? data : null
   }
 
   async find(entityType: string, subType: string, filter: Record<string, any>): Promise<any[]> {
     const all = await this.getAll(entityType, subType)
-    return all.filter((item) => Object.entries(filter).every(([k, v]) => item[k] === String(v)))
+    return all.filter((item: any) => Object.entries(filter).every(([k, v]) => item[k] === String(v)))
   }
 
   async update(entityType: string, subType: string, id: string, data: any): Promise<any> {
@@ -233,14 +202,14 @@ class DatabaseManagerClass {
     const client = getRedisClient()
     const key = `entity:${entityType}:${subType}:${id}`
     const record = { ...data, updated_at: new Date().toISOString() }
-    await client.hSet(key, Object.fromEntries(Object.entries(record).map(([k, v]) => [k, typeof v === "string" ? v : JSON.stringify(v)])))
+    await client.hset(key, Object.fromEntries(Object.entries(record).map(([k, v]) => [k, typeof v === "string" ? v : JSON.stringify(v)])))
     return record
   }
 
   async delete(entityType: string, subType: string, id: string): Promise<void> {
     const { getRedisClient } = await import("./redis-db")
     const client = getRedisClient()
-    await client.sRem(`entities:${entityType}:${subType}`, id)
+    await client.srem(`entities:${entityType}:${subType}`, id)
     await client.del(`entity:${entityType}:${subType}:${id}`)
   }
 
