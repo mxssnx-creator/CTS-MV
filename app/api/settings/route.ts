@@ -5,7 +5,7 @@ export const runtime = "nodejs"
 
 function getDefaultSettings(): Record<string, any> {
   return {
-    mainEngineIntervalMs: 60000,
+    mainEngineIntervalMs: 1000,
     presetEngineIntervalMs: 120000,
     strategyUpdateIntervalMs: 10000,
     realtimeIntervalMs: 3000,

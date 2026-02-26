@@ -190,30 +190,11 @@ export function DashboardActiveConnectionsManager() {
       ))
       console.log(`[v0] [Manager] ✓ Local state updated`)
 
-      // 3. Start or stop the trade engine
-      if (newState) {
-        console.log(`[v0] [Manager] → Starting engine for ${connName}...`)
-        const startRes = await fetch(`/api/settings/connections/${connectionId}/live-trade`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ is_live_trade: true }),
-          cache: "no-store"
-        })
-        
-        if (!startRes.ok) {
-          const errorData = await startRes.json().catch(() => ({ error: "Unknown error" }))
-          console.warn(`[v0] [Manager] ⚠ Engine start warning: ${errorData.error}`)
-          toast.warning("Connection enabled", {
-            description: `Active but engine: ${errorData.error || "could not start"}`,
-          })
-        } else {
-          console.log(`[v0] [Manager] ✓ Engine started for ${connName}`)
-          toast.success("Connection activated", {
-            description: "Engine starting - loading historical data...",
-          })
-        }
-      } else {
-        console.log(`[v0] [Manager] → Stopping engine for ${connName}...`)
+      // Live trade is now MANUAL ONLY - do not auto-enable
+      // User must manually enable via the Live Trade slider on the connection card
+      if (!newState) {
+        // Only auto-disable live trade when connection is disabled
+        console.log(`[v0] [Manager] → Stopping engine for ${connName} (connection disabled)...`)
         const stopRes = await fetch(`/api/settings/connections/${connectionId}/live-trade`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -226,6 +207,11 @@ export function DashboardActiveConnectionsManager() {
         }
         toast.success("Connection deactivated", {
           description: "Engine stopped",
+        })
+      } else {
+        // When enabling, just show that live trade must be enabled manually
+        toast.success("Connection added to Active Connections", {
+          description: "Use the Live Trade slider to enable real exchange trading",
         })
       }
 
