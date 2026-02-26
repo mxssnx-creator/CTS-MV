@@ -15,13 +15,18 @@ export async function GET(request: NextRequest) {
     await initRedis()
     let connections = await getAllConnections()
 
-    // Base exchanges that are always enabled in Settings
-    const BASE_EXCHANGES = ["bybit", "bingx", "pionex", "orangex", "binance", "okx"]
+    // Base exchanges that are AUTO-INSERTED by default (only bybit and bingx)
+    // These should be enabled by default since they were inserted by init
+    const AUTO_INSERTED_EXCHANGES = ["bybit", "bingx"]
     
-    // Force-enable all base exchange connections (they cannot be disabled in Settings)
+    // Only force-enable the auto-inserted base connections
     connections = connections.map((c) => {
-      const isBaseExchange = BASE_EXCHANGES.includes((c.exchange || "").toLowerCase().trim())
-      if (isBaseExchange && (!c.is_enabled || c.is_enabled === "0" || c.is_enabled === false)) {
+      const exchange = (c.exchange || "").toLowerCase().trim()
+      const isAutoInserted = AUTO_INSERTED_EXCHANGES.includes(exchange)
+      const isInserted = c.is_inserted === "1" || c.is_inserted === true
+      
+      // Enable only if: auto-inserted exchange AND was explicitly inserted
+      if (isAutoInserted && isInserted && (!c.is_enabled || c.is_enabled === "0" || c.is_enabled === false)) {
         return { ...c, is_enabled: "1" }
       }
       return c

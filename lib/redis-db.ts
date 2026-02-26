@@ -717,12 +717,17 @@ export async function getEnabledConnections(): Promise<any[]> {
 const _BASE_EXCHANGES = ["bybit", "bingx", "pionex", "orangex"]
 
 /**
- * Get ONLY base connections (4 primary exchanges: bybit, bingx, pionex, orangex)
+ * Get enabled connections (respects inserted state)
+ * Auto-inserted exchanges (bybit, bingx) are enabled by default
+ * Other connections start disabled unless explicitly enabled by user
  */
-export async function getBaseConnections(): Promise<any[]> {
+export async function getEnabledConnections(): Promise<any[]> {
   const all = await getAllConnections()
-  const filtered = all.filter((c: any) => _BASE_EXCHANGES.includes((c?.exchange || "").toLowerCase().trim()))
-  console.log(`[v0] [DB] getBaseConnections: ${filtered.length} base (out of ${all.length})`)
+  const filtered = all.filter((c: any) => {
+    const isEnabled = c.is_enabled === "1" || c.is_enabled === true || c.is_enabled === "true"
+    return isEnabled
+  })
+  console.log(`[v0] [DB] getEnabledConnections: ${filtered.length} enabled out of ${all.length} | ${filtered.map((c: any) => c.name || c.id).join(", ")}`)
   return filtered
 }
 

@@ -82,14 +82,17 @@ export function ConnectionStateProvider({ children }: { children: ReactNode }) {
         const data = await response.json()
         setBaseConnections(data.connections || [])
         
-        // Initialize status map - base connections are ALWAYS enabled
-        const BASE_EXCHANGES = ["bybit", "bingx", "pionex", "orangex", "binance", "okx"]
+        // Initialize status map - only auto-inserted connections (bybit, bingx) are enabled by default
+        const AUTO_INSERTED = ["bybit", "bingx"]
         const statusMap = new Map<string, { enabled: boolean; inserted: boolean }>()
         data.connections?.forEach((conn: ExchangeConnection) => {
-          const isBase = BASE_EXCHANGES.includes((conn.exchange || "").toLowerCase().trim())
+          const exchange = (conn.exchange || "").toLowerCase().trim()
+          const isAutoInserted = AUTO_INSERTED.includes(exchange)
+          const isInserted = conn.is_inserted === "1" || conn.is_inserted === true
+          
           statusMap.set(conn.id, { 
-            // Base connections are always enabled regardless of stored value
-            enabled: isBase ? true : (conn.is_enabled === true || conn.is_enabled === "true"),
+            // Auto-inserted connections start enabled; others start disabled
+            enabled: isAutoInserted && isInserted,
             inserted: false 
           })
         })
