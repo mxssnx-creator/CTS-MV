@@ -402,7 +402,59 @@ class InlineLocalRedis {
     try { return JSON.parse(existing).length } catch { return 0 }
   }
 
+  // Sorted set operations (stored as JSON with score)
+  async zadd(key: string, ...scoreMembers: (string | number)[]): Promise<number> {
+    let entry = this.getEntry(key)
+    if (!entry || entry.type !== "hash") {
+      entry = { type: "hash", value: {} }
+      this.store.set(key, entry)
+    }
+    const zset = entry.value as Record<string, string>
+    let count = 0
+    for (let i = 0; i < scoreMembers.length; i += 2) {
+      const score = String(scoreMembers[i])
+      const member = String(scoreMembers[i + 1])
+      if (!(member in zset)) count++
+      zset[member] = score
+    }
+    return count
+  }
+
+  async zrange(key: string, start: number, stop: number): Promise<string[]> {
+    const entry = this.getEntry(key)
+    if (entry?.type !== "hash") return []
+    const zset = entry.value as Record<string, string>
+    const members = Object.entries(zset)
+      .sort((a, b) => parseFloat(a[1]) - parseFloat(b[1]))
+      .map(([member]) => member)
+    return members.slice(start, stop === -1 ? undefined : stop + 1)
+  }
+
+  async zcard(key: string): Promise<number> {
+    const entry = this.getEntry(key)
+    if (entry?.type !== "hash") return 0
+    return Object.keys(entry.value as Record<string, string>).length
+  }
+
+  async zrem(key: string, ...members: string[]): Promise<number> {
+    const entry = this.getEntry(key)
+    if (entry?.type !== "hash") return 0
+    const zset = entry.value as Record<string, string>
+    let count = 0
+    for (const member of members) {
+      if (member in zset) {
+        delete zset[member]
+        count++
+      }
+    }
+    return count
+  }
+
   // camelCase aliases for compatibility with code using node-redis / ioredis naming conventions
+  async zAdd(key: string, ...scoreMembers: (string | number)[]) { return this.zadd(key, ...scoreMembers) }
+  async zRange(key: string, start: number, stop: number) { return this.zrange(key, start, stop) }
+  async zCard(key: string) { return this.zcard(key) }
+  async zRem(key: string, ...members: string[]) { return this.zrem(key, ...members) }
   async hSet(key: string, fieldOrObj: string | Record<string, any>, value?: string) { return this.hset(key, fieldOrObj, value) }
   async hGet(key: string, field: string) { return this.hget(key, field) }
   async hGetAll(key: string) { return this.hgetall(key) }

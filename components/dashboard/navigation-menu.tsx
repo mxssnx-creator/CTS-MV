@@ -7,6 +7,12 @@ import { Activity, Target, Zap, TrendingUp, PieChart, Cog, Calculator, Layers, H
 
 const menuItems = [
   {
+    title: "Active Exchange",
+    href: "/active-exchange",
+    icon: "Activity",
+    description: "Statistics and prehistoric data for selected active connection",
+  },
+  {
     title: "Overview",
     href: "/",
     icon: "Home",
