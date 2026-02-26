@@ -82,31 +82,59 @@ export class StrategyProcessor {
 
   /**
    * Process historical strategies for prehistoric data (evaluation only, no real trades)
+   * Uses same sets processor as realtime for consistency
    */
   async processHistoricalStrategies(symbol: string, start: Date, end: Date): Promise<void> {
     try {
-      console.log(`[v0] [PrehistoricStrategy] Processing historical strategies for ${symbol}`)
+      console.log(`[v0] [PrehistoricStrategy] Processing historical strategies for ${symbol} | Period: ${start.toISOString()} to ${end.toISOString()}`)
 
       await initRedis()
+      
+      // Get indications that were already processed in the prehistoric indication phase
       const indications = await this.getHistoricalIndications(symbol, start, end)
-      const settings = await this.getStrategySettings()
 
-      let recordsProcessed = 0
-
-      for (const indication of indications) {
-        const strategySignal = await this.evaluateStrategy(symbol, indication, settings)
-
-        if (strategySignal && strategySignal.profit_factor >= settings.minProfitFactor) {
-          // During prehistoric: evaluate but don't create pseudo positions (no real trades)
-          recordsProcessed++
-        }
+      if (indications.length === 0) {
+        console.log(`[v0] [PrehistoricStrategy] No indications available for ${symbol}`)
+        return
       }
+
+      // Use same sets processor as realtime for consistency
+      const setsProcessor = new StrategySetsProcessor(this.connectionId)
+      
+      // Process through independent strategy sets (isPrehistoric=true prevents real trades)
+      await setsProcessor.processAllStrategySets(symbol, indications, true)
+
+      // Get set statistics
+      const baseStats = await setsProcessor.getSetStats(symbol, "base")
+      const mainStats = await setsProcessor.getSetStats(symbol, "main")
+      const realStats = await setsProcessor.getSetStats(symbol, "real")
+      const liveStats = await setsProcessor.getSetStats(symbol, "live")
+
+      const totalEvaluated =
+        (baseStats?.currentEntries || 0) +
+        (mainStats?.currentEntries || 0) +
+        (realStats?.currentEntries || 0) +
+        (liveStats?.currentEntries || 0)
 
       // Track prehistoric progress
       await ProgressionStateManager.incrementPrehistoricCycle(this.connectionId, symbol)
-      console.log(`[v0] [PrehistoricStrategy] Evaluated ${recordsProcessed} historical strategies for ${symbol} (no trades created)`)
+      
+      console.log(
+        `[v0] [PrehistoricStrategy] ${symbol}: Evaluated ${indications.length} indications → ${totalEvaluated} strategies (no trades) | Base=${baseStats?.currentEntries}/${baseStats?.maxEntries} Main=${mainStats?.currentEntries}/${mainStats?.maxEntries} Real=${realStats?.currentEntries}/${realStats?.maxEntries} Live=${liveStats?.currentEntries}/${liveStats?.maxEntries}`
+      )
+
+      await logProgressionEvent(this.connectionId, "strategies_prehistoric", "info", `Historical strategies evaluated for ${symbol}`, {
+        base: baseStats,
+        main: mainStats,
+        real: realStats,
+        live: liveStats,
+        totalEvaluated,
+        indicationsProcessed: indications.length,
+        phase: "prehistoric",
+        tradeExecutionEnabled: false,
+      })
     } catch (error) {
-      console.error(`[v0] [PrehistoricStrategy] Failed for ${symbol}:`, error)
+      console.error(`[v0] [PrehistoricStrategy] Failed for ${symbol}:`, error instanceof Error ? error.message : String(error))
     }
   }
 
