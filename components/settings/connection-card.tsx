@@ -336,15 +336,15 @@ export function ConnectionCard({
                 {connection.is_testnet && (
                   <Badge className="text-xs bg-blue-100 text-blue-900">Testnet</Badge>
                 )}
-                {/* Status Badge - Base connections are always active */}
+                {/* Status Badge - Only auto-inserted connections (bybit, bingx) are always active */}
                 <Badge 
                   className={`text-xs ${
-                    (isBase || connection.is_enabled)
+                    (isBase && ["bybit", "bingx"].includes(exchange) && (connection.is_inserted === true || connection.is_inserted === "1")) || connection.is_enabled
                       ? "bg-green-100 text-green-900 border-green-200" 
                       : "bg-gray-100 text-gray-600 border-gray-200"
                   }`}
                 >
-                  {isBase ? "Always Active" : (connection.is_enabled ? "Active" : "Inactive")}
+                  {isBase && ["bybit", "bingx"].includes(exchange) && (connection.is_inserted === true || connection.is_inserted === "1") ? "Auto-Enabled" : (connection.is_enabled ? "Active" : "Inactive")}
                 </Badge>
               </div>
               <div className="space-y-1">
@@ -372,17 +372,17 @@ export function ConnectionCard({
               </Button>
               <div className="flex items-center justify-end gap-3">
                 <span className="text-sm text-muted-foreground">
-                  {isBase ? "Always Enabled" : (connection.is_enabled ? "Enabled" : "Disabled")}
+                  {isBase && ["bybit", "bingx"].includes(exchange) && (connection.is_inserted === true || connection.is_inserted === "1") ? "Auto-Enabled" : (connection.is_enabled ? "Enabled" : "Disabled")}
                 </span>
                 <Button
                   size="sm"
-                  variant={isBase || connection.is_enabled ? "default" : "outline"}
-                  onClick={isBase ? undefined : onToggle}
-                  className={`w-14 ${isBase ? "opacity-60 cursor-not-allowed" : ""}`}
-                  title={isBase ? "Base connections are always enabled" : (connection.is_enabled ? "Disable" : "Enable")}
-                  disabled={isBase}
+                  variant={isBase && ["bybit", "bingx"].includes(exchange) && (connection.is_inserted === true || connection.is_inserted === "1") || connection.is_enabled ? "default" : "outline"}
+                  onClick={isBase && ["bybit", "bingx"].includes(exchange) && (connection.is_inserted === true || connection.is_inserted === "1") ? undefined : onToggle}
+                  className={`w-14 ${isBase && ["bybit", "bingx"].includes(exchange) && (connection.is_inserted === true || connection.is_inserted === "1") ? "opacity-60 cursor-not-allowed" : ""}`}
+                  title={isBase && ["bybit", "bingx"].includes(exchange) && (connection.is_inserted === true || connection.is_inserted === "1") ? "Auto-inserted connections are always enabled" : (connection.is_enabled ? "Disable" : "Enable")}
+                  disabled={isBase && ["bybit", "bingx"].includes(exchange) && (connection.is_inserted === true || connection.is_inserted === "1")}
                 >
-                  {isBase ? <Lock className="h-4 w-4" /> : <Power className="h-4 w-4" />}
+                  {isBase && ["bybit", "bingx"].includes(exchange) && (connection.is_inserted === true || connection.is_inserted === "1") ? <Lock className="h-4 w-4" /> : <Power className="h-4 w-4" />}
                 </Button>
               </div>
             </div>
