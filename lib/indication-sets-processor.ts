@@ -242,7 +242,7 @@ export class IndicationSetsProcessor {
       const stats = {
         maxEntries: this.maxEntriesPerSet,
         currentEntries: entries.length,
-        totalCalculated: (await getSettings(statsKey))?.totalCalculated || 0) + 1,
+        totalCalculated: ((await getSettings(statsKey))?.totalCalculated || 0) + 1,
         totalQualified: ((await getSettings(statsKey))?.totalQualified || 0) + 1,
         avgProfitFactor: entries.reduce((sum: number, e: any) => sum + e.profitFactor, 0) / entries.length,
         lastCalculated: new Date().toISOString(),
