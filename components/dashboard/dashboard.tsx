@@ -141,10 +141,10 @@ export function Dashboard() {
         <IntervalsStrategiesOverview connections={filteredConnections} />
       )}
 
-      {/* Statistics Overview - Indications, Strategies, Performance Metrics */}
+      {/* Statistics Overview - Indications, Strategies, Performance Metrics for ALL connections */}
       {filteredConnections.length > 0 && (
-        <div className="grid gap-6">
-          <StatisticsOverview connectionId={filteredConnections[0]?.id || ""} />
+        <div className="col-span-full">
+          <StatisticsOverview connections={filteredConnections} />
         </div>
       )}
 
