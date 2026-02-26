@@ -549,6 +549,8 @@ export async function saveConnection(connection: any): Promise<void> {
     is_testnet: convertToString(connection.is_testnet),
     is_enabled: convertToString(connection.is_enabled),
     is_enabled_dashboard: convertToString(connection.is_enabled_dashboard),
+    is_dashboard_inserted: convertToString(connection.is_dashboard_inserted),
+    is_inserted: convertToString(connection.is_inserted),
     is_active: convertToString(connection.is_active),
     is_predefined: convertToString(connection.is_predefined),
     is_live_trade: convertToString(connection.is_live_trade),
@@ -679,6 +681,7 @@ export async function getAllConnections(): Promise<any[]> {
           is_testnet: toBool(data.is_testnet),
           is_enabled: toBool(data.is_enabled),
           is_enabled_dashboard: toBool(data.is_enabled_dashboard),
+          is_dashboard_inserted: data.is_dashboard_inserted, // Keep as string "1"/"0" for dashboard checks
           is_active: toBool(data.is_active),
           is_predefined: toBool(data.is_predefined),
           is_inserted: toBool(data.is_inserted),
