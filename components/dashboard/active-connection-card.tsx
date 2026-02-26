@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/collapsible"
 import { ConnectionInfoDialog } from "@/components/settings/connection-info-dialog"
 import { ConnectionSettingsDialog } from "@/components/settings/connection-settings-dialog"
+import { ProgressionLogsDialog } from "@/components/dashboard/progression-logs-dialog"
 import type { Connection } from "@/lib/redis-db"
 import type { ActiveConnection } from "@/lib/active-connections"
 import { toast } from "@/lib/simple-toast"
@@ -92,6 +93,7 @@ export function ActiveConnectionCard({
   const [progression, setProgression] = useState<ProgressionData | null>(null)
   const [infoDialogOpen, setInfoDialogOpen] = useState(false)
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false)
+  const [logsDialogOpen, setLogsDialogOpen] = useState(false)
   const [liveTrade, setLiveTrade] = useState(false)
   const [presetMode, setPresetMode] = useState(false)
   const [liveTradeLoading, setLiveTradeLoading] = useState(false)
@@ -281,6 +283,16 @@ export function ActiveConnectionCard({
                   title="Connection Settings"
                 >
                   <Settings2 className="h-3.5 w-3.5" />
+                </Button>
+                {/* Logs button */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0"
+                  onClick={() => setLogsDialogOpen(true)}
+                  title="Procedure Logs"
+                >
+                  <Activity className="h-3.5 w-3.5" />
                 </Button>
                 {/* Expand toggle */}
                 <CollapsibleTrigger asChild>
@@ -572,6 +584,13 @@ export function ActiveConnectionCard({
         onOpenChange={setSettingsDialogOpen}
         connectionId={connection.connectionId}
         connectionName={connName}
+      />
+      <ProgressionLogsDialog
+        open={logsDialogOpen}
+        onOpenChange={setLogsDialogOpen}
+        connectionId={connection.connectionId}
+        connectionName={connName}
+        progression={progression}
       />
     </>
   )

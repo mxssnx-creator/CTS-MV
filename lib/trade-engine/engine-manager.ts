@@ -9,6 +9,7 @@ import { IndicationProcessor } from "./indication-processor"
 import { StrategyProcessor } from "./strategy-processor"
 import { PseudoPositionManager } from "./pseudo-position-manager"
 import { RealtimeProcessor } from "./realtime-processor"
+import { logProgressionEvent } from "@/lib/engine-progression-logs"
 
 export interface EngineConfig {
   connectionId: string
@@ -74,6 +75,7 @@ export class TradeEngineManager {
     try {
       // Phase 1: Initializing
       await this.updateProgressionPhase("initializing", 5, "Setting up engine components...")
+      await logProgressionEvent(this.connectionId, "initializing", "info", "Engine initialization started")
       await this.updateEngineState("running")
       await this.setRunningFlag(true)
 
@@ -270,6 +272,13 @@ export class TradeEngineManager {
         this.componentHealth.indications.lastCycleDuration = duration
         this.componentHealth.indications.successRate = ((cycleCount - errorCount) / cycleCount) * 100
 
+        // Log successful indication run
+        await logProgressionEvent(this.connectionId, "indications", "info", `Processed ${symbols.length} symbols`, {
+          cycleDuration_ms: duration,
+          cycleCount,
+          symbolsCount: symbols.length,
+        })
+
         // Update engine state in Redis
         const engineState = (await getSettings(`trade_engine_state:${this.connectionId}`)) || {}
         await setSettings(`trade_engine_state:${this.connectionId}`, {
@@ -282,6 +291,10 @@ export class TradeEngineManager {
         errorCount++
         this.componentHealth.indications.errorCount++
         console.error("[v0] Indication processor error:", error)
+        await logProgressionEvent(this.connectionId, "indications", "error", `Processor error: ${error instanceof Error ? error.message : String(error)}`, {
+          errorType: error instanceof Error ? error.name : "unknown",
+          stack: error instanceof Error ? error.stack : undefined,
+        })
       }
     }, intervalSeconds * 1000)
   }
@@ -312,6 +325,13 @@ export class TradeEngineManager {
         this.componentHealth.strategies.lastCycleDuration = duration
         this.componentHealth.strategies.successRate = ((cycleCount - errorCount) / cycleCount) * 100
 
+        // Log successful strategy run
+        await logProgressionEvent(this.connectionId, "strategies", "info", `Processed strategies for ${symbols.length} symbols`, {
+          cycleDuration_ms: duration,
+          cycleCount,
+          symbolsCount: symbols.length,
+        })
+
         // Update engine state in Redis
         const engineState = (await getSettings(`trade_engine_state:${this.connectionId}`)) || {}
         await setSettings(`trade_engine_state:${this.connectionId}`, {
@@ -324,6 +344,10 @@ export class TradeEngineManager {
         errorCount++
         this.componentHealth.strategies.errorCount++
         console.error("[v0] Strategy processor error:", error)
+        await logProgressionEvent(this.connectionId, "strategies", "error", `Processor error: ${error instanceof Error ? error.message : String(error)}`, {
+          errorType: error instanceof Error ? error.name : "unknown",
+          stack: error instanceof Error ? error.stack : undefined,
+        })
       }
     }, intervalSeconds * 1000)
   }
