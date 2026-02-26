@@ -90,12 +90,12 @@ export function DashboardActiveConnectionsManager() {
         const exchange = (conn.exchange || "").toLowerCase().trim()
         const isBase = BASE_EXCHANGES.includes(exchange)
         const isInserted = conn.is_inserted === true || conn.is_inserted === "1" || conn.is_inserted === 1
-        const isDashboardActive = conn.is_enabled_dashboard === true || conn.is_enabled_dashboard === "1"
         const isSettingsEnabled = conn.is_enabled === true || conn.is_enabled === "1" || conn.is_enabled === "true"
+        const isDashboardActive = conn.is_enabled_dashboard === true || conn.is_enabled_dashboard === "1"
 
-        // Show all base connections that are inserted (regardless of enabled state in Settings)
-        // This allows users to see and activate any of bybit, bingx, pionex, orangex, binance, okx
-        if (isBase && isInserted) {
+        // STRICT FILTER: Show only base connections that are BOTH inserted AND enabled in Settings
+        // Users can only add connections that meet all criteria
+        if (isBase && isInserted && isSettingsEnabled) {
           if (seenIds.has(conn.id)) continue
           seenIds.add(conn.id)
 
@@ -103,13 +103,21 @@ export function DashboardActiveConnectionsManager() {
             id: `active-${conn.id}`,
             connectionId: conn.id,
             exchangeName: conn.exchange ? conn.exchange.charAt(0).toUpperCase() + conn.exchange.slice(1) : "Unknown",
-            isActive: isDashboardActive, // Respect existing dashboard-active flag
+            isActive: isDashboardActive || false, // Always disabled by default, only true if explicitly set in Redis
             isBaseEnabled: isSettingsEnabled,
             addedAt: conn.created_at || new Date().toISOString(),
             details: conn,
           })
+          console.log(`[v0] [Manager] Added to dashboard (inserted + enabled): ${conn.name} (${conn.id})`)
         } else {
           debugSkipped++
+          if (!isBase) {
+            // Not base
+          } else if (!isInserted) {
+            console.log(`[v0] [Manager] Skipped ${conn.name}: not inserted`)
+          } else if (!isSettingsEnabled) {
+            console.log(`[v0] [Manager] Skipped ${conn.name}: not enabled in Settings`)
+          }
         }
       }
       
@@ -202,6 +210,11 @@ export function DashboardActiveConnectionsManager() {
         }))
       }
       console.log(`[v0] [Manager] ✓ Successfully toggled: ${connName} → ${newState ? "ACTIVE" : "INACTIVE"}`)
+      
+      // Refresh active connections to reflect the toggle
+      setTimeout(() => {
+        loadConnections()
+      }, 500)
     } catch (error) {
       console.error(`[v0] [Manager] ✗ Toggle error for ${connName}:`, error)
       // Revert local state on error

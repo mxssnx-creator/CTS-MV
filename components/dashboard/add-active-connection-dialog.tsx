@@ -56,14 +56,20 @@ export function AddActiveConnectionDialog({
         return
       }
 
-      // Filter to show connections that are:
-      // 1. Enabled in base settings (is_enabled=1) OR inserted (is_inserted=1)
-      // 2. NOT already on the active dashboard (is_enabled_dashboard != "1")
+      // Filter to show only connections that are:
+      // 1. Base exchange (bybit, bingx, pionex, orangex, binance, okx)
+      // 2. Inserted (is_inserted=1)
+      // 3. Enabled in Settings (is_enabled=1)
+      // 4. NOT already on the active dashboard (is_enabled_dashboard != "1")
+      const BASE_EXCHANGES = ["bybit", "bingx", "pionex", "orangex", "binance", "okx"]
       const availableForAdd = allConnections.filter((c: any) => {
-        const isEnabled = c.is_enabled === true || c.is_enabled === "1" || c.is_enabled === "true"
+        const exchange = (c.exchange || "").toLowerCase().trim()
+        const isBase = BASE_EXCHANGES.includes(exchange)
         const isInserted = c.is_inserted === true || c.is_inserted === "1" || c.is_inserted === "true"
+        const isEnabled = c.is_enabled === true || c.is_enabled === "1" || c.is_enabled === "true"
         const alreadyActive = c.is_enabled_dashboard === true || c.is_enabled_dashboard === "1" || c.is_enabled_dashboard === "true"
-        return (isEnabled || isInserted) && !alreadyActive
+        // Strict filter: must be base + inserted + enabled + not already active
+        return isBase && isInserted && isEnabled && !alreadyActive
       })
 
       setAvailableConnections(availableForAdd)
