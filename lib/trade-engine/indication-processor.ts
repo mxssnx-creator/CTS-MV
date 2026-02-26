@@ -38,8 +38,11 @@ export class IndicationProcessor {
    * Prehistoric phase only: evaluation, no trade execution
    */
   async processHistoricalIndications(symbol: string, startDate: Date, endDate: Date): Promise<void> {
+    const processStartTime = Date.now()
+    const TIMEOUT_MS = 30000 // 30 second timeout per symbol
+    
     try {
-      console.log(`[v0] [PrehistoricIndication] Processing for ${symbol} | Period: ${startDate.toISOString()} to ${endDate.toISOString()}`)
+      console.log(`[v0] [PrehistoricIndication] START: Processing ${symbol} | Period: ${startDate.toISOString()} to ${endDate.toISOString()}`)
 
       const redis = await getRedisHelpers()
       await redis.initRedis()
@@ -52,14 +55,35 @@ export class IndicationProcessor {
           : []
 
       if (historicalData.length === 0) {
-        console.log(`[v0] [PrehistoricIndication] No data available yet for ${symbol}`)
+        console.log(`[v0] [PrehistoricIndication] NO DATA: No market data available for ${symbol}`)
+        await logProgressionEvent(this.connectionId, "indications_prehistoric", "warning", `No historical data available for ${symbol}`, {
+          symbol,
+          reason: "no_market_data",
+        })
         return
       }
 
+      console.log(`[v0] [PrehistoricIndication] DATA RETRIEVED: ${historicalData.length} records for ${symbol}`)
+
       const setsProcessor = new IndicationSetsProcessor(this.connectionId)
 
+      let recordsProcessed = 0
       for (const marketData of historicalData) {
+        // Check timeout
+        const elapsed = Date.now() - processStartTime
+        if (elapsed > TIMEOUT_MS) {
+          console.warn(`[v0] [PrehistoricIndication] TIMEOUT: Processing exceeded ${TIMEOUT_MS}ms for ${symbol}`)
+          await logProgressionEvent(this.connectionId, "indications_prehistoric", "warning", `Historical indication timeout for ${symbol}`, {
+            symbol,
+            timeoutMs: TIMEOUT_MS,
+            elapsedMs: elapsed,
+            recordsProcessed,
+          })
+          break
+        }
+
         await setsProcessor.processAllIndicationSets(symbol, marketData)
+        recordsProcessed++
       }
 
       const directionStats = await setsProcessor.getSetStats(symbol, "direction")
@@ -70,8 +94,10 @@ export class IndicationProcessor {
       const ProgressionManager = await getProgressionManager()
       await ProgressionManager.incrementPrehistoricCycle(this.connectionId, symbol)
 
+      const totalEntries = (directionStats?.currentEntries || 0) + (moveStats?.currentEntries || 0) + (activeStats?.currentEntries || 0) + (optimalStats?.currentEntries || 0)
+      
       console.log(
-        `[v0] [PrehistoricIndication] ${symbol}: Evaluated ${historicalData.length} data points (no trades) | Direction=${directionStats?.currentEntries || 0}/${directionStats?.maxEntries || 250} Move=${moveStats?.currentEntries || 0}/${moveStats?.maxEntries || 250} Active=${activeStats?.currentEntries || 0}/${activeStats?.maxEntries || 250} Optimal=${optimalStats?.currentEntries || 0}/${optimalStats?.maxEntries || 250}`
+        `[v0] [PrehistoricIndication] COMPLETE: ${symbol} | Records=${recordsProcessed} | Total Entries=${totalEntries} | Direction=${directionStats?.currentEntries || 0}/250 Move=${moveStats?.currentEntries || 0}/250 Active=${activeStats?.currentEntries || 0}/250 Optimal=${optimalStats?.currentEntries || 0}/250`
       )
 
       await logProgressionEvent(this.connectionId, "indications_prehistoric", "info", `Historical indications evaluated for ${symbol}`, {
@@ -80,10 +106,22 @@ export class IndicationProcessor {
         active: activeStats,
         optimal: optimalStats,
         dataPoints: historicalData.length,
+        recordsProcessed,
+        totalEntriesCalculated: totalEntries,
         phase: "prehistoric",
+        durationMs: Date.now() - processStartTime,
       })
     } catch (error) {
-      console.error(`[v0] [PrehistoricIndication] Failed for ${symbol}:`, error instanceof Error ? error.message : String(error))
+      const durationMs = Date.now() - processStartTime
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      console.error(`[v0] [PrehistoricIndication] ERROR for ${symbol} after ${durationMs}ms:`, errorMsg)
+      
+      await logProgressionEvent(this.connectionId, "indications_prehistoric", "error", `Historical indication processing failed for ${symbol}`, {
+        symbol,
+        error: errorMsg,
+        durationMs,
+        stack: error instanceof Error ? error.stack : undefined,
+      })
     }
   }
 

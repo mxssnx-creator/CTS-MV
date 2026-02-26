@@ -14,8 +14,19 @@ interface QuickStartStep {
   message?: string
 }
 
+interface FunctionalOverview {
+  symbolsActive: number
+  indicationsCalculated: number
+  strategiesEvaluated: number
+  baseSetsCreated: boolean
+  mainSetsCreated: boolean
+  realSetsCreated: boolean
+  positionsEntriesCreated: number
+}
+
 export function QuickStartButton() {
   const [isRunning, setIsRunning] = useState(false)
+  const [functionalOverview, setFunctionalOverview] = useState<FunctionalOverview | null>(null)
   const [steps, setSteps] = useState<QuickStartStep[]>([
     { id: "init", name: "Initialize System", status: "pending" },
     { id: "migrate", name: "Run Migrations", status: "pending" },
@@ -135,6 +146,18 @@ export function QuickStartButton() {
       toast.success("Quick Start Complete! Trade engine is running with BingX.")
       console.log("[v0] [QuickStart] ✓ All steps completed successfully")
       
+      // Fetch functional overview metrics
+      try {
+        const overviewRes = await fetch("/api/trade-engine/functional-overview", { cache: "no-store" })
+        if (overviewRes.ok) {
+          const overview = await overviewRes.json()
+          console.log("[v0] [QuickStart] Functional Overview:", overview)
+          setFunctionalOverview(overview)
+        }
+      } catch (error) {
+        console.warn("[v0] [QuickStart] Could not fetch functional overview:", error)
+      }
+      
       // Force refresh the global engine controls by triggering a status update
       // Dispatch event for global-trade-engine-controls to refresh immediately
       if (typeof window !== "undefined") {
@@ -249,6 +272,36 @@ export function QuickStartButton() {
             <li>Enable BingX for active trading</li>
           </ul>
         </div>
+
+        {/* Functional Overview - Displayed after successful completion */}
+        {functionalOverview && (
+          <div className="bg-green-50 rounded border border-green-200 p-3 text-xs">
+            <p className="mb-2 font-semibold text-green-700">✓ Functional Overview (System Ready):</p>
+            <div className="grid grid-cols-2 gap-2 text-gray-700">
+              <div>
+                <span className="font-medium">Symbols Active:</span> {functionalOverview.symbolsActive}
+              </div>
+              <div>
+                <span className="font-medium">Indications Calculated:</span> {functionalOverview.indicationsCalculated}
+              </div>
+              <div>
+                <span className="font-medium">Strategies Evaluated:</span> {functionalOverview.strategiesEvaluated}
+              </div>
+              <div>
+                <span className="font-medium">Base Sets:</span> {functionalOverview.baseSetsCreated ? "✓" : "✗"}
+              </div>
+              <div>
+                <span className="font-medium">Main Sets:</span> {functionalOverview.mainSetsCreated ? "✓" : "✗"}
+              </div>
+              <div>
+                <span className="font-medium">Real Sets:</span> {functionalOverview.realSetsCreated ? "✓" : "✗"}
+              </div>
+              <div className="col-span-2">
+                <span className="font-medium">DB Position Entries:</span> {functionalOverview.positionsEntriesCreated}
+              </div>
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   )

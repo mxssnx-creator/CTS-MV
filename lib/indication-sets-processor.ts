@@ -53,9 +53,19 @@ export class IndicationSetsProcessor {
    * Process all indication types independently for a symbol
    */
   async processAllIndicationSets(symbol: string, marketData: any): Promise<void> {
+    const startTime = Date.now()
+    const TIMEOUT_MS = 15000 // 15 second timeout per symbol
+    
     try {
-      const startTime = Date.now()
-      
+      if (!marketData) {
+        console.warn(`[v0] [IndicationSets] Invalid market data for ${symbol}`)
+        await logProgressionEvent(this.connectionId, "indications_sets", "warning", `Invalid market data for ${symbol}`, {
+          symbol,
+          reason: "null_market_data",
+        })
+        return
+      }
+
       // Process all 4 main types in parallel with independent logic
       const [directionResults, moveResults, activeResults, optimalResults] = await Promise.all([
         this.processDirectionSet(symbol, marketData),
@@ -65,6 +75,18 @@ export class IndicationSetsProcessor {
       ])
 
       const duration = Date.now() - startTime
+      
+      // Check for timeout
+      if (duration > TIMEOUT_MS) {
+        console.warn(`[v0] [IndicationSets] TIMEOUT: Processing exceeded ${TIMEOUT_MS}ms for ${symbol} (took ${duration}ms)`)
+        await logProgressionEvent(this.connectionId, "indications_sets", "warning", `Indication set processing timeout for ${symbol}`, {
+          symbol,
+          timeoutMs: TIMEOUT_MS,
+          actualMs: duration,
+        })
+        return
+      }
+
       const totalQualified = 
         (directionResults?.qualified || 0) +
         (moveResults?.qualified || 0) +
@@ -73,7 +95,7 @@ export class IndicationSetsProcessor {
 
       if (totalQualified > 0) {
         console.log(
-          `[v0] [IndicationSets] ${symbol}: All types processed in ${duration}ms | Direction=${directionResults?.qualified}/${directionResults?.total} Move=${moveResults?.qualified}/${moveResults?.total} Active=${activeResults?.qualified}/${activeResults?.total} Optimal=${optimalResults?.qualified}/${optimalResults?.total}`
+          `[v0] [IndicationSets] ${symbol}: COMPLETE in ${duration}ms | Direction=${directionResults?.qualified}/${directionResults?.total} Move=${moveResults?.qualified}/${moveResults?.total} Active=${activeResults?.qualified}/${activeResults?.total} Optimal=${optimalResults?.qualified}/${optimalResults?.total}`
         )
 
         await logProgressionEvent(this.connectionId, "indications_sets", "info", `All indication types processed for ${symbol}`, {

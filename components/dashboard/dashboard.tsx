@@ -9,6 +9,7 @@ import { GlobalTradeEngineControls } from "./global-trade-engine-controls"
 import { DashboardActiveConnectionsManager } from "./dashboard-active-connections-manager"
 import { IntervalsStrategiesOverview } from "./intervals-strategies-overview"
 import { StatisticsOverviewV2 } from "./statistics-overview-v2"
+import { SystemMonitoringPanel } from "./system-monitoring-panel"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { RefreshCw } from "lucide-react"
@@ -199,7 +200,10 @@ export function Dashboard() {
         </div>
       )}
 
-
+      {/* System Monitoring Panel - CPU, Memory, Services, Database, Recent Activity */}
+      <ErrorBoundary name="System Monitoring">
+        <SystemMonitoringPanel />
+      </ErrorBoundary>
     </div>
   )
 }

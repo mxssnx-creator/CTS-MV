@@ -36,7 +36,11 @@ export function ProgressionLogsDialog({
 
   useEffect(() => {
     if (open) {
+      console.log(`[v0] [ProgressionLogs] Opening logs dialog for ${connectionName}`)
       loadLogs()
+      // Auto-refresh logs while dialog is open
+      const refreshInterval = setInterval(loadLogs, 2000)
+      return () => clearInterval(refreshInterval)
     }
   }, [open])
 
