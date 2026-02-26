@@ -134,9 +134,13 @@ export function ActiveConnectionCard({
     ? { label: "Live", variant: "default" as const, className: "bg-green-600 text-white" }
     : isStarting
       ? { label: "Starting...", variant: "secondary" as const, className: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300" }
-      : connection.isActive
-        ? { label: "Enabled", variant: "secondary" as const, className: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" }
-        : { label: "Disabled", variant: "secondary" as const, className: "text-muted-foreground" }
+      : hasError
+        ? { label: "Error", variant: "secondary" as const, className: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" }
+        : connection.isActive && !globalEngineRunning
+          ? { label: "Paused", variant: "secondary" as const, className: "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300" }
+          : connection.isActive
+            ? { label: "Ready", variant: "secondary" as const, className: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" }
+            : { label: "Off", variant: "secondary" as const, className: "text-muted-foreground" }
 
   return (
     <Collapsible open={expanded} onOpenChange={onExpand}>

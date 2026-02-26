@@ -37,13 +37,13 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Create active version: shown in dashboard but disabled by default
+    // Add to active list: shown in dashboard, preserve existing is_enabled state
     const activeConnection = {
       ...baseConnection,
       is_enabled_dashboard: "1", // Show in Active Connections
-      is_enabled: "0", // DISABLED by default - user must enable
-      is_live_trade: "0", // Reset trade flags
-      is_preset_trade: "0",
+      // Preserve is_enabled -- do NOT reset it. Settings controls that independently.
+      is_live_trade: baseConnection.is_live_trade || "0",
+      is_preset_trade: baseConnection.is_preset_trade || "0",
       updated_at: new Date().toISOString(),
     }
 

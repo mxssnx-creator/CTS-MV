@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import React, { useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Plus, AlertTriangle } from "lucide-react"
@@ -27,16 +27,17 @@ export function DashboardActiveConnectionsManager() {
   const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set())
   const [globalEngineRunning, setGlobalEngineRunning] = useState(false)
   const [globalEngineLoading, setGlobalEngineLoading] = useState(true)
+  const globalEngineRef = React.useRef(false)
 
   const checkGlobalEngine = async () => {
     try {
       const res = await fetch("/api/trade-engine/status")
       if (res.ok) {
         const data = await res.json()
-        const wasRunning = globalEngineRunning
+        const wasRunning = globalEngineRef.current
         const nowRunning = data.running === true
+        globalEngineRef.current = nowRunning
         setGlobalEngineRunning(nowRunning)
-        // If global engine just started, refresh connections to update their state
         if (!wasRunning && nowRunning) {
           loadConnections()
         }

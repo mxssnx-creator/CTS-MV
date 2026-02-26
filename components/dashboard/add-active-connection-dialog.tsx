@@ -57,23 +57,15 @@ export function AddActiveConnectionDialog({
         return
       }
 
-      console.log("[v0] [Add Connection Dialog] Total connections from API:", allConnections.length)
-
       // Filter to show connections that are:
-      // 1. BASE connections (4 primary exchanges: bybit, bingx, pionex, orangex)
-      // 2. NOT already active in dashboard (is_enabled_dashboard != "1")
-      const BASE_EXCHANGES = ["bybit", "bingx", "pionex", "orangex"]
+      // 1. Inserted (is_inserted=1) -- real connections, not templates
+      // 2. NOT already on the active dashboard (is_enabled_dashboard != "1")
       const availableForAdd = allConnections.filter((c: any) => {
-        const exchange = (c.exchange || "").toLowerCase().trim()
-        const isBase = BASE_EXCHANGES.includes(exchange)
-        const notAlreadyActive = !(c.is_enabled_dashboard === true || c.is_enabled_dashboard === "1" || c.is_enabled_dashboard === "true")
-        
-        console.log(`[v0] [Add Connection Dialog] ${c.id}: exchange=${exchange}, isBase=${isBase}, alreadyActive=${!notAlreadyActive}`)
-        
-        return isBase && notAlreadyActive
+        const isInserted = c.is_inserted === true || c.is_inserted === "1" || c.is_inserted === "true"
+        const alreadyActive = c.is_enabled_dashboard === true || c.is_enabled_dashboard === "1" || c.is_enabled_dashboard === "true"
+        return isInserted && !alreadyActive
       })
 
-      console.log("[v0] [Add Connection Dialog] Available to add:", availableForAdd.length)
       setAvailableConnections(availableForAdd)
 
       if (availableForAdd.length > 0 && !selectedConnection) {
