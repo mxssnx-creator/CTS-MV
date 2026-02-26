@@ -73,7 +73,9 @@ export function DashboardActiveConnectionsManager() {
   const loadConnections = async () => {
     try {
       // Fetch ALL connections via API (works on the client, unlike direct Redis)
-      const response = await fetch("/api/settings/connections")
+      // Add cache-bust query to force fresh data
+      const timestamp = new Date().getTime()
+      const response = await fetch(`/api/settings/connections?t=${timestamp}`)
       if (!response.ok) {
         setLoading(false)
         return
@@ -85,7 +87,7 @@ export function DashboardActiveConnectionsManager() {
       const activeConns: ActiveConnectionWithDetails[] = []
       const seenIds = new Set<string>()
 
-      console.log(`[v0] [Manager] Processing ${allConnections.length} connections from API`)
+      console.log(`[v0] [Manager] Processing ${allConnections.length} connections from API [v3]`)
       
       for (const conn of allConnections) {
         const exchange = (conn.exchange || "").toLowerCase().trim()

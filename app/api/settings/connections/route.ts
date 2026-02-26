@@ -10,6 +10,13 @@ const DASHBOARD_AUTO_INSERTED = ["bybit", "bingx"]
 
 export async function GET(request: NextRequest) {
   try {
+    // Set explicit cache-control headers to prevent caching
+    const headers = {
+      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
+      "Pragma": "no-cache",
+      "Expires": "0",
+    }
+    
     const { searchParams } = new URL(request.url)
     const exchange = searchParams.get("exchange")
     const enabled = searchParams.get("enabled")
@@ -20,10 +27,13 @@ export async function GET(request: NextRequest) {
 
     // CRITICAL MIGRATION: Enforce ONLY bybit and bingx on dashboard
     // This must run on EVERY request to ensure no other exchanges are wrongly inserted
+    console.log(`[v0] [API] [Migration] Starting - found ${connections.length} connections`)
     for (const c of connections) {
       const exch = (c.exchange || "").toLowerCase().trim()
       const shouldBeOnDashboard = DASHBOARD_AUTO_INSERTED.includes(exch)
       const currentlyInserted = c.is_dashboard_inserted === "1" || c.is_dashboard_inserted === true
+      
+      console.log(`[v0] [API] [Migration] ${c.name}: exchange=${exch}, shouldBeDashboard=${shouldBeOnDashboard}, currentlyInserted=${currentlyInserted}, raw_value=${JSON.stringify(c.is_dashboard_inserted)}`)
       
       // Enforce correct state: bybit/bingx must be inserted, others must not be
       if (shouldBeOnDashboard && !currentlyInserted) {
@@ -33,7 +43,7 @@ export async function GET(request: NextRequest) {
           is_enabled_dashboard: "0",
           updated_at: new Date().toISOString(),
         })
-        console.log(`[v0] [API] Migration: Set ${c.exchange} dashboard_inserted=1`)
+        console.log(`[v0] [API] [Migration] SET: ${c.exchange} dashboard_inserted=1`)
       } else if (!shouldBeOnDashboard && currentlyInserted) {
         await updateConnection(c.id, {
           ...c,
@@ -41,9 +51,10 @@ export async function GET(request: NextRequest) {
           is_enabled_dashboard: "0",
           updated_at: new Date().toISOString(),
         })
-        console.log(`[v0] [API] Migration: Reset ${c.exchange} dashboard_inserted=0`)
+        console.log(`[v0] [API] [Migration] RESET: ${c.exchange} dashboard_inserted=0`)
       }
     }
+    console.log(`[v0] [API] [Migration] Complete`)
     
     // Reload to get fresh data with migrations applied
     connections = await getAllConnections()
@@ -112,10 +123,17 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    return NextResponse.json({ success: true, count: connections.length, connections })
+    // Log what we're returning
+    const bybitBingx = connections.filter(c => ["bybit", "bingx"].includes((c.exchange || "").toLowerCase()))
+    console.log(`[v0] [API] Returning ${connections.length} total connections. Bybit/BingX dashboard_inserted:`, 
+      bybitBingx.map(c => ({ name: c.name, is_dashboard_inserted: c.is_dashboard_inserted })))
+    
+    return NextResponse.json({ success: true, count: connections.length, connections }, { headers })
   } catch (error) {
     console.error("[v0] Error fetching connections:", error instanceof Error ? error.message : String(error))
-    return NextResponse.json({ success: false, error: "Failed to fetch connections", connections: [] }, { status: 500 })
+    return NextResponse.json({ success: false, error: "Failed to fetch connections", connections: [] }, { status: 500, headers: {
+      "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    }})
   }
 }
 

@@ -734,6 +734,15 @@ export async function getEnabledConnections(): Promise<any[]> {
  */
 export async function getActiveConnectionsForEngine(): Promise<any[]> {
   const all = await getAllConnections()
+  
+  // Debug: log all connections and their dashboard states
+  console.log(`[v0] [DB] [ActiveConnections] Found ${all.length} total connections:`)
+  all.forEach((c: any) => {
+    const isDashboardInserted = c.is_dashboard_inserted === true || c.is_dashboard_inserted === "1"
+    const isDashboardEnabled = c.is_enabled_dashboard === true || c.is_enabled_dashboard === "1" || c.is_enabled_dashboard === "true"
+    console.log(`  - ${c.name}: dashboard_inserted=${isDashboardInserted} (${JSON.stringify(c.is_dashboard_inserted)}), dashboard_enabled=${isDashboardEnabled} (${JSON.stringify(c.is_enabled_dashboard)})`)
+  })
+  
   const filtered = all.filter((c: any) => {
     const d = c.is_enabled_dashboard
     return d === true || d === "1" || d === "true"
@@ -742,7 +751,7 @@ export async function getActiveConnectionsForEngine(): Promise<any[]> {
   // Log with full detail: which connections are active vs inactive
   if (filtered.length > 0) {
     const activeIds = filtered.map((c: any) => c.id).join(", ")
-    console.log(`[v0] [DB] [ActiveConnections] ${filtered.length}/${all.length} active: [${activeIds}]`)
+    console.log(`[v0] [DB] [ActiveConnections] ${filtered.length}/${all.length} active (enabled_dashboard=true): [${activeIds}]`)
   } else {
     const baseIds = all.filter((c: any) => {
       const isBase = ["bybit", "bingx", "pionex", "orangex", "binance", "okx"].includes((c.exchange || "").toLowerCase())
