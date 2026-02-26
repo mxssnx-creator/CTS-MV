@@ -31,11 +31,12 @@ export function LogsViewer() {
         category: category !== "all" ? category : "",
         limit,
       })
-      const response = await fetch(`/api/monitoring/site?${params}`)
+      const response = await fetch(`/api/monitoring/logs?${params}`)
       const data = await response.json()
-      setLogs(Array.isArray(data) ? data : [])
+      setLogs(Array.isArray(data.logs) ? data.logs : (data.logs || []))
     } catch (error) {
       console.error("Failed to fetch logs:", error)
+      setLogs([])
     } finally {
       setLoading(false)
     }
@@ -51,7 +52,7 @@ export function LogsViewer() {
       category: category !== "all" ? category : "",
       limit,
     })
-    return `/api/monitoring/site?${params}`
+    return `/api/monitoring/logs?${params}`
   }
 
   const getLevelColor = (level: string) => {
