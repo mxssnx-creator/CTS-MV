@@ -1,6 +1,6 @@
 /**
  * Engine Progression Logs - Stores detailed logs of all engine operations
- * Allows debugging of progression phases and error tracking
+ * Uses simple Redis lists (not sorted sets) for compatibility with Upstash
  */
 
 import { getRedisClient } from "@/lib/redis-db"
@@ -41,15 +41,32 @@ export async function logProgressionEvent(
       connectionId,
     }
 
-    // Store in Redis list (most recent first when sorted by score)
-    const score = Date.now()
-    await client.zadd(logKey, { score, member: JSON.stringify(entry) })
-
+    // Store in Redis list (prepend to keep most recent at front)
+    // Format: "timestamp|level|phase|message|details_json"
+    const logEntry = `${timestamp}|${level}|${phase}|${message}|${JSON.stringify(details || {})}`
+    
+    // Use lpush-like operation: prepend to list
+    let logs: string[] = []
+    const existing = await client.get(logKey)
+    if (existing) {
+      try {
+        logs = JSON.parse(existing)
+        if (!Array.isArray(logs)) logs = []
+      } catch {
+        logs = []
+      }
+    }
+    
+    // Prepend new entry
+    logs.unshift(logEntry)
+    
     // Trim to max logs, keeping most recent
-    await client.zremrangebyrank(logKey, MAX_LOGS_PER_CONNECTION, -1)
-
-    // Set expiry to 24 hours
-    await client.expire(logKey, LOG_RETENTION_HOURS * 3600)
+    if (logs.length > MAX_LOGS_PER_CONNECTION) {
+      logs = logs.slice(0, MAX_LOGS_PER_CONNECTION)
+    }
+    
+    // Save back to Redis
+    await client.set(logKey, JSON.stringify(logs))
 
     // Also log to console for immediate visibility
     console.log(`[v0] [${level.toUpperCase()}] [${phase}] ${message}`, details || "")
@@ -66,13 +83,40 @@ export async function getProgressionLogs(connectionId: string): Promise<Progress
     const client = getRedisClient()
     const logKey = `engine_logs:${connectionId}`
 
-    // Get all logs sorted by recency (newest first)
-    const logData = await client.zrange(logKey, 0, -1, { rev: true })
+    const existing = await client.get(logKey)
+    if (!existing) return []
 
-    return logData
+    let logs: string[] = []
+    try {
+      logs = JSON.parse(existing)
+      if (!Array.isArray(logs)) logs = []
+    } catch {
+      return []
+    }
+
+    // Parse each log entry from "timestamp|level|phase|message|details_json"
+    return logs
       .map((entry) => {
         try {
-          return JSON.parse(entry) as ProgressionLogEntry
+          const parts = entry.split("|")
+          if (parts.length < 4) return null
+          
+          const [timestamp, level, phase, message, detailsJson] = parts
+          let details: Record<string, any> = {}
+          try {
+            details = JSON.parse(detailsJson || "{}")
+          } catch {
+            details = {}
+          }
+          
+          return {
+            timestamp,
+            level: (level as any) || "info",
+            phase,
+            message,
+            details,
+            connectionId,
+          } as ProgressionLogEntry
         } catch {
           return null
         }
@@ -109,7 +153,7 @@ export function formatLogsForDisplay(logs: ProgressionLogEntry[]): string {
     .map((log) => {
       const time = new Date(log.timestamp).toLocaleTimeString()
       const level = log.level.toUpperCase().padEnd(7)
-      const details = log.details ? ` | ${JSON.stringify(log.details)}` : ""
+      const details = log.details && Object.keys(log.details).length > 0 ? ` | ${JSON.stringify(log.details)}` : ""
       return `[${time}] ${level} | ${log.phase.padEnd(20)} | ${log.message}${details}`
     })
     .join("\n")
