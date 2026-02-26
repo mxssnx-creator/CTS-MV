@@ -54,6 +54,7 @@ export async function GET(request: NextRequest) {
       
       for (const predefined of CONNECTION_PREDEFINITIONS) {
         try {
+          const shouldBeOnDashboard = DASHBOARD_AUTO_INSERTED.includes(predefined.exchange)
           const connection = {
             id: predefined.id,
             name: predefined.name,
@@ -65,7 +66,8 @@ export async function GET(request: NextRequest) {
             position_mode: predefined.positionMode || "hedge",
             is_testnet: false,
             is_enabled: false, // Disabled by default (user must enable in Settings)
-            is_enabled_dashboard: false, // Not in active connections by default
+            is_enabled_dashboard: false, // Not active by default
+            is_dashboard_inserted: shouldBeOnDashboard ? "1" : "0", // Only bybit/bingx on dashboard
             is_predefined: true,
             is_live_trade: false, // Main engine disabled by default
             is_preset_trade: false, // Preset engine disabled by default
@@ -77,7 +79,7 @@ export async function GET(request: NextRequest) {
           }
           
           await createConnection(connection)
-          console.log(`[v0] [API] Auto-created predefined connection: ${predefined.name}`)
+          console.log(`[v0] [API] Auto-created predefined connection: ${predefined.name} (dashboard_inserted=${shouldBeOnDashboard})`)
         } catch (error) {
           console.error(`[v0] [API] Failed to auto-create ${predefined.name}:`, error)
         }

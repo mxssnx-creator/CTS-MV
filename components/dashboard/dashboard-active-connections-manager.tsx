@@ -85,6 +85,8 @@ export function DashboardActiveConnectionsManager() {
       const activeConns: ActiveConnectionWithDetails[] = []
       const seenIds = new Set<string>()
 
+      console.log(`[v0] [Manager] Processing ${allConnections.length} connections from API`)
+      
       for (const conn of allConnections) {
         const exchange = (conn.exchange || "").toLowerCase().trim()
         const isBase = BASE_EXCHANGES.includes(exchange)
@@ -93,6 +95,8 @@ export function DashboardActiveConnectionsManager() {
         const isDashboardInserted = conn.is_dashboard_inserted === true || conn.is_dashboard_inserted === "1"
         const isDashboardActive = conn.is_enabled_dashboard === true || conn.is_enabled_dashboard === "1"
 
+        console.log(`[v0] [Manager] ${conn.name}: base=${isBase}, dashboard_inserted=${isDashboardInserted} (raw: ${JSON.stringify(conn.is_dashboard_inserted)}), dashboard_active=${isDashboardActive}`)
+        
         // Show ONLY base connections that are inserted on DASHBOARD (not Settings is_inserted)
         if (isBase && isDashboardInserted) {
           if (seenIds.has(conn.id)) continue
@@ -107,8 +111,11 @@ export function DashboardActiveConnectionsManager() {
             addedAt: conn.created_at || new Date().toISOString(),
             details: conn,
           })
+          console.log(`[v0] [Manager] ✓ Added ${conn.name} to dashboard`)
         }
       }
+      
+      console.log(`[v0] [Manager] Final: ${activeConns.length} connections on dashboard`)
       
       // STICKY STATE: Never replace existing cards with empty data on transient fetch issues
       if (activeConns.length === 0 && activeConnectionsRef.current.length > 0) {

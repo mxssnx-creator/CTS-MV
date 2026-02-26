@@ -47,6 +47,7 @@ export function GlobalTradeEngineControls() {
       })
       if (response.ok) {
         const data = await response.json()
+        console.log(`[v0] [Engine] Status check: running=${data.running}, paused=${data.paused}, connected=${data.connectedExchanges}`)
         const statusData: EngineStatus = {
           running: data.running === true || data.running === "true" || data.status === "running",
           paused: data.paused === true || data.paused === "true",
@@ -57,6 +58,7 @@ export function GlobalTradeEngineControls() {
           lastUpdate: new Date(data.lastUpdate || Date.now()),
           cycleStats: data.cycleStats,
         }
+        console.log(`[v0] [Engine] Parsed status: running=${statusData.running}, paused=${statusData.paused}`)
         setStatus(statusData)
       }
     } catch (error) {
