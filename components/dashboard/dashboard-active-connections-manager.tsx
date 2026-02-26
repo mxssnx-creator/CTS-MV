@@ -106,8 +106,14 @@ export function DashboardActiveConnectionsManager() {
         const isBase = BASE_EXCHANGES.includes(exchange)
         const isDashboardInserted = conn.is_dashboard_inserted === "1" || conn.is_dashboard_inserted === true
         const isDashboardActive = conn.is_enabled_dashboard === true || conn.is_enabled_dashboard === "1"
+        const isEnabled = conn.is_enabled === true || conn.is_enabled === "1"
 
-        if (isBase || isDashboardInserted || isDashboardActive) {
+        // RULE: Only show connections that are:
+        // 1. From a base exchange (bybit, bingx, binance, okx, pionex, orangex)
+        // 2. Actually added to dashboard (is_dashboard_inserted = 1)
+        // 3. Enabled in Settings
+        // This ensures only properly configured base exchanges appear, not just any exchange
+        if (isBase && isDashboardInserted && isEnabled) {
           if (seenIds.has(conn.id)) continue
           seenIds.add(conn.id)
           activeConns.push({
