@@ -74,53 +74,66 @@ export function StatisticsOverview({ connections }: StatisticsOverviewProps) {
       }
 
       const statsPromises = connectionsList.map(async (conn) => {
+        // Fetch position stats (may not exist yet if engine is still in prehistoric phase)
+        let posData: any = { stats: {} }
         try {
           const response = await fetch(`/api/positions/stats?connection_id=${conn.id}`)
-          if (!response.ok) throw new Error("Failed to load stats")
-
-          const data = await response.json()
-
-          return {
-            connectionId: conn.id,
-            connectionName: conn.name,
-            indications: {
-              base: Math.floor(Math.random() * 100) + 20,
-              main: Math.floor(Math.random() * 80) + 15,
-              real: Math.floor(Math.random() * 60) + 10,
-              live: Math.floor(Math.random() * 40) + 5,
-              total: 0,
-              evaluated: 0,
-            },
-            strategies: {
-              base: Math.floor(Math.random() * 80) + 15,
-              main: Math.floor(Math.random() * 60) + 10,
-              real: Math.floor(Math.random() * 40) + 8,
-              live: Math.floor(Math.random() * 20) + 3,
-              total: 0,
-              evaluated: 0,
-              drawdown_max: Math.random() * 15 + 5,
-              drawdown_time_hours: Math.random() * 24 + 2,
-            },
-            profit_factor: {
-              last_5: 1.2 + Math.random() * 0.5,
-              last_15: 1.15 + Math.random() * 0.4,
-              last_50: 1.1 + Math.random() * 0.3,
-            },
-            positions: {
-              total_evaluated: data.stats?.total_positions || 0,
-              winning: data.stats?.win_count || 0,
-              losing: data.stats?.loss_count || 0,
-              win_rate: data.stats?.win_rate || 0,
-            },
-          } as ConnectionStats
-        } catch (err) {
-          console.error(`Failed to load stats for connection ${conn.id}:`, err)
-          return null
+          if (response.ok) {
+            posData = await response.json()
+          }
+        } catch {
+          // Positions API may not be available yet - use defaults
         }
+
+        // Fetch progression data for this connection (always available)
+        let progressionData: any = {}
+        try {
+          const progResponse = await fetch(`/api/connections/progression/${conn.id}`)
+          if (progResponse.ok) {
+            const progResult = await progResponse.json()
+            progressionData = progResult.progression || progResult || {}
+          }
+        } catch {
+          // Progression may not be available yet
+        }
+
+        return {
+          connectionId: conn.id,
+          connectionName: conn.name,
+          indications: {
+            base: progressionData.indicationSets?.direction?.currentEntries || 0,
+            main: progressionData.indicationSets?.move?.currentEntries || 0,
+            real: progressionData.indicationSets?.active?.currentEntries || 0,
+            live: progressionData.indicationSets?.optimal?.currentEntries || 0,
+            total: 0,
+            evaluated: 0,
+          },
+          strategies: {
+            base: progressionData.strategySets?.base?.currentEntries || 0,
+            main: progressionData.strategySets?.main?.currentEntries || 0,
+            real: progressionData.strategySets?.real?.currentEntries || 0,
+            live: progressionData.strategySets?.live?.currentEntries || 0,
+            total: 0,
+            evaluated: 0,
+            drawdown_max: parseFloat(posData.stats?.largest_loss || "0"),
+            drawdown_time_hours: parseFloat(posData.stats?.avg_holding_time_hours || "0"),
+          },
+          profit_factor: {
+            last_5: progressionData.profitFactor?.last5 || 0,
+            last_15: progressionData.profitFactor?.last15 || 0,
+            last_50: progressionData.profitFactor?.last50 || 0,
+          },
+          positions: {
+            total_evaluated: posData.stats?.total_positions || 0,
+            winning: posData.stats?.win_count || 0,
+            losing: posData.stats?.loss_count || 0,
+            win_rate: posData.stats?.win_rate || 0,
+          },
+        } as ConnectionStats
       })
 
       const results = await Promise.all(statsPromises)
-      const validStats = results.filter((s) => s !== null) as ConnectionStats[]
+      const validStats = results.filter((s): s is ConnectionStats => s !== null)
       setAllStats(validStats)
 
       if (validStats.length > 0) {

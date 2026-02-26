@@ -12,9 +12,11 @@ export const dynamic = "force-dynamic"
 export async function GET(request: NextRequest) {
   const startTime = Date.now()
   try {
-    const user = await getSession()
-    if (!user) {
-      return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 })
+    let user = null
+    try {
+      user = await getSession()
+    } catch {
+      // Auth may not be configured yet - continue with empty stats
     }
 
     await initRedis()
