@@ -57,12 +57,13 @@ export function AddActiveConnectionDialog({
       }
 
       // Filter to show connections that are:
-      // 1. Inserted (is_inserted=1) -- real connections, not templates
+      // 1. Enabled in base settings (is_enabled=1) OR inserted (is_inserted=1)
       // 2. NOT already on the active dashboard (is_enabled_dashboard != "1")
       const availableForAdd = allConnections.filter((c: any) => {
+        const isEnabled = c.is_enabled === true || c.is_enabled === "1" || c.is_enabled === "true"
         const isInserted = c.is_inserted === true || c.is_inserted === "1" || c.is_inserted === "true"
         const alreadyActive = c.is_enabled_dashboard === true || c.is_enabled_dashboard === "1" || c.is_enabled_dashboard === "true"
-        return isInserted && !alreadyActive
+        return (isEnabled || isInserted) && !alreadyActive
       })
 
       setAvailableConnections(availableForAdd)
@@ -143,7 +144,7 @@ export function AddActiveConnectionDialog({
             <>
               <div className="space-y-2">
                 <Label htmlFor="connection-select" className="font-medium text-sm">
-                  Available Connections (Inserted & Enabled)
+                  Available Connections (Enabled in Settings)
                 </Label>
                 <Select value={selectedConnection} onValueChange={setSelectedConnection}>
                   <SelectTrigger id="connection-select">
