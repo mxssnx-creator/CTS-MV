@@ -88,12 +88,13 @@ export function DashboardActiveConnectionsManager() {
       for (const conn of allConnections) {
         const exchange = (conn.exchange || "").toLowerCase().trim()
         const isBase = BASE_EXCHANGES.includes(exchange)
-        const isInserted = conn.is_inserted === true || conn.is_inserted === "1" || conn.is_inserted === 1
-        const isEnabled = conn.is_enabled === true || conn.is_enabled === "1" || conn.is_enabled === "true"
+        
+        // Dashboard uses its OWN states - completely independent from Settings
+        const isDashboardInserted = conn.is_dashboard_inserted === true || conn.is_dashboard_inserted === "1"
         const isDashboardActive = conn.is_enabled_dashboard === true || conn.is_enabled_dashboard === "1"
 
-        // Show base connections that are inserted AND enabled
-        if (isBase && isInserted && isEnabled) {
+        // Show ONLY base connections that are inserted on DASHBOARD (not Settings is_inserted)
+        if (isBase && isDashboardInserted) {
           if (seenIds.has(conn.id)) continue
           seenIds.add(conn.id)
 
@@ -101,8 +102,8 @@ export function DashboardActiveConnectionsManager() {
             id: `active-${conn.id}`,
             connectionId: conn.id,
             exchangeName: conn.exchange ? conn.exchange.charAt(0).toUpperCase() + conn.exchange.slice(1) : "Unknown",
-            isActive: isDashboardActive || false,
-            isBaseEnabled: isEnabled,
+            isActive: isDashboardActive, // DISABLED by default - only true if explicitly enabled
+            isBaseEnabled: true, // Always allow dashboard operations
             addedAt: conn.created_at || new Date().toISOString(),
             details: conn,
           })

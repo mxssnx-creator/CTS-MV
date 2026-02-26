@@ -5,8 +5,8 @@ import { CONNECTION_PREDEFINITIONS } from "@/lib/connection-predefinitions"
 
 export const runtime = "nodejs"
 
-// Auto-inserted exchanges - these should be enabled and inserted by default
-const AUTO_INSERTED_EXCHANGES = ["bybit", "bingx"]
+// Dashboard auto-inserted exchanges - ONLY these show on dashboard by default
+const DASHBOARD_AUTO_INSERTED = ["bybit", "bingx"]
 
 export async function GET(request: NextRequest) {
   try {
@@ -18,22 +18,20 @@ export async function GET(request: NextRequest) {
     await initRedis()
     let connections = await getAllConnections()
 
-    // MIGRATION: Ensure bybit and bingx have is_inserted="1" and is_enabled="1"
-    // This runs on every GET to fix connections that weren't migrated
+    // MIGRATION: Set is_dashboard_inserted for bybit and bingx ONLY (one-time)
+    // This is separate from Settings is_enabled/is_inserted
     for (const c of connections) {
       const exch = (c.exchange || "").toLowerCase().trim()
-      if (AUTO_INSERTED_EXCHANGES.includes(exch)) {
-        const needsInserted = c.is_inserted !== "1" && c.is_inserted !== true
-        const needsEnabled = c.is_enabled !== "1" && c.is_enabled !== true && c.is_enabled !== "true"
-        
-        if (needsInserted || needsEnabled) {
-          await updateConnection(c.id, {
-            ...c,
-            is_inserted: "1",
-            is_enabled: "1",
-            updated_at: new Date().toISOString(),
-          })
-        }
+      const isAutoInserted = DASHBOARD_AUTO_INSERTED.includes(exch)
+      
+      // Only set is_dashboard_inserted if not already set
+      if (isAutoInserted && c.is_dashboard_inserted === undefined) {
+        await updateConnection(c.id, {
+          ...c,
+          is_dashboard_inserted: "1", // Inserted on dashboard
+          is_enabled_dashboard: "0",   // But disabled by default
+          updated_at: new Date().toISOString(),
+        })
       }
     }
     

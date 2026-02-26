@@ -41,55 +41,18 @@ export async function GET() {
     const connections = await getAllConnections()
     console.log("[v0] [Init] Found", connections.length, "existing connections")
     
-    // Define which predefined exchanges should be auto-inserted by default on dashboard
-    // Only bybit and bingx are inserted by default - others can be added manually
-    const AUTO_INSERT_EXCHANGES = ["bybit", "bingx"]
+    // Dashboard auto-insert exchanges - ONLY these appear on dashboard by default
+    const DASHBOARD_AUTO_INSERT = ["bybit", "bingx"]
     
     // Seed all predefined connections if they don't exist
     const createdConnections = []
     
     for (const predefined of CONNECTION_PREDEFINITIONS) {
       const exists = connections.some(c => c.id === predefined.id)
-      const shouldAutoInsert = AUTO_INSERT_EXCHANGES.includes(predefined.exchange)
+      const shouldDashboardInsert = DASHBOARD_AUTO_INSERT.includes(predefined.exchange)
       
-      // Only auto-insert bybit and bingx; others are templates
-      if (!exists && shouldAutoInsert) {
+      if (!exists) {
         try {
-          console.log(`[v0] [Init] Auto-inserting connection: ${predefined.name} (${predefined.id})`)
-          
-          const connectionId = await createConnection({
-            id: predefined.id,
-            name: predefined.name,
-            exchange: predefined.exchange,
-            api_type: predefined.apiType,
-            connection_method: predefined.connectionMethod,
-            connection_library: predefined.connectionLibrary,
-            margin_type: predefined.marginType,
-            position_mode: predefined.positionMode,
-            is_testnet: false,
-            is_inserted: "1", // Mark as inserted for dashboard display
-            is_enabled: "1", // Base connections always enabled in Settings
-            is_enabled_dashboard: "0", // But not active until user activates them
-            is_predefined: true,
-            api_key: predefined.apiKey || "",
-            api_secret: predefined.apiSecret || "",
-          })
-          
-          createdConnections.push({
-            id: connectionId,
-            name: predefined.name,
-            exchange: predefined.exchange,
-            autoCreated: true
-          })
-          
-          console.log(`[v0] [Init] Auto-inserted: ${predefined.name}`)
-        } catch (error) {
-          console.error(`[v0] [Init] Failed to insert ${predefined.id}:`, error)
-        }
-      } else if (!exists && !shouldAutoInsert) {
-        // Create template connections for other exchanges (not inserted, just informational)
-        try {
-          console.log(`[v0] [Init] Creating template (not inserted): ${predefined.name}`)
           await createConnection({
             id: predefined.id,
             name: predefined.name,
@@ -100,46 +63,51 @@ export async function GET() {
             margin_type: predefined.marginType,
             position_mode: predefined.positionMode,
             is_testnet: false,
-            is_inserted: "0", // Not inserted, template only
-            is_enabled: "1", // Will be enabled when needed
-            is_enabled_dashboard: "0",
+            // Settings states - all start disabled, user enables when they add API keys
+            is_enabled: "0",
+            // Dashboard states - INDEPENDENT from Settings
+            is_dashboard_inserted: shouldDashboardInsert ? "1" : "0", // Only bybit/bingx on dashboard
+            is_enabled_dashboard: "0", // Always disabled by default
             is_predefined: true,
             api_key: predefined.apiKey || "",
             api_secret: predefined.apiSecret || "",
           })
+          
+          if (shouldDashboardInsert) {
+            createdConnections.push({
+              id: predefined.id,
+              name: predefined.name,
+              exchange: predefined.exchange,
+            })
+          }
         } catch (error) {
-          console.error(`[v0] [Init] Failed to create template ${predefined.id}:`, error)
+          console.error(`[v0] [Init] Failed to create ${predefined.id}:`, error)
         }
       }
     }
     
-    console.log(`[v0] [Init] Created ${createdConnections.length} new predefined connections`)
+    console.log(`[v0] [Init] Created ${createdConnections.length} dashboard connections (bybit, bingx)`)
     
-    // MIGRATION: Ensure all bybit and bingx connections have is_inserted and is_enabled set
+    // MIGRATION: Ensure bybit and bingx have is_dashboard_inserted set (one-time migration)
     const allConns = await getAllConnections()
     let migratedCount = 0
     for (const conn of allConns) {
       const exchange = (conn.exchange || "").toLowerCase().trim()
-      const isAutoInserted = AUTO_INSERT_EXCHANGES.includes(exchange)
+      const shouldBeOnDashboard = DASHBOARD_AUTO_INSERT.includes(exchange)
       
-      if (isAutoInserted) {
-        const needsInserted = conn.is_inserted !== "1" && conn.is_inserted !== true
-        const needsEnabled = conn.is_enabled !== "1" && conn.is_enabled !== true && conn.is_enabled !== "true"
-        
-        if (needsInserted || needsEnabled) {
-          await updateConnection(conn.id, {
-            ...conn,
-            is_inserted: "1",
-            is_enabled: "1",
-            updated_at: new Date().toISOString(),
-          })
-          migratedCount++
-          console.log(`[v0] [Init] Migrated connection: ${conn.name} (${conn.id}) - inserted=${!needsInserted}, enabled=${!needsEnabled}`)
-        }
+      // Only migrate if is_dashboard_inserted is undefined (not yet set)
+      if (shouldBeOnDashboard && conn.is_dashboard_inserted === undefined) {
+        await updateConnection(conn.id, {
+          ...conn,
+          is_dashboard_inserted: "1", // Add to dashboard
+          is_enabled_dashboard: "0",   // But disabled by default
+          updated_at: new Date().toISOString(),
+        })
+        migratedCount++
       }
     }
     if (migratedCount > 0) {
-      console.log(`[v0] [Init] Migrated ${migratedCount} auto-inserted connections (bybit, bingx)`)
+      console.log(`[v0] [Init] Migrated ${migratedCount} connections to dashboard (bybit, bingx)`)
     }
     
     // Trigger initial auto-test for all base connections (non-blocking)

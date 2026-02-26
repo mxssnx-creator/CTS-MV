@@ -58,18 +58,16 @@ export function AddActiveConnectionDialog({
 
       // Filter to show only connections that are:
       // 1. Base exchange (bybit, bingx, pionex, orangex, binance, okx)
-      // 2. Inserted (is_inserted=1)
-      // 3. Enabled in Settings (is_enabled=1)
-      // 4. NOT already on the active dashboard (is_enabled_dashboard != "1")
+      // 2. Enabled in Settings (is_enabled=1) - must have API keys configured
+      // 3. NOT already inserted on dashboard (is_dashboard_inserted != "1")
       const BASE_EXCHANGES = ["bybit", "bingx", "pionex", "orangex", "binance", "okx"]
       const availableForAdd = allConnections.filter((c: any) => {
         const exchange = (c.exchange || "").toLowerCase().trim()
         const isBase = BASE_EXCHANGES.includes(exchange)
-        const isInserted = c.is_inserted === true || c.is_inserted === "1" || c.is_inserted === "true"
         const isEnabled = c.is_enabled === true || c.is_enabled === "1" || c.is_enabled === "true"
-        const alreadyActive = c.is_enabled_dashboard === true || c.is_enabled_dashboard === "1" || c.is_enabled_dashboard === "true"
-        // Strict filter: must be base + inserted + enabled + not already active
-        return isBase && isInserted && isEnabled && !alreadyActive
+        const alreadyOnDashboard = c.is_dashboard_inserted === true || c.is_dashboard_inserted === "1"
+        // Show base connections that are enabled in Settings but NOT yet on dashboard
+        return isBase && isEnabled && !alreadyOnDashboard
       })
 
       setAvailableConnections(availableForAdd)
@@ -99,14 +97,17 @@ export function AddActiveConnectionDialog({
 
     setAdding(true)
     try {
-      // Use API to set is_enabled_dashboard=1 (works on client unlike direct Redis)
+      // Use API to set is_dashboard_inserted=1 (adds to dashboard) and is_enabled_dashboard=0 (disabled by default)
       const res = await fetch(`/api/settings/connections/${selectedConnection}/toggle-dashboard`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ is_enabled_dashboard: true }),
+        body: JSON.stringify({ 
+          is_dashboard_inserted: "1",  // Mark as inserted on dashboard
+          is_enabled_dashboard: "0",    // Disabled by default - user must enable
+        }),
       })
       if (!res.ok) {
-        throw new Error("Failed to add connection to active list")
+        throw new Error("Failed to add connection to dashboard")
       }
 
       toast.success(`${connection.name} added to active list`)
