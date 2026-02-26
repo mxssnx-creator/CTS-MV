@@ -148,11 +148,6 @@ export function DashboardActiveConnectionsManager() {
       
       console.log(`[v0] [Manager] Filtered ${activeConns.length} active connections from ${allConnections.length} total`)
       updateActiveConnections(activeConns)
-      setLoading(false)
-        return
-      }
-
-      updateActiveConnections(activeConns)
     } catch (error) {
       console.error("[v0] Error loading connections:", error)
     } finally {
