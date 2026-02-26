@@ -81,7 +81,6 @@ export function DashboardActiveConnectionsManager() {
 
   const loadConnections = async () => {
     try {
-      // Fetch ALL connections via API with version tracking and cache-bust
       const timestamp = new Date().getTime()
       const response = await fetch(`/api/settings/connections?v=${VERSION}&t=${timestamp}`, {
         cache: "no-store",
@@ -91,41 +90,26 @@ export function DashboardActiveConnectionsManager() {
           "X-Component-Version": VERSION,
         },
       })
+      
       if (!response.ok) {
         setLoading(false)
         return
       }
-      const data = await response.json()
-      console.log(`[v0] [Manager] ${VERSION}: API response structure:`, { success: data.success, count: data.count, hasConnections: !!data.connections, connectionType: typeof data.connections })
-      const allConnections: Connection[] = Array.isArray(data) ? data : (data?.connections || [])
-      console.log(`[v0] [Manager] ${VERSION}: Parsed ${allConnections.length} connections`)
       
-      // Build active connection cards from API data
+      const data = await response.json()
+      const allConnections: Connection[] = Array.isArray(data) ? data : (data?.connections || [])
       const activeConns: ActiveConnectionWithDetails[] = []
       const seenIds = new Set<string>()
-
-      console.log(`[v0] [Manager] ${VERSION}: Processing ${allConnections.length} connections from API`)
-      console.log(`[v0] [Manager] ${VERSION}: Using ONLY is_dashboard_inserted field (base/main/real/live-independent)`)
       
       for (const conn of allConnections) {
         const exchange = (conn.exchange || "").toLowerCase().trim()
         const isBase = BASE_EXCHANGES.includes(exchange)
-        
-        // IMPORTANT: Active connections show if:
-        // 1. They're a base exchange (bybit, bingx, pionex, orangex, binance, okx), OR
-        // 2. They have is_dashboard_inserted set (show on dashboard), OR  
-        // 3. They have is_enabled_dashboard set (actively trading)
         const isDashboardInserted = conn.is_dashboard_inserted === "1" || conn.is_dashboard_inserted === true
         const isDashboardActive = conn.is_enabled_dashboard === true || conn.is_enabled_dashboard === "1"
 
-        console.log(`[v0] [Manager] ${VERSION}: ${conn.name}: base=${isBase}, inserted=${isDashboardInserted} (raw=${JSON.stringify(conn.is_dashboard_inserted)}), active=${isDashboardActive}`)
-
-        // Show connection if it's a base exchange (even if not yet inserted/active)
-        // OR if it's been marked for dashboard OR if it's actively trading
         if (isBase || isDashboardInserted || isDashboardActive) {
           if (seenIds.has(conn.id)) continue
           seenIds.add(conn.id)
-
           activeConns.push({
             id: `active-${conn.id}`,
             connectionId: conn.id,
@@ -135,13 +119,9 @@ export function DashboardActiveConnectionsManager() {
             addedAt: conn.created_at || new Date().toISOString(),
             details: conn,
           })
-          console.log(`[v0] [Manager] ${VERSION} ✓ Added ${conn.name}: base=${isBase}, inserted=${isDashboardInserted}, active=${isDashboardActive}`)
         }
       }
       
-      console.log(`[v0] [Manager] ${VERSION}: Final: ${activeConns.length} active connections loaded`)
-      
-      // STICKY STATE: Never replace existing cards with empty data on transient fetch issues
       if (activeConns.length === 0 && activeConnectionsRef.current.length > 0) {
         setLoading(false)
         return
@@ -283,7 +263,7 @@ export function DashboardActiveConnectionsManager() {
     )
   }
 
-  console.log(`[v0] [Manager] ${VERSION}: Rendering with ${activeConnections.length} active connections`)
+
 
   return (
     <div className="space-y-4">
