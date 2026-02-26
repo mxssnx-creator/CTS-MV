@@ -109,7 +109,7 @@ export function DashboardActiveConnectionsManager() {
             id: `active-${conn.id}`,
             connectionId: conn.id,
             exchangeName: conn.exchange ? conn.exchange.charAt(0).toUpperCase() + conn.exchange.slice(1) : "Unknown",
-            isActive: isDashboardActive,
+            isActive: false, // Always disabled by default - user must explicitly enable via toggle
             isBaseEnabled: isSettingsEnabled,
             addedAt: conn.created_at || new Date().toISOString(),
             details: conn,
