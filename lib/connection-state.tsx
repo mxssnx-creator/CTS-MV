@@ -84,11 +84,14 @@ export function ConnectionStateProvider({ children }: { children: ReactNode }) {
         console.log("[v0] [ConnectionState] Loaded", data.connections?.length || 0, "base connections")
         setBaseConnections(data.connections || [])
         
-        // Initialize status map
+        // Initialize status map - base connections are ALWAYS enabled
+        const BASE_EXCHANGES = ["bybit", "bingx", "pionex", "orangex", "binance", "okx"]
         const statusMap = new Map<string, { enabled: boolean; inserted: boolean }>()
         data.connections?.forEach((conn: ExchangeConnection) => {
+          const isBase = BASE_EXCHANGES.includes((conn.exchange || "").toLowerCase().trim())
           statusMap.set(conn.id, { 
-            enabled: conn.is_enabled === true || conn.is_enabled === "true",
+            // Base connections are always enabled regardless of stored value
+            enabled: isBase ? true : (conn.is_enabled === true || conn.is_enabled === "true"),
             inserted: false 
           })
         })
@@ -109,7 +112,6 @@ export function ConnectionStateProvider({ children }: { children: ReactNode }) {
             activeStatusMap.set(conn.id, false)
           })
           setExchangeConnectionsActiveStatus(activeStatusMap)
-          console.log("[v0] [ConnectionState] Updated Active Connections:", activeConns.length, "(all disabled by default)")
         }
       }
     } catch (error) {
@@ -238,18 +240,39 @@ export function ConnectionStateProvider({ children }: { children: ReactNode }) {
     return tradeEngineStatuses.get(connectionId)
   }
 
+  // Auto-test base connections at startup and every 5 minutes
+  const triggerAutoTest = async () => {
+    try {
+      await fetch("/api/settings/connections/auto-test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      })
+    } catch {
+      // Non-blocking: auto-test is best-effort
+    }
+  }
+
   // Initial load on mount
   useEffect(() => {
     loadBaseConnections()
     loadExchangeConnectionsActive()
     
-    // Refresh every 30 seconds
-    const interval = setInterval(() => {
+    // Auto-test base connections at startup
+    triggerAutoTest()
+    
+    // Refresh connection state every 30 seconds
+    const refreshInterval = setInterval(() => {
       loadBaseConnections()
       loadExchangeConnectionsActive()
     }, 30000)
     
-    return () => clearInterval(interval)
+    // Auto-test base connections every 5 minutes
+    const autoTestInterval = setInterval(triggerAutoTest, 5 * 60 * 1000)
+    
+    return () => {
+      clearInterval(refreshInterval)
+      clearInterval(autoTestInterval)
+    }
   }, [])
 
   return (

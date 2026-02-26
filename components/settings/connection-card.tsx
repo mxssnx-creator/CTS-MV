@@ -56,6 +56,8 @@ export function ConnectionCard({
   onTestConnection,
   isNewlyAdded = false,
 }: ConnectionCardProps) {
+  const BASE_EXCHANGES = ["bybit", "bingx", "pionex", "orangex", "binance", "okx"]
+  const isBase = BASE_EXCHANGES.includes((connection.exchange || "").toLowerCase().trim())
   const [testingConnection, setTestingConnection] = useState(false)
   const [workingStatus, setWorkingStatus] = useState<"idle" | "testing" | "success" | "error">("idle")
   const [testLogs, setTestLogs] = useState<string[]>([])
@@ -334,15 +336,15 @@ export function ConnectionCard({
                 {connection.is_testnet && (
                   <Badge className="text-xs bg-blue-100 text-blue-900">Testnet</Badge>
                 )}
-                {/* Status Badge */}
+                {/* Status Badge - Base connections are always active */}
                 <Badge 
                   className={`text-xs ${
-                    connection.is_enabled 
+                    (isBase || connection.is_enabled)
                       ? "bg-green-100 text-green-900 border-green-200" 
                       : "bg-gray-100 text-gray-600 border-gray-200"
                   }`}
                 >
-                  {connection.is_enabled ? "Active" : "Inactive"}
+                  {isBase ? "Always Active" : (connection.is_enabled ? "Active" : "Inactive")}
                 </Badge>
               </div>
               <div className="space-y-1">
@@ -370,16 +372,17 @@ export function ConnectionCard({
               </Button>
               <div className="flex items-center justify-end gap-3">
                 <span className="text-sm text-muted-foreground">
-                  {connection.is_enabled ? "Enabled" : "Disabled"}
+                  {isBase ? "Always Enabled" : (connection.is_enabled ? "Enabled" : "Disabled")}
                 </span>
                 <Button
                   size="sm"
-                  variant={connection.is_enabled ? "default" : "outline"}
-                  onClick={onToggle}
-                  className="w-14"
-                  title={connection.is_enabled ? "Disable" : "Enable"}
+                  variant={isBase || connection.is_enabled ? "default" : "outline"}
+                  onClick={isBase ? undefined : onToggle}
+                  className={`w-14 ${isBase ? "opacity-60 cursor-not-allowed" : ""}`}
+                  title={isBase ? "Base connections are always enabled" : (connection.is_enabled ? "Disable" : "Enable")}
+                  disabled={isBase}
                 >
-                  <Power className="h-4 w-4" />
+                  {isBase ? <Lock className="h-4 w-4" /> : <Power className="h-4 w-4" />}
                 </Button>
               </div>
             </div>

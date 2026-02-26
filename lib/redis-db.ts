@@ -727,16 +727,18 @@ export async function getBaseConnections(): Promise<any[]> {
 }
 
 /**
- * Get base connections that are enabled in Settings
+ * Get base connections - base exchanges are ALWAYS enabled
+ * Base connections (bybit, bingx, pionex, orangex, binance, okx) are always active in Settings.
+ * Their is_enabled flag is informational only; they cannot be disabled.
  */
 export async function getEnabledBaseConnections(): Promise<any[]> {
   const all = await getAllConnections()
   const filtered = all.filter((c: any) => {
     const isBase = _BASE_EXCHANGES.includes((c?.exchange || "").toLowerCase().trim())
-    const isEnabled = c.is_enabled === true || c.is_enabled === "1" || c.is_enabled === "true" || c.is_enabled === undefined || c.is_enabled === null
-    return isBase && isEnabled
+    // Base connections are ALWAYS enabled - no is_enabled check needed
+    return isBase
   })
-  console.log(`[v0] [DB] getEnabledBaseConnections: ${filtered.length} enabled base (out of ${all.length})`)
+  console.log(`[v0] [DB] getEnabledBaseConnections: ${filtered.length} base connections (always enabled)`)
   return filtered
 }
 

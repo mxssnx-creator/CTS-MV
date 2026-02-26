@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { initializeTradeEngineAutoStart } from "@/lib/trade-engine-auto-start"
 import { getGlobalTradeEngineCoordinator } from "@/lib/trade-engine"
 import { seedDefaultPresetTypes } from "@/lib/preset-types-seed"
-import { initRedis, getAllConnections, createConnection } from "@/lib/redis-db"
+import { initRedis, getAllConnections, createConnection, updateConnection } from "@/lib/redis-db"
 import { CONNECTION_PREDEFINITIONS } from "@/lib/connection-predefinitions"
 import { runMigrations } from "@/lib/redis-migrations"
 
@@ -87,6 +87,38 @@ export async function GET() {
     
     console.log(`[v0] [Init] Created ${createdConnections.length} new predefined connections`)
     
+    // Force-enable ALL base connections (they must always be enabled)
+    const allConns = await getAllConnections()
+    let forceEnabledCount = 0
+    for (const conn of allConns) {
+      const exchange = (conn.exchange || "").toLowerCase().trim()
+      const isBase = AUTO_CREATE_EXCHANGES.includes(exchange)
+      if (isBase) {
+        const isCurrentlyEnabled = conn.is_enabled === true || conn.is_enabled === "1" || conn.is_enabled === "true"
+        if (!isCurrentlyEnabled) {
+          await updateConnection(conn.id, {
+            ...conn,
+            is_enabled: "1",
+            updated_at: new Date().toISOString(),
+          })
+          forceEnabledCount++
+          console.log(`[v0] [Init] Force-enabled base connection: ${conn.name} (${conn.id})`)
+        }
+      }
+    }
+    if (forceEnabledCount > 0) {
+      console.log(`[v0] [Init] Force-enabled ${forceEnabledCount} base connections`)
+    }
+    
+    // Trigger initial auto-test for all base connections (non-blocking)
+    fetch(new URL("/api/settings/connections/auto-test", process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000").toString(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source: "init" }),
+    }).catch(() => {
+      // Non-blocking: auto-test will run on next scheduled interval if this fails
+    })
+    
     // Initialize trade engine auto-start
     try {
       await initializeTradeEngineAutoStart()
@@ -100,6 +132,7 @@ export async function GET() {
       message: "System initialized",
       connectionsCreated: createdConnections.length,
       totalConnections: connections.length + createdConnections.length,
+      forceEnabled: forceEnabledCount,
     })
   } catch (error) {
     console.error("[v0] [Init] Initialization error:", error)
