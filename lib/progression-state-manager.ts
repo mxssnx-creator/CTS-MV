@@ -18,6 +18,9 @@ export interface ProgressionState {
   tradeSuccessRate: number // percentage
   lastCycleTime: Date | null
   lastUpdate: Date
+  prehistoricCyclesCompleted?: number
+  prehistoricSymbolsProcessed?: string[]
+  prehistoricPhaseActive?: boolean
 }
 
 export class ProgressionStateManager {
@@ -44,6 +47,9 @@ export class ProgressionStateManager {
           tradeSuccessRate: 0,
           lastCycleTime: null,
           lastUpdate: new Date(),
+          prehistoricCyclesCompleted: 0,
+          prehistoricSymbolsProcessed: [],
+          prehistoricPhaseActive: false,
         }
       }
 
@@ -59,6 +65,9 @@ export class ProgressionStateManager {
         tradeSuccessRate: parseFloat(data.trade_success_rate || "0"),
         lastCycleTime: data.last_cycle_time ? new Date(data.last_cycle_time) : null,
         lastUpdate: new Date(data.last_update || new Date()),
+        prehistoricCyclesCompleted: parseInt(data.prehistoric_cycles_completed || "0", 10),
+        prehistoricSymbolsProcessed: data.prehistoric_symbols_processed ? JSON.parse(data.prehistoric_symbols_processed) : [],
+        prehistoricPhaseActive: data.prehistoric_phase_active === "true",
       }
     } catch (error) {
       console.error(`[v0] Failed to get progression state for ${connectionId}:`, error)
@@ -75,6 +84,9 @@ export class ProgressionStateManager {
         tradeSuccessRate: 0,
         lastCycleTime: null,
         lastUpdate: new Date(),
+        prehistoricCyclesCompleted: 0,
+        prehistoricSymbolsProcessed: [],
+        prehistoricPhaseActive: false,
       }
     }
   }
@@ -114,6 +126,58 @@ export class ProgressionStateManager {
       console.log(`[v0] [Progression] Cycle ${cyclesCompleted}: ${successful ? "✓ Success" : "✗ Failed"} (rate: ${cycleSuccessRate.toFixed(1)}%)`)
     } catch (error) {
       console.error(`[v0] Failed to increment cycle for ${connectionId}:`, error)
+    }
+  }
+
+  /**
+   * Track prehistoric phase progress (separate from realtime)
+   */
+  static async incrementPrehistoricCycle(connectionId: string, symbol: string): Promise<void> {
+    try {
+      const client = getRedisClient()
+      const key = `progression:${connectionId}`
+
+      // Get current state
+      const current = await this.getProgressionState(connectionId)
+
+      // Update prehistoric metrics
+      const prehistoricCycles = (current.prehistoricCyclesCompleted || 0) + 1
+      const symbolsProcessed = current.prehistoricSymbolsProcessed || []
+      
+      if (!symbolsProcessed.includes(symbol)) {
+        symbolsProcessed.push(symbol)
+      }
+
+      // Save to Redis
+      await client.hset(key, {
+        prehistoric_cycles_completed: String(prehistoricCycles),
+        prehistoric_symbols_processed: JSON.stringify(symbolsProcessed),
+        prehistoric_phase_active: "true",
+        last_update: new Date().toISOString(),
+      })
+
+      console.log(`[v0] [Prehistoric] Symbol ${symbol}: Cycle ${prehistoricCycles} | Processed: ${symbolsProcessed.join(", ")}`)
+    } catch (error) {
+      console.error(`[v0] Failed to track prehistoric cycle for ${connectionId}:`, error)
+    }
+  }
+
+  /**
+   * Mark prehistoric phase as complete
+   */
+  static async completePrehistoricPhase(connectionId: string): Promise<void> {
+    try {
+      const client = getRedisClient()
+      const key = `progression:${connectionId}`
+
+      await client.hset(key, {
+        prehistoric_phase_active: "false",
+        last_update: new Date().toISOString(),
+      })
+
+      console.log(`[v0] [Prehistoric] Phase completed for connection ${connectionId}`)
+    } catch (error) {
+      console.error(`[v0] Failed to mark prehistoric phase complete:`, error)
     }
   }
 

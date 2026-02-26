@@ -34,14 +34,11 @@ export class IndicationProcessor {
   }
 
   /**
-   * Process historical indications for a symbol over a date range
-   */
-  /**
-   * Process historical indications - builds up all 4 independent type sets
+   * Process historical indications - builds up all 4 independent type sets (prehistoric phase only, evaluation)
    */
   async processHistoricalIndications(symbol: string, startDate: Date, endDate: Date): Promise<void> {
     try {
-      console.log(`[v0] [HistoricalIndication] Processing for ${symbol} | Period: ${startDate.toISOString()} to ${endDate.toISOString()}`)
+      console.log(`[v0] [PrehistoricIndication] Processing for ${symbol} | Period: ${startDate.toISOString()} to ${endDate.toISOString()}`)
 
       const redis = await getRedisHelpers()
       await redis.initRedis()
@@ -54,7 +51,7 @@ export class IndicationProcessor {
           : []
 
       if (historicalData.length === 0) {
-        console.log(`[v0] [HistoricalIndication] No data available yet for ${symbol}`)
+        console.log(`[v0] [PrehistoricIndication] No data available yet for ${symbol}`)
         return
       }
 
@@ -65,25 +62,30 @@ export class IndicationProcessor {
         await setsProcessor.processAllIndicationSets(symbol, marketData)
       }
 
-      // Log results
+      // Get set statistics
       const directionStats = await setsProcessor.getSetStats(symbol, "direction")
       const moveStats = await setsProcessor.getSetStats(symbol, "move")
       const activeStats = await setsProcessor.getSetStats(symbol, "active")
       const optimalStats = await setsProcessor.getSetStats(symbol, "optimal")
 
+      // Track prehistoric progress (separate from realtime)
+      const ProgressionManager = await getProgressionManager()
+      await ProgressionManager.incrementPrehistoricCycle(this.connectionId, symbol)
+
       console.log(
-        `[v0] [HistoricalIndication] ${symbol}: Processed ${historicalData.length} points | Direction=${directionStats?.currentEntries || 0}/${directionStats?.maxEntries || 250} Move=${moveStats?.currentEntries || 0}/${moveStats?.maxEntries || 250} Active=${activeStats?.currentEntries || 0}/${activeStats?.maxEntries || 250} Optimal=${optimalStats?.currentEntries || 0}/${optimalStats?.maxEntries || 250}`
+        `[v0] [PrehistoricIndication] ${symbol}: Evaluated ${historicalData.length} data points (no trades) | Direction=${directionStats?.currentEntries || 0}/${directionStats?.maxEntries || 250} Move=${moveStats?.currentEntries || 0}/${moveStats?.maxEntries || 250} Active=${activeStats?.currentEntries || 0}/${activeStats?.maxEntries || 250} Optimal=${optimalStats?.currentEntries || 0}/${optimalStats?.maxEntries || 250}`
       )
 
-      await logProgressionEvent(this.connectionId, "indications_historical", "info", `Historical indications processed for ${symbol}`, {
+      await logProgressionEvent(this.connectionId, "indications_prehistoric", "info", `Historical indications evaluated for ${symbol}`, {
         direction: directionStats,
         move: moveStats,
         active: activeStats,
         optimal: optimalStats,
         dataPoints: historicalData.length,
+        phase: "prehistoric",
       })
     } catch (error) {
-      console.error(`[v0] [HistoricalIndication] Failed for ${symbol}:`, error instanceof Error ? error.message : String(error))
+      console.error(`[v0] [PrehistoricIndication] Failed for ${symbol}:`, error instanceof Error ? error.message : String(error))
     }
   }
 

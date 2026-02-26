@@ -205,6 +205,7 @@ export class TradeEngineManager {
           `Processing strategies for ${symbol}...`,
           { current: i + 1, total: symbols.length, item: symbol }
         )
+        // Pass isPrehistoric=true to prevent real trades during this phase
         await this.strategyProcessor.processHistoricalStrategies(symbol, prehistoricStart, prehistoricEnd)
       }
 
@@ -217,7 +218,11 @@ export class TradeEngineManager {
         updated_at: new Date().toISOString(),
       })
 
-      console.log("[v0] Prehistoric data loaded successfully")
+      // Mark prehistoric phase as complete in progression state
+      const ProgressionManager = await import("@/lib/progression-state-manager").then((m) => m.ProgressionStateManager)
+      await ProgressionManager.completePrehistoricPhase(this.connectionId)
+
+      console.log("[v0] Prehistoric data loaded successfully and phase complete")
     } catch (error) {
       console.error("[v0] Failed to load prehistoric data:", error)
       throw error
