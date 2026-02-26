@@ -56,13 +56,9 @@ export function ConnectionCard({
   onTestConnection,
   isNewlyAdded = false,
 }: ConnectionCardProps) {
-  // Only bybit and bingx are auto-inserted by default
-  const AUTO_INSERTED_EXCHANGES = ["bybit", "bingx"]
   const exchange = (connection.exchange || "").toLowerCase().trim()
-  const isAutoInserted = AUTO_INSERTED_EXCHANGES.includes(exchange)
   const isInserted = connection.is_inserted === "1" || connection.is_inserted === true
-  // Only show as "always enabled" if it's an auto-inserted exchange AND is actually inserted
-  const isAlwaysEnabled = isAutoInserted && isInserted
+  const isEnabled = connection.is_enabled === "1" || connection.is_enabled === true || connection.is_enabled === "true"
   const [testingConnection, setTestingConnection] = useState(false)
   const [workingStatus, setWorkingStatus] = useState<"idle" | "testing" | "success" | "error">("idle")
   const [testLogs, setTestLogs] = useState<string[]>([])
@@ -341,15 +337,15 @@ export function ConnectionCard({
                 {connection.is_testnet && (
                   <Badge className="text-xs bg-blue-100 text-blue-900">Testnet</Badge>
                 )}
-                {/* Status Badge - Base connections are always active */}
+                {/* Status Badge */}
                 <Badge 
                   className={`text-xs ${
-                    (isAlwaysEnabled || connection.is_enabled)
+                    isEnabled
                       ? "bg-green-100 text-green-900 border-green-200" 
                       : "bg-gray-100 text-gray-600 border-gray-200"
                   }`}
                 >
-                  {isAlwaysEnabled ? "Always Active" : (connection.is_enabled ? "Active" : "Inactive")}
+                  {isEnabled ? "Active" : "Inactive"}
                 </Badge>
               </div>
               <div className="space-y-1">
@@ -377,17 +373,16 @@ export function ConnectionCard({
               </Button>
               <div className="flex items-center justify-end gap-3">
                 <span className="text-sm text-muted-foreground">
-                  {isAlwaysEnabled ? "Always Enabled" : (connection.is_enabled ? "Enabled" : "Disabled")}
+                  {isEnabled ? "Enabled" : "Disabled"}
                 </span>
                 <Button
                   size="sm"
-                  variant={isAlwaysEnabled || connection.is_enabled ? "default" : "outline"}
-                  onClick={isAlwaysEnabled ? undefined : onToggle}
-                  className={`w-14 ${isAlwaysEnabled ? "opacity-60 cursor-not-allowed" : ""}`}
-                  title={isAlwaysEnabled ? "Base connections are always enabled" : (connection.is_enabled ? "Disable" : "Enable")}
-                  disabled={isAlwaysEnabled}
+                  variant={isEnabled ? "default" : "outline"}
+                  onClick={onToggle}
+                  className="w-14"
+                  title={isEnabled ? "Disable" : "Enable"}
                 >
-                  {isAlwaysEnabled ? <Lock className="h-4 w-4" /> : <Power className="h-4 w-4" />}
+                  <Power className="h-4 w-4" />
                 </Button>
               </div>
             </div>

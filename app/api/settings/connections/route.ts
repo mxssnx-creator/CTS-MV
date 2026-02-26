@@ -1,9 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getAllConnections, initRedis, createConnection } from "@/lib/redis-db"
+import { getAllConnections, initRedis, createConnection, updateConnection } from "@/lib/redis-db"
 import { generateConnectionIdFromApiKey, isApiKeyInUse } from "@/lib/connection-id-manager"
 import { CONNECTION_PREDEFINITIONS } from "@/lib/connection-predefinitions"
 
 export const runtime = "nodejs"
+
+// Auto-inserted exchanges - these should be enabled and inserted by default
+const AUTO_INSERTED_EXCHANGES = ["bybit", "bingx"]
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,22 +18,27 @@ export async function GET(request: NextRequest) {
     await initRedis()
     let connections = await getAllConnections()
 
-    // Base exchanges that are AUTO-INSERTED by default (only bybit and bingx)
-    // These should be enabled by default since they were inserted by init
-    const AUTO_INSERTED_EXCHANGES = ["bybit", "bingx"]
-    
-    // Only force-enable the auto-inserted base connections
-    connections = connections.map((c) => {
-      const exchange = (c.exchange || "").toLowerCase().trim()
-      const isAutoInserted = AUTO_INSERTED_EXCHANGES.includes(exchange)
-      const isInserted = c.is_inserted === "1" || c.is_inserted === true
-      
-      // Enable only if: auto-inserted exchange AND was explicitly inserted
-      if (isAutoInserted && isInserted && (!c.is_enabled || c.is_enabled === "0" || c.is_enabled === false)) {
-        return { ...c, is_enabled: "1" }
+    // MIGRATION: Ensure bybit and bingx have is_inserted="1" and is_enabled="1"
+    // This runs on every GET to fix connections that weren't migrated
+    for (const c of connections) {
+      const exch = (c.exchange || "").toLowerCase().trim()
+      if (AUTO_INSERTED_EXCHANGES.includes(exch)) {
+        const needsInserted = c.is_inserted !== "1" && c.is_inserted !== true
+        const needsEnabled = c.is_enabled !== "1" && c.is_enabled !== true && c.is_enabled !== "true"
+        
+        if (needsInserted || needsEnabled) {
+          await updateConnection(c.id, {
+            ...c,
+            is_inserted: "1",
+            is_enabled: "1",
+            updated_at: new Date().toISOString(),
+          })
+        }
       }
-      return c
-    })
+    }
+    
+    // Reload after migration
+    connections = await getAllConnections()
 
     // Auto-initialize predefined connections if none exist
     if (connections.length === 0) {
