@@ -88,19 +88,27 @@ export function SystemOverview() {
     // Poll every 2 seconds to match GlobalTradeEngineControls polling
     const interval = setInterval(loadStats, 2000)
 
-    // Listen for connection toggle events and refresh immediately
+    // Listen for connection and live trade toggle events and refresh immediately
     const handleConnectionToggled = () => {
+      console.log("[v0] [SystemOverview] Detected connection toggle event, refreshing stats...")
+      loadStats()
+    }
+    
+    const handleLiveTradeToggled = () => {
+      console.log("[v0] [SystemOverview] Detected live trade toggle event, refreshing stats...")
       loadStats()
     }
 
     if (typeof window !== 'undefined') {
       window.addEventListener('connection-toggled', handleConnectionToggled)
+      window.addEventListener('live-trade-toggled', handleLiveTradeToggled)
     }
 
     return () => {
       clearInterval(interval)
       if (typeof window !== 'undefined') {
         window.removeEventListener('connection-toggled', handleConnectionToggled)
+        window.removeEventListener('live-trade-toggled', handleLiveTradeToggled)
       }
     }
   }, [])

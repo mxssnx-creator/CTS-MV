@@ -32,11 +32,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     
     if (is_dashboard_inserted !== undefined) {
       updatedConnection.is_dashboard_inserted = is_dashboard_inserted
-      console.log(`[v0] [Toggle]   Setting is_dashboard_inserted=${is_dashboard_inserted}`)
+      console.log(`[v0] [Toggle]   Setting is_dashboard_inserted=${is_dashboard_inserted} (permanent removal/addition)`)
     }
     if (is_enabled_dashboard !== undefined) {
       updatedConnection.is_enabled_dashboard = is_enabled_dashboard
-      console.log(`[v0] [Toggle]   Setting is_enabled_dashboard=${is_enabled_dashboard}`)
+      console.log(`[v0] [Toggle]   Setting is_enabled_dashboard=${is_enabled_dashboard} (active state)`)
     }
 
     console.log(`[v0] [Toggle]   After: is_dashboard_inserted=${updatedConnection.is_dashboard_inserted}, is_enabled_dashboard=${updatedConnection.is_enabled_dashboard}`)

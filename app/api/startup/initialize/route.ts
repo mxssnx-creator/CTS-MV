@@ -58,32 +58,33 @@ export async function POST() {
       }
     }
     
-    // STEP 2: Reload and enforce consistent state
+    // STEP 2: Reload and enforce consistent state - BUT RESPECT USER REMOVALS
     connections = await getAllConnections()
     
     for (const c of connections) {
       const exch = (c.exchange || "").toLowerCase().trim()
       const shouldBeOnDashboard = DASHBOARD_AUTO_INSERTED.includes(exch)
       
-      // Determine correct dashboard state
-      const dashboardInserted = shouldBeOnDashboard ? "1" : "0"
+      // CRITICAL: Only enforce dashboard state on FIRST creation
+      // If connection already has is_dashboard_inserted set (even to "0"), respect user's choice
+      const hasExplicitDashboardState = c.is_dashboard_inserted !== undefined && c.is_dashboard_inserted !== null
       
-      // Check if migration needed
-      const needsUpdate = 
-        c.is_dashboard_inserted !== dashboardInserted ||
-        c.is_enabled !== true ||
-        !c.is_enabled_dashboard
+      // Determine correct dashboard state: only apply to new connections
+      const dashboardInserted = hasExplicitDashboardState ? c.is_dashboard_inserted : (shouldBeOnDashboard ? "1" : "0")
+      
+      // Check if migration needed - ONLY for enabled state, NOT for dashboard state
+      const needsUpdate = c.is_enabled !== true || !c.is_enabled_dashboard
       
       if (needsUpdate) {
         await updateConnection(c.id, {
           ...c,
-          is_enabled: true, // BASE ENABLED
-          is_dashboard_inserted: dashboardInserted, // Dashboard state: only bybit/bingx
-          is_enabled_dashboard: "0", // Dashboard-active disabled by default
+          is_enabled: true, // BASE ENABLED - always ensure enabled in settings
+          is_dashboard_inserted: dashboardInserted, // Dashboard state: respect user's choice
+          is_enabled_dashboard: "0", // Dashboard-active disabled by default - never auto-enable
           updated_at: new Date().toISOString(),
         })
         results.connectionsMigrated++
-        console.log(`[v0] [Startup] ✓ Migrated: ${c.name} (dashboard=${shouldBeOnDashboard})`)
+        console.log(`[v0] [Startup] ✓ Migrated: ${c.name} (dashboard=${dashboardInserted}, hasExplicitState=${hasExplicitDashboardState})`)
       }
       
       if (c.is_enabled === true || c.is_enabled === "1" || c.is_enabled === "true") {

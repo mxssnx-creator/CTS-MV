@@ -157,12 +157,17 @@ export function DashboardActiveConnectionsManager() {
     try {
       console.log(`[v0] [Manager] ${newState ? "ENABLING" : "DISABLING"} ${connName}...`)
       
-      // 1. Toggle active state via API
+      // 1. Toggle active state via API (also remove from dashboard permanently if disabling)
       console.log(`[v0] [Manager] → Calling toggle-dashboard API...`)
       const toggleRes = await fetch(`/api/settings/connections/${connectionId}/toggle-dashboard`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ is_enabled_dashboard: newState }),
+        body: JSON.stringify({ 
+          is_enabled_dashboard: newState,
+          // If disabling, also remove from dashboard permanently (is_dashboard_inserted = "0")
+          // If enabling, keep dashboard_inserted as is
+          ...(newState ? {} : { is_dashboard_inserted: "0" })
+        }),
         cache: "no-store"
       })
       

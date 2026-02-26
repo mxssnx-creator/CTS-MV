@@ -136,29 +136,54 @@ export function ActiveConnectionCard({
 
   // Handle Live Trade toggle
   const handleLiveTradeToggle = async (newState: boolean) => {
+    const connName = connection.exchangeName
+    console.log(`[v0] [Card] Live Trade toggle clicked: ${connName}, current=${liveTrade}, new=${newState}`)
+    
+    // Validation
     if (newState && !globalEngineRunning) {
+      console.log(`[v0] [Card] ✗ Cannot enable live trade - global engine not running`)
       toast.error("Global Trade Engine must be running first")
       return
     }
     if (newState && !connection.isActive) {
+      console.log(`[v0] [Card] ✗ Cannot enable live trade - connection not active on dashboard`)
       toast.error("Enable the connection first")
       return
     }
+    
+    console.log(`[v0] [Card] → Calling live-trade API for ${connName}...`)
     setLiveTradeLoading(true)
     try {
       const res = await fetch(`/api/settings/connections/${connection.connectionId}/live-trade`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ is_live_trade: newState }),
+        cache: "no-store"
       })
-      if (res.ok) {
+      
+      const data = await res.json().catch(() => ({ error: "Failed to parse response" }))
+      console.log(`[v0] [Card] API Response for ${connName}:`, data)
+      
+      if (res.ok && data.success) {
+        console.log(`[v0] [Card] ✓ Live trade ${newState ? "enabled" : "disabled"} for ${connName}`)
         setLiveTrade(newState)
-        toast.success(newState ? "Live Trade engine starting..." : "Live Trade engine stopped")
+        toast.success(newState ? `Live Trading starting on ${connName}...` : `Live Trading stopped on ${connName}`)
+        
+        // Dispatch event for system-wide refresh
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("live-trade-toggled", { 
+            detail: { connectionId: connection.connectionId, newState } 
+          }))
+        }
       } else {
-        const err = await res.json().catch(() => ({ error: "Failed" }))
-        toast.error(err.error || "Failed to toggle Live Trade")
+        console.log(`[v0] [Card] ✗ API error for ${connName}:`, data.error || data.details)
+        toast.error(`Failed to toggle Live Trade: ${data.error || "Unknown error"}`)
+        if (data.details) {
+          console.log(`[v0] [Card] Error details:`, data.details)
+        }
       }
-    } catch {
+    } catch (error) {
+      console.error(`[v0] [Card] Exception toggling live trade for ${connName}:`, error)
       toast.error("Failed to toggle Live Trade")
     } finally {
       setLiveTradeLoading(false)

@@ -5,52 +5,80 @@ import { getGlobalTradeEngineCoordinator } from "@/lib/trade-engine"
 import { loadSettingsAsync } from "@/lib/settings-storage"
 
 // POST toggle live trading for a connection
-// This controls the MAIN Trade Engine
-// Main Engine starts ONLY if:
-// 1. Connection is enabled (is_enabled = true)
-// 2. Connection is active on dashboard (is_enabled_dashboard = true)
-// 3. Live Trade toggle is enabled (is_live_trade = true)
+// This enables REAL exchange trading via strategies
+// Requirements for enabling:
+// 1. Global Trade Engine must be running
+// 2. Connection must be enabled in Settings
+// 3. Connection must be active on Dashboard
+// 4. is_live_trade flag set to true
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     const connectionId = id
-    const { is_live_trade } = await request.json()
+    const body = await request.json()
+    const { is_live_trade } = body
 
-    console.log("[v0] [Live Trade] Toggling Main Engine for:", connectionId, "enabled:", is_live_trade)
+    console.log(`[v0] [LiveTrade] POST handler called for: ${connectionId}, is_live_trade=${is_live_trade}`)
 
     await initRedis()
     const connection = await getConnection(connectionId)
 
     if (!connection) {
+      console.log(`[v0] [LiveTrade] ✗ Connection not found: ${connectionId}`)
       return NextResponse.json({ error: "Connection not found" }, { status: 404 })
     }
 
-    // Check if Global Trade Engine Coordinator is running
+    const connName = connection.name
+    console.log(`[v0] [LiveTrade] Found connection: ${connName} (${connection.exchange})`)
+
+    // If enabling, check prerequisites
     if (is_live_trade) {
+      console.log(`[v0] [LiveTrade] Checking prerequisites for enabling ${connName}...`)
+      
+      // Check 1: Global Trade Engine running
       const client = getRedisClient()
       const globalState = await client.hgetall("trade_engine:global")
       const globalRunning = globalState?.status === "running"
+      console.log(`[v0] [LiveTrade]   - Global engine running: ${globalRunning}`)
+      
       if (!globalRunning) {
+        console.log(`[v0] [LiveTrade] ✗ Prerequisite failed: Global Trade Engine not running`)
         return NextResponse.json({ 
+          success: false,
           error: "Global Trade Engine must be running first",
-          hint: "Start the Global Trade Engine Coordinator before enabling individual connections."
+          hint: "Start the Global Trade Engine Coordinator before enabling individual connections"
         }, { status: 400 })
       }
-    }
 
-    // Check if connection is enabled AND active on dashboard
-    const isEnabled = connection.is_enabled === "1" || connection.is_enabled === true
-    const isActive = connection.is_enabled_dashboard === "1" || connection.is_enabled_dashboard === true
+      // Check 2: Connection enabled in Settings
+      const isEnabled = connection.is_enabled === "1" || connection.is_enabled === true
+      console.log(`[v0] [LiveTrade]   - Connection enabled in Settings: ${isEnabled}`)
+      
+      if (!isEnabled) {
+        console.log(`[v0] [LiveTrade] ✗ Prerequisite failed: Connection not enabled in Settings`)
+        return NextResponse.json({ 
+          success: false,
+          error: "Connection must be enabled in Settings first" 
+        }, { status: 400 })
+      }
 
-    if (!isEnabled) {
-      return NextResponse.json({ error: "Connection must be enabled first" }, { status: 400 })
-    }
+      // Check 3: Connection active on Dashboard
+      const isActive = connection.is_enabled_dashboard === "1" || connection.is_enabled_dashboard === true
+      console.log(`[v0] [LiveTrade]   - Connection active on Dashboard: ${isActive}`)
+      
+      if (!isActive) {
+        console.log(`[v0] [LiveTrade] ✗ Prerequisite failed: Connection not added to Active Connections`)
+        return NextResponse.json({ 
+          success: false,
+          error: "Connection must be added to Active Connections first" 
+        }, { status: 400 })
+      }
 
-    if (!isActive) {
-      return NextResponse.json({ error: "Connection must be added to Active Connections first" }, { status: 400 })
+      console.log(`[v0] [LiveTrade] ✓ All prerequisites met for ${connName}`)
     }
 
     // Update connection with is_live_trade flag
+    console.log(`[v0] [LiveTrade] Updating connection state: is_live_trade=${is_live_trade}`)
     const updatedConnection = {
       ...connection,
       is_live_trade: is_live_trade ? "1" : "0",
@@ -58,76 +86,90 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     await updateConnection(connectionId, updatedConnection)
-    console.log("[v0] [Live Trade] Updated is_live_trade:", connectionId, "=", is_live_trade)
+    console.log(`[v0] [LiveTrade] ✓ Connection updated in database`)
 
-    // Start or stop Main Engine based on toggle
+    // Start or stop engine based on toggle
     const coordinator = getGlobalTradeEngineCoordinator()
     let engineStatus = "stopped"
 
     if (is_live_trade) {
       try {
-        console.log("[v0] [Live Trade] Starting Main Engine for:", connection.name)
+        console.log(`[v0] [LiveTrade] Starting live trading engine for: ${connName}`)
         const settings = await loadSettingsAsync()
+        
+        // Load latest config
+        const latestConnection = await getConnection(connectionId)
         
         await coordinator.startEngine(connectionId, {
           connectionId,
-          connection_name: connection.name,
-          exchange: connection.exchange,
+          connection_name: latestConnection?.name || connName,
+          exchange: latestConnection?.exchange || connection.exchange,
           indicationInterval: settings?.mainEngineIntervalMs ? settings.mainEngineIntervalMs / 1000 : 1,
           strategyInterval: settings?.strategyUpdateIntervalMs ? settings.strategyUpdateIntervalMs / 1000 : 1,
           realtimeInterval: settings?.realtimeIntervalMs ? settings.realtimeIntervalMs / 1000 : 0.2,
         })
         
         engineStatus = "running"
-        console.log("[v0] [Live Trade] Main Engine started successfully")
+        console.log(`[v0] [LiveTrade] ✓ Live trading engine started successfully for ${connName}`)
+        
         await SystemLogger.logConnection(
-          `Main Engine started via Live Trade toggle`,
+          `Live Trading enabled via UI toggle`,
           connectionId,
           "info",
-          { is_live_trade: true },
+          { is_live_trade: true, exchange: connection.exchange },
         )
       } catch (error) {
-        console.error("[v0] [Live Trade] Failed to start Main Engine:", error)
+        console.error(`[v0] [LiveTrade] ✗ Failed to start live trading engine for ${connName}:`, error)
         engineStatus = "error"
-        await SystemLogger.logError(error, "api", `Start Main Engine for ${connectionId}`)
+        
+        await SystemLogger.logError(error, "api", `Start live trading for ${connName}`)
+        
         return NextResponse.json(
           {
-            error: "Failed to start Main Engine",
+            success: false,
+            error: "Failed to start live trading engine",
             details: error instanceof Error ? error.message : "Unknown error",
+            connectionName: connName,
           },
           { status: 500 },
         )
       }
     } else {
       try {
-        console.log("[v0] [Live Trade] Stopping Main Engine for:", connection.name)
+        console.log(`[v0] [LiveTrade] Stopping live trading engine for: ${connName}`)
         await coordinator.stopEngine(connectionId)
         engineStatus = "stopped"
-        console.log("[v0] [Live Trade] Main Engine stopped successfully")
+        console.log(`[v0] [LiveTrade] ✓ Live trading engine stopped successfully for ${connName}`)
+        
         await SystemLogger.logConnection(
-          `Main Engine stopped via Live Trade toggle`,
+          `Live Trading disabled via UI toggle`,
           connectionId,
           "info",
-          { is_live_trade: false },
+          { is_live_trade: false, exchange: connection.exchange },
         )
       } catch (error) {
-        console.warn("[v0] [Live Trade] Failed to stop Main Engine:", error)
-        // Don't fail the request if stop fails - engine might not be running
+        console.warn(`[v0] [LiveTrade] ⚠ Failed to stop live trading engine for ${connName}:`, error)
+        // Don't fail the request - engine might not be running
       }
     }
+
+    console.log(`[v0] [LiveTrade] ✓ Live trading toggle completed for ${connName}: ${engineStatus}`)
 
     return NextResponse.json({
       success: true,
       is_live_trade,
       engineStatus,
       connection: updatedConnection,
-      message: `Main Engine ${is_live_trade ? "enabled (starting...)" : "disabled"}`,
+      message: `Live Trading ${is_live_trade ? "enabled (starting real exchange trading...)" : "disabled"}`,
+      connectionName: connName,
+      exchange: connection.exchange,
     })
   } catch (error) {
-    console.error("[v0] [Live Trade] Exception:", error)
+    console.error("[v0] [LiveTrade] Exception in POST handler:", error)
     await SystemLogger.logError(error, "api", "POST /api/settings/connections/[id]/live-trade")
     return NextResponse.json(
       {
+        success: false,
         error: "Failed to toggle live trade",
         details: error instanceof Error ? error.message : "Unknown error",
       },
