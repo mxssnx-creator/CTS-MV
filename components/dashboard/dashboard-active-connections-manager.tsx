@@ -152,6 +152,23 @@ export function DashboardActiveConnectionsManager() {
       setLoading(false)
     }
   }
+      }
+      
+      console.log(`[v0] [Manager] ${VERSION}: Final: ${activeConns.length} active connections loaded`)
+      
+      // STICKY STATE: Never replace existing cards with empty data on transient fetch issues
+      if (activeConns.length === 0 && activeConnectionsRef.current.length > 0) {
+        setLoading(false)
+        return
+      }
+
+      updateActiveConnections(activeConns)
+    } catch (error) {
+      console.error("[v0] Error loading connections:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleToggle = async (connectionId: string, currentState: boolean) => {
     const newState = !currentState
