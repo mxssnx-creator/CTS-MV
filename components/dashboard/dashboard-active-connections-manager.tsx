@@ -69,7 +69,7 @@ export function DashboardActiveConnectionsManager() {
   }
 
   useEffect(() => {
-    console.log(`[v0] [Manager] Initializing active connections manager (version: ${VERSION})`)
+    console.log(`[v0] [Manager] Initializing active connections manager (version: ${COMPONENT_VERSIONS.dashboardManager})`)
     loadConnections()
     checkGlobalEngine()
     const connInterval = setInterval(loadConnections, 5000)
@@ -92,7 +92,7 @@ export function DashboardActiveConnectionsManager() {
         window.removeEventListener('engine-state-changed', handleEngineStateChange)
       }
     }
-  }, [])
+  }, [loadConnections, checkGlobalEngine])
 
   const loadConnections = async () => {
     try {
