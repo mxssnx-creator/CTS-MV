@@ -444,38 +444,57 @@ function TradingBotsTab() {
 export default function LogisticsPage() {
   const [activeTab, setActiveTab] = useState("main")
   const [systemStatus, setSystemStatus] = useState<SystemStatus>(defaultStatus)
+  const [loading, setLoading] = useState(true)
+  const [queueData, setQueueData] = useState<any>(null)
 
-  const loadSystemStatus = useCallback(async () => {
+  const fetchSystemStatus = useCallback(async () => {
     try {
-      const response = await fetch("/api/system/logistics-status")
-      if (response.ok) {
-        const data = await response.json()
-        setSystemStatus(data)
-      } else {
-        setSystemStatus((prev) => ({
-          ...prev,
-          initializationProgress: Math.min(prev.initializationProgress + 5, 100),
-          prehistoricDataProgress: Math.min(prev.prehistoricDataProgress + 3, 100),
-          indicationsGenerated: prev.indicationsGenerated + Math.floor(Math.random() * 10),
-          strategiesEvaluated: prev.strategiesEvaluated + Math.floor(Math.random() * 5),
-          pseudoPositionsCreated: prev.pseudoPositionsCreated + Math.floor(Math.random() * 3),
-          currentInterval: prev.currentInterval + 1,
-          intervalExecutionTime: 800 + Math.random() * 400,
-          tradeEngineRunning: prev.initializationProgress >= 100,
-          realTimeStreamConnected: prev.initializationProgress >= 80,
+      console.log("[v0] [Logistics] Fetching system status...")
+      const [statusRes, statsRes, queueRes] = await Promise.all([
+        fetch("/api/trade-engine/status", { cache: "no-store" }),
+        fetch("/api/dashboard/system-stats-v3", { cache: "no-store" }),
+        fetch("/api/logistics/queue", { cache: "no-store" }),
+      ])
+
+      const status = statusRes.ok ? await statusRes.json() : null
+      const stats = statsRes.ok ? await statsRes.json() : null
+      const queue = queueRes.ok ? await queueRes.json() : null
+
+      if (stats) {
+        console.log("[v0] [Logistics] Stats received:", stats)
+        setSystemStatus({
+          initializationProgress: status?.running ? 100 : 0,
+          currentPhase: status?.running ? "Running" : "Stopped",
+          symbolsLoaded: stats?.symbolsCount || 15,
+          totalSymbols: stats?.symbolsCount || 15,
+          prehistoricDataProgress: status?.running ? 100 : 0,
+          tradeEngineRunning: status?.running === true,
+          realTimeStreamConnected: status?.running === true,
+          indicationsGenerated: stats?.cycleStats?.indicationCycles || 0,
+          strategiesEvaluated: stats?.cycleStats?.strategyCycles || 0,
+          pseudoPositionsCreated: stats?.totalPositions || 0,
+          currentInterval: stats?.cycleStats?.cycleCount || 0,
+          intervalExecutionTime: stats?.cycleStats?.cycleDurationMs || 0,
           lastUpdate: new Date().toISOString(),
-        }))
+        })
       }
-    } catch {
-      // Silently fail
+
+      if (queue) {
+        console.log("[v0] [Logistics] Queue data:", queue)
+        setQueueData(queue)
+      }
+    } catch (error) {
+      console.error("[v0] [Logistics] Error fetching status:", error)
+    } finally {
+      setLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    loadSystemStatus()
-    const interval = setInterval(loadSystemStatus, 2000)
+    fetchSystemStatus()
+    const interval = setInterval(fetchSystemStatus, 2000)
     return () => clearInterval(interval)
-  }, [loadSystemStatus])
+  }, [fetchSystemStatus])
 
   return (
     <AuthGuard>
@@ -500,6 +519,48 @@ export default function LogisticsPage() {
         <main className="flex-1 space-y-6 p-6">
           <StatusCards systemStatus={systemStatus} />
           <RealTimeActivity systemStatus={systemStatus} />
+
+          {/* Order Queue Logistics */}
+          {queueData && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Database className="h-5 w-5" />
+                  Order Queue Logistics
+                </CardTitle>
+                <CardDescription>Real-time order processing metrics</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-4 md:grid-cols-6">
+                  <div className="space-y-2">
+                    <div className="text-sm text-muted-foreground">Queue Size</div>
+                    <div className="text-2xl font-bold text-blue-500">{queueData.queueSize || 0}</div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-sm text-muted-foreground">Processing Rate</div>
+                    <div className="text-2xl font-bold text-green-500">{queueData.processingRate || 0}/s</div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-sm text-muted-foreground">Success Rate</div>
+                    <div className="text-2xl font-bold text-purple-500">{queueData.successRate || 0}%</div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-sm text-muted-foreground">Avg Latency</div>
+                    <div className="text-2xl font-bold text-orange-500">{queueData.avgLatency || 0}ms</div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-sm text-muted-foreground">Completed</div>
+                    <div className="text-2xl font-bold text-green-600">{queueData.completedOrders || 0}</div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-sm text-muted-foreground">Failed</div>
+                    <div className="text-2xl font-bold text-red-500">{queueData.failedOrders || 0}</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <Separator />
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
