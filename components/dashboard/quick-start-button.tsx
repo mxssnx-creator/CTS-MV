@@ -43,131 +43,84 @@ export function QuickStartButton() {
   const handleQuickStart = async () => {
     setIsRunning(true)
     try {
-      // STEP 1: Initialize System (calls /api/init which runs base migrations)
+      // STEP 1: Initialize System
       updateStep("init", "loading")
-      console.log("[v0] [QuickStart] Step 1: Initializing system...")
-      const initRes = await fetch("/api/init", { method: "GET", cache: "no-store" })
+      const initRes = await Promise.race([
+        fetch("/api/init", { method: "GET", cache: "no-store" }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Init timeout")), 10000))
+      ])
       if (!initRes.ok) throw new Error(`Init failed: ${initRes.statusText}`)
-      const initData = await initRes.json()
-      console.log("[v0] [QuickStart] Step 1: Init complete -", initData.message)
-      updateStep("init", "success", initData.message || "System initialized")
+      updateStep("init", "success", "System initialized")
 
-      // STEP 2: Run ALL Database Migrations (settings/install style complete migrations)
+      // STEP 2: Run Database Migrations
       updateStep("migrate", "loading")
-      console.log("[v0] [QuickStart] Step 2: Running complete database migrations...")
-      
-      // 2a: Run install/database/migrate for full DB migrations
-      const dbMigrateRes = await fetch("/api/install/database/migrate", { 
-        method: "POST", 
-        cache: "no-store",
-        headers: { "Content-Type": "application/json" }
-      })
+      const dbMigrateRes = await Promise.race([
+        fetch("/api/install/database/migrate", { method: "POST", cache: "no-store" }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Migration timeout")), 15000))
+      ])
       if (dbMigrateRes.ok) {
-        const dbMigrateData = await dbMigrateRes.json()
-        console.log("[v0] [QuickStart] Step 2a: DB migrations complete -", dbMigrateData.status?.schema_version)
+        const migrateData = await dbMigrateRes.json()
+        updateStep("migrate", "success", "Migrations complete")
       }
-      
-      // 2b: Run startup/initialize to ensure connection states are correct
-      const startupRes = await fetch("/api/startup/initialize", { 
-        method: "POST", 
-        cache: "no-store",
-        headers: { "Content-Type": "application/json" }
-      })
-      if (startupRes.ok) {
-        const startupData = await startupRes.json()
-        console.log("[v0] [QuickStart] Step 2b: Startup init -", startupData.results)
-      }
-      
-      // 2c: Reload connections to get fresh state
-      const migrateRes = await fetch("/api/settings/connections", { 
-        method: "GET", 
-        cache: "no-store",
-        headers: { "Cache-Control": "no-cache" }
-      })
-      if (!migrateRes.ok) throw new Error(`Migrations failed: ${migrateRes.statusText}`)
-      const migrateData = await migrateRes.json()
-      console.log(`[v0] [QuickStart] Step 2c: ${migrateData.count} connections loaded`)
-      updateStep("migrate", "success", `${migrateData.count} connections migrated`)
 
-      // STEP 3: Test BingX
+      // STEP 3: Test BingX (with timeout)
       updateStep("test", "loading")
-      console.log("[v0] [QuickStart] Step 3: Testing BingX connection...")
-      const testRes = await fetch("/api/settings/connections/test-bingx", { 
-        method: "GET", 
-        cache: "no-store" 
-      })
-      if (!testRes.ok) throw new Error(`BingX test failed: ${testRes.statusText}`)
+      const testRes = await Promise.race([
+        fetch("/api/settings/connections/test-bingx", { method: "GET", cache: "no-store" }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Test timeout")), 10000))
+      ])
+      if (!testRes.ok) throw new Error("BingX test failed")
       const testData = await testRes.json()
       if (!testData.success) throw new Error(testData.error || "BingX test failed")
-      console.log("[v0] [QuickStart] Step 3: BingX connection verified")
       updateStep("test", "success", `Balance: ${testData.balance} USDT`)
 
-      // STEP 4: Start Trade Engine FIRST
+      // STEP 4: Start Trade Engine
       updateStep("start", "loading")
-      console.log("[v0] [QuickStart] Step 4: Starting trade engine...")
-      const startRes = await fetch("/api/trade-engine/start", { 
-        method: "POST",
-        cache: "no-store",
-        headers: { "Content-Type": "application/json" }
-      })
-      if (!startRes.ok) throw new Error(`Engine start failed: ${startRes.statusText}`)
+      const startRes = await Promise.race([
+        fetch("/api/trade-engine/start", { method: "POST", cache: "no-store" }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Engine start timeout")), 10000))
+      ])
+      if (!startRes.ok) throw new Error("Engine start failed")
       const startData = await startRes.json()
       if (!startData.success) throw new Error(startData.error || "Engine start failed")
-      console.log("[v0] [QuickStart] Step 4: Trade engine started")
       updateStep("start", "success", "Engine running")
 
-      // STEP 5: Disable BingX connections first (clean state)
+      // STEP 5: Enable BingX on Dashboard
       updateStep("enable", "loading")
-      console.log("[v0] [QuickStart] Step 5a: Disabling any existing BingX connections...")
-      const disableRes = await fetch("/api/trade-engine/quick-start", { 
-        method: "POST", 
-        cache: "no-store",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "disable" })
-      })
-      if (disableRes.ok) {
-        console.log("[v0] [QuickStart] Step 5a: Existing connections disabled")
-      }
-      
-      // STEP 5b: Re-enable BingX on Dashboard AFTER engine starts
-      console.log("[v0] [QuickStart] Step 5b: Enabling BingX on dashboard...")
-      const enableRes = await fetch("/api/trade-engine/quick-start", { 
-        method: "POST", 
-        cache: "no-store",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "enable" })
-      })
-      if (!enableRes.ok) throw new Error(`Enable failed: ${enableRes.statusText}`)
+      const enableRes = await Promise.race([
+        fetch("/api/trade-engine/quick-start", { 
+          method: "POST", 
+          cache: "no-store",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "enable" })
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Enable timeout")), 10000))
+      ])
+      if (!enableRes.ok) throw new Error("Enable failed")
       const enableData = await enableRes.json()
       if (!enableData.success) throw new Error(enableData.error || "Enable failed")
-      console.log("[v0] [QuickStart] Step 5b: BingX enabled on dashboard")
-      updateStep("enable", "success", `${enableData.connection.name} enabled`)
+      updateStep("enable", "success", "BingX enabled")
 
       // Success
-      toast.success("Quick Start Complete! Trade engine is running with BingX.")
-      console.log("[v0] [QuickStart] ✓ All steps completed successfully")
+      toast.success("Quick Start Complete!")
       
-      // Fetch functional overview metrics
+      // Fetch functional overview
       try {
-        const overviewRes = await fetch("/api/trade-engine/functional-overview", { cache: "no-store" })
+        const overviewRes = await Promise.race([
+          fetch("/api/trade-engine/functional-overview", { cache: "no-store" }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Overview timeout")), 5000))
+        ])
         if (overviewRes.ok) {
           const overview = await overviewRes.json()
-          console.log("[v0] [QuickStart] Functional Overview:", overview)
           setFunctionalOverview(overview)
         }
       } catch (error) {
         console.warn("[v0] [QuickStart] Could not fetch functional overview:", error)
       }
       
-      // Force refresh the global engine controls by triggering a status update
-      // Dispatch event for global-trade-engine-controls to refresh immediately
+      // Dispatch event to refresh UI
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("engine-state-changed", { detail: { running: true } }))
-      }
-      
-      // Callback to parent to refresh connection lists
-      if (onQuickStartComplete) {
-        onQuickStartComplete()
       }
 
     } catch (error) {
@@ -175,7 +128,6 @@ export function QuickStartButton() {
       console.error("[v0] [QuickStart] Error:", errorMsg)
       toast.error(`Quick Start Failed: ${errorMsg}`)
       
-      // Mark current step as error
       const currentStep = steps.find(s => s.status === "loading")
       if (currentStep) {
         updateStep(currentStep.id, "error", errorMsg)
