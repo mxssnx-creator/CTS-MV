@@ -20,22 +20,15 @@ export async function GET() {
 
     console.log(`[v0] [Monitoring] CPU: ${cpuPercent}%, Memory: ${memPercent}%`)
 
-    // Get Redis stats
-    const info = await client.info("all").catch(() => "")
-    const dbSize = await client.dbsize().catch(() => 0)
-    
-    // Parse database stats from info
-    let keys = 0
-    const keysMatch = info.match(/db0:keys=(\d+)/)
-    if (keysMatch) {
-      keys = parseInt(keysMatch[1], 10)
-    }
-
-    // Get number of sets in database
+    // Get Redis stats (Upstash compatible - no INFO or DBSIZE commands)
+    // Use SCAN pattern to count keys efficiently
     const allKeys = await client.keys("*").catch(() => [])
-    const sets = allKeys.filter((k: string) => k.includes(":set")).length
+    const keys = Array.isArray(allKeys) ? allKeys.length : 0
+    
+    // Count different types of keys
+    const sets = allKeys.filter((k: string) => k.includes(":set") || k.includes("_set")).length
     const positions1h = allKeys.filter((k: string) => k.includes("position")).length
-    const entries1h = allKeys.filter((k: string) => k.includes("entry")).length
+    const entries1h = allKeys.filter((k: string) => k.includes("entry") || k.includes("indication")).length
 
     console.log(`[v0] [Monitoring] DB Keys: ${keys}, Sets: ${sets}, Positions: ${positions1h}, Entries: ${entries1h}`)
 
@@ -64,7 +57,7 @@ export async function GET() {
         logger: true, // Always active
       },
       database: {
-        size: dbSize,
+        size: keys,
         keys,
         sets,
         positions1h,

@@ -248,12 +248,10 @@ export function QuickStartButton() {
               </>
             )}
           </Button>
-          <DetailedLoggingDialog />
           <Button
             onClick={() => {
               setSteps(steps.map(s => ({ ...s, status: "pending", message: undefined })))
               setIsRunning(false)
-              setFunctionalOverview(null)
             }}
             disabled={isRunning}
             variant="outline"
@@ -261,6 +259,9 @@ export function QuickStartButton() {
           >
             <RefreshCw className="w-4 h-4" />
           </Button>
+          
+          {/* Detailed Logs Button */}
+          <DetailedLoggingDialog />
         </div>
 
         {/* Info Box */}
