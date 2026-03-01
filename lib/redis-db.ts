@@ -7,7 +7,7 @@
  * Server Action requirement for files in the instrumentation import chain.
  */
 
-import { RedisPersistenceManager, UpstashSync } from "./redis-persistence"
+import { RedisPersistenceManager } from "./redis-persistence"
 
 // Inline the LocalRedis class to avoid cross-module sync export issues with Turbopack
 
@@ -128,12 +128,7 @@ class InlineLocalRedis {
   async get(key: string): Promise<string | null> {
     const entry = this.getEntry(key)
     if (entry?.type === "string") return entry.value as string
-    // Upstash read-through for persistent keys not yet in memory
-    const remote = await UpstashSync.get(key)
-    if (remote !== null) {
-      this.store.set(key, { type: "string", value: remote })
-    }
-    return remote
+    return null
   }
 
   async set(key: string, value: string, options?: { ex?: number }): Promise<"OK"> {
@@ -143,8 +138,6 @@ class InlineLocalRedis {
       value,
       expiresAt: options?.ex ? Date.now() + options.ex * 1000 : undefined,
     })
-    // Upstash write-through for persistent keys
-    UpstashSync.set(key, value).catch(() => {})
     return "OK"
   }
 
@@ -223,9 +216,9 @@ class InlineLocalRedis {
 
   async hgetall(key: string): Promise<Record<string, string>> {
     const entry = this.getEntry(key)
-    if (entry?.type === "hash") {
-      return { ...(entry.value as Record<string, string>) }
-    }
+    if (entry?.type === "hash") return entry.value as Record<string, string>
+    return {}
+  }
     // Upstash read-through for persistent keys not yet in memory
     const remote = await UpstashSync.hgetall(key)
     if (remote && Object.keys(remote).length > 0) {
