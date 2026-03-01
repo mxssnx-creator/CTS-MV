@@ -138,7 +138,7 @@ export function Dashboard() {
     }, 5000)
     
     return () => clearInterval(interval)
-  }, [loadExchangeConnectionsActive])
+  }, [])
 
   // Reload stats when selected exchange changes
   useEffect(() => {
