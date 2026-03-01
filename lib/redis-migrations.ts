@@ -500,6 +500,47 @@ const migrations: Migration[] = [
       await client.set("_schema_version", "14")
     },
   },
+  {
+    name: "016-active-connections-independent-state",
+    version: 16,
+    up: async (client: any) => {
+      await client.set("_schema_version", "16")
+      
+      // Initialize dashboard insertion states for active connections
+      // Bybit and BingX should be dashboard-inserted by default (user can toggle Active)
+      const dashboardInsertedExchanges = ["bybit-x03", "bingx-x01"]
+      
+      const connections = await client.smembers("connections") || []
+      let updatedDashboard = 0
+      
+      for (const connId of connections) {
+        const connData = await client.hgetall(`connection:${connId}`)
+        if (!connData || Object.keys(connData).length === 0) continue
+        
+        // Only inserted+enabled base connections can be on dashboard
+        const isInserted = connData.is_inserted === "1"
+        const isEnabled = connData.is_enabled === "1"
+        
+        if (isInserted && isEnabled) {
+          // Set dashboard insertion state
+          const isDashboardInsertedByDefault = dashboardInsertedExchanges.includes(connId)
+          
+          await client.hset(`connection:${connId}`, {
+            is_dashboard_inserted: isDashboardInsertedByDefault ? "1" : "0",
+            is_enabled_dashboard: "0", // Always start with dashboard toggle OFF (must manually enable)
+            updated_at: new Date().toISOString(),
+          })
+          updatedDashboard++
+          console.log(`[v0] Migration 016: ${connId} -> dashboard_inserted=${isDashboardInsertedByDefault ? "1" : "0"}, dashboard_active=0`)
+        }
+      }
+      
+      console.log(`[v0] Migration 016: Set up independent active connections state for ${updatedDashboard} connections`)
+    },
+    down: async (client: any) => {
+      await client.set("_schema_version", "15")
+    },
+  },
 ]
 
 /**

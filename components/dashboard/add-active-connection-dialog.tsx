@@ -59,16 +59,17 @@ export function AddActiveConnectionDialog({
       // Filter to show only connections that are:
       // 1. Base exchange (bybit, bingx, pionex, orangex, binance, okx)
       // 2. Enabled in Settings (is_enabled=1) - must have API keys configured
-      // 3. NOT already inserted on dashboard (is_dashboard_inserted != "1")
+      // 3. Created/Inserted (is_dashboard_inserted=0 but is_enabled=1 means created but not yet added to active)
       const BASE_EXCHANGES = ["bybit", "bingx", "pionex", "orangex", "binance", "okx"]
       const availableForAdd = allConnections.filter((c: any) => {
         const exchange = (c.exchange || "").toLowerCase().trim()
         const isBase = BASE_EXCHANGES.includes(exchange)
         const isEnabled = c.is_enabled === true || c.is_enabled === "1" || c.is_enabled === "true"
+        const isCreated = c.is_inserted === true || c.is_inserted === "1" || c.is_inserted === "true"
         const alreadyOnDashboard = c.is_dashboard_inserted === true || c.is_dashboard_inserted === "1"
-        console.log(`[v0] [AddDialog] ${c.name}: base=${isBase}, enabled=${isEnabled}, onDashboard=${alreadyOnDashboard}`)
-        // Show base connections that are enabled in Settings but NOT yet on dashboard
-        return isBase && isEnabled && !alreadyOnDashboard
+        console.log(`[v0] [AddDialog] ${c.name}: base=${isBase}, enabled=${isEnabled}, created=${isCreated}, onDashboard=${alreadyOnDashboard}`)
+        // Show base connections that are created+enabled in Settings but NOT yet on dashboard (Active Connections)
+        return isBase && isEnabled && isCreated && !alreadyOnDashboard
       })
 
       setAvailableConnections(availableForAdd)
