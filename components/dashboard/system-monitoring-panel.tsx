@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { AlertCircle, Activity, Database, RotateCw, CPU, HardDrive, Server, Gauge } from "lucide-react"
+import { AlertCircle, Activity, Database, RotateCw, Cpu, HardDrive, Server, Gauge } from "lucide-react"
 import { toast } from "@/lib/simple-toast"
 
 interface SystemMonitor {
@@ -107,7 +107,7 @@ export function SystemMonitoringPanel() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <CPU className="h-4 w-4" />
+                <Cpu className="h-4 w-4" />
                 CPU Usage
               </CardTitle>
               <Badge variant={cpuStatus} className="text-xs">
