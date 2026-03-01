@@ -3,17 +3,23 @@
 import { AuthGuard } from "@/components/auth-guard"
 import { Dashboard } from "@/components/dashboard/dashboard"
 import { PageHeader } from "@/components/page-header"
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
+
+function DashboardWithErrorBoundary() {
+  return (
+    <Suspense fallback={<div className="p-4">Loading dashboard...</div>}>
+      <Dashboard />
+    </Suspense>
+  )
+}
 
 export default function HomePage() {
   const [mounted, setMounted] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     setMounted(true)
     
-    // Call startup-complete endpoint to trigger connection testing
-    // This happens after the server is fully ready and all API routes are loaded
+    // Call startup-complete endpoint
     fetch("/api/health/startup-complete", { method: "POST" })
       .catch(err => console.error("[v0] Failed to notify startup complete:", err))
   }, [])
@@ -34,13 +40,7 @@ export default function HomePage() {
       <div className="flex flex-col h-screen">
         <PageHeader title="Overview" description="Dashboard overview and trading statistics" />
         <div className="flex-1 overflow-auto">
-          {error ? (
-            <div className="p-4 text-red-500">
-              <p>Error loading dashboard: {error}</p>
-            </div>
-          ) : (
-            <Dashboard />
-          )}
+          <DashboardWithErrorBoundary />
         </div>
       </div>
     </AuthGuard>

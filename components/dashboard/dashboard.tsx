@@ -75,12 +75,42 @@ export function Dashboard() {
     databaseSize: 128,
   })
 
+  // Define loadStats BEFORE useEffect
+  const loadStats = async () => {
+    try {
+      const url = selectedExchange 
+        ? `/api/monitoring/stats?exchange=${selectedExchange}`
+        : "/api/monitoring/stats"
+      
+      const response = await fetch(url)
+      if (response.ok) {
+        const data = await response.json()
+        setStats({
+          activeConnections: data.activeConnections || 0,
+          totalPositions: data.totalPositions || 0,
+          dailyPnL: data.dailyPnL || 0,
+          totalBalance: data.totalBalance || 0,
+          indicationsActive: data.indicationsActive || 0,
+          strategiesActive: data.strategiesActive || 0,
+          systemLoad: data.systemLoad || 45,
+          databaseSize: data.databaseSize || 128,
+        })
+      }
+    } catch (error) {
+      console.error("Failed to load stats:", error)
+    }
+  }
+
   // Filter ExchangeConnectionsActive by selected exchange
   const filteredConnections = useMemo(() => {
-    if (!selectedExchange) {
-      return exchangeConnectionsActive
+    if (!selectedExchange || !exchangeConnectionsActive) {
+      return exchangeConnectionsActive || []
     }
-    return exchangeConnectionsActive.filter(conn => conn.exchange === selectedExchange)
+    return exchangeConnectionsActive.filter(conn => {
+      // Support multiple property names for exchange
+      const connExchange = (conn as any).exchange || (conn as any).exchangeName || ""
+      return connExchange.toLowerCase().includes(selectedExchange.toLowerCase())
+    })
   }, [exchangeConnectionsActive, selectedExchange])
 
   useEffect(() => {
@@ -144,32 +174,7 @@ export function Dashboard() {
   useEffect(() => {
     console.log("[v0] [Dashboard] Exchange changed to:", selectedExchange)
     loadStats()
-  }, [selectedExchange])
-
-  const loadStats = async () => {
-    try {
-      const url = selectedExchange 
-        ? `/api/monitoring/stats?exchange=${selectedExchange}`
-        : "/api/monitoring/stats"
-      
-      const response = await fetch(url)
-      if (response.ok) {
-        const data = await response.json()
-        setStats({
-          activeConnections: data.activeConnections || 0,
-          totalPositions: data.totalPositions || 0,
-          dailyPnL: data.dailyPnL || 0,
-          totalBalance: data.totalBalance || 0,
-          indicationsActive: data.indicationsActive || 0,
-          strategiesActive: data.strategiesActive || 0,
-          systemLoad: data.systemLoad || 45,
-          databaseSize: data.databaseSize || 128,
-        })
-      }
-    } catch (error) {
-      console.error("Failed to load stats:", error)
-    }
-  }
+  }, [selectedExchange, loadStats])
 
   return (
     <div className="flex-1 space-y-6 p-6">
