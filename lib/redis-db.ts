@@ -196,14 +196,12 @@ class InlineLocalRedis {
         if (!(f in hash)) count++
         hash[f] = String(v ?? "")
       }
-      // Upstash write-through for persistent keys
-      UpstashSync.hset(key, hash).catch(() => {})
+
       return count
     }
     const isNew = !(fieldOrObj in hash)
     hash[fieldOrObj] = String(value ?? "")
-    // Upstash write-through for persistent keys
-    UpstashSync.hset(key, { [fieldOrObj]: String(value ?? "") }).catch(() => {})
+
     return isNew ? 1 : 0
   }
 
