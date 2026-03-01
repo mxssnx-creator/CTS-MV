@@ -152,13 +152,6 @@ export function DashboardActiveConnectionsManager() {
       }
     }
   }, [])
-      }
-    } catch {
-      // Keep previous state on error
-    } finally {
-      setGlobalEngineLoading(false)
-    }
-  }
 
   useEffect(() => {
     console.log(`[v0] [Manager] Initializing active connections manager (version: ${COMPONENT_VERSIONS.dashboardManager})`)
