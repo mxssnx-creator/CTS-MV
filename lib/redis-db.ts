@@ -219,14 +219,6 @@ class InlineLocalRedis {
     if (entry?.type === "hash") return entry.value as Record<string, string>
     return {}
   }
-    // Upstash read-through for persistent keys not yet in memory
-    const remote = await UpstashSync.hgetall(key)
-    if (remote && Object.keys(remote).length > 0) {
-      this.store.set(key, { type: "hash", value: remote })
-      return { ...remote }
-    }
-    return {}
-  }
 
   async hmset(key: string, ...args: string[]): Promise<"OK"> {
     let entry = this.getEntry(key)
