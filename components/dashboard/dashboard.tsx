@@ -89,26 +89,42 @@ export function Dashboard() {
       try {
         console.log("[v0] [Dashboard] Initializing systems...")
         
-        // Call init endpoint to seed defaults and initialize trade engine
-        const initResponse = await fetch("/api/init", { 
-          method: "GET",
-          cache: "no-store"
-        })
+        // Call init endpoint with timeout
+        const initController = new AbortController()
+        const initTimeout = setTimeout(() => initController.abort(), 5000)
         
-        if (initResponse.ok) {
-          const initData = await initResponse.json()
-          console.log("[v0] [Dashboard] Systems initialized:", initData)
-          if (initData.defaultConnectionsCreated > 0) {
-            toast.info("Trade System", { 
-              description: `Initialized ${initData.defaultConnectionsCreated} default exchange connection(s)`
-            })
+        try {
+          const initResponse = await fetch("/api/init", { 
+            method: "GET",
+            cache: "no-store",
+            signal: initController.signal
+          })
+          clearTimeout(initTimeout)
+          
+          if (initResponse.ok) {
+            const initData = await initResponse.json()
+            console.log("[v0] [Dashboard] Systems initialized:", initData)
           }
-        } else {
-          console.warn("[v0] [Dashboard] System initialization returned:", initResponse.status)
+        } catch (err) {
+          clearTimeout(initTimeout)
+          if (err instanceof Error && err.name !== 'AbortError') {
+            console.warn("[v0] [Dashboard] Init failed:", err)
+          }
         }
         
-        // Load all active connections
-        await loadExchangeConnectionsActive()
+        // Load active connections with timeout
+        const connController = new AbortController()
+        const connTimeout = setTimeout(() => connController.abort(), 5000)
+        
+        try {
+          await Promise.race([
+            loadExchangeConnectionsActive(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("Load timeout")), 5000))
+          ])
+        } catch (err) {
+          clearTimeout(connTimeout)
+          console.warn("[v0] [Dashboard] Load connections timeout or failed:", err)
+        }
       } catch (error) {
         console.error("[v0] [Dashboard] Failed to initialize systems:", error)
       }
@@ -122,7 +138,7 @@ export function Dashboard() {
     }, 5000)
     
     return () => clearInterval(interval)
-  }, [])
+  }, [loadExchangeConnectionsActive])
 
   // Reload stats when selected exchange changes
   useEffect(() => {

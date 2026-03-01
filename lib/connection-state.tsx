@@ -211,7 +211,7 @@ export function ConnectionStateProvider({ children }: { children: ReactNode }) {
       next.set(id, newStatus)
       
       // Find the connection to log its name
-      const conn = exchangeConnectionsActive.find(c => c.id === `active-${id}`) || exchangeConnections.find(c => c.id === id)
+      const conn = exchangeConnectionsActive.find(c => c.id === `active-${id}`) || exchangeConnectionsActive.find(c => c.id === id)
       const connName = conn?.name || conn?.connectionId || id
       console.log(`[v0] [ConnectionStateToggle] ${newStatus ? "✓ ENABLED" : "✗ DISABLED"}: ${connName} (${id})`)
       
