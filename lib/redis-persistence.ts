@@ -1,97 +1,40 @@
 /**
- * Redis Persistence Manager - Syncs critical keys to/from Upstash REST API
- * Uses Upstash for persistent state (trade engine status, connection states)
- * Falls back to in-memory only if Upstash is not configured
+ * Redis Persistence Manager - Pure In-Memory Local Redis
+ * Uses local in-memory store for all state
+ * No Upstash or external persistence
  */
-
-const UPSTASH_URL = process.env.KV_REST_API_URL || ""
-const UPSTASH_TOKEN = process.env.KV_REST_API_TOKEN || ""
-
-// Keys that MUST be persisted to Upstash for cross-request state
-const PERSISTENT_KEY_PREFIXES = [
-  "trade_engine:",
-  "connection:",
-  "connections",
-  "_schema_version",
-  "settings:",
-  "progression:",
-  "pseudo_position:",
-  "pseudo_positions:",
-  "positions:",
-  "trades:",
-  "indications:",
-  "market_data:",
-  "sync_status:",
-  "sync_log:",
-  "engine_",
-  "migration_version",
-]
-
-function isPersistentKey(key: string): boolean {
-  return PERSISTENT_KEY_PREFIXES.some(p => key.startsWith(p) || key === p)
-}
-
-async function upstashCommand(command: string[]): Promise<any> {
-  if (!UPSTASH_URL || !UPSTASH_TOKEN) return null
-  try {
-    const res = await fetch(`${UPSTASH_URL}`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${UPSTASH_TOKEN}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(command),
-    })
-    if (!res.ok) return null
-    const data = await res.json()
-    return data.result
-  } catch {
-    return null
-  }
-}
 
 export class UpstashSync {
   /**
-   * Write a hash to Upstash
+   * Write a hash (no-op for local-only)
    */
   static async hset(key: string, fields: Record<string, string>): Promise<void> {
-    if (!isPersistentKey(key)) return
-    const args: string[] = ["HSET", key]
-    for (const [f, v] of Object.entries(fields)) {
-      args.push(f, String(v))
-    }
-    await upstashCommand(args)
+    // Local Redis is already in-memory, no external sync needed
+    return
   }
 
   /**
-   * Read a hash from Upstash
+   * Read a hash (no-op for local-only)
    */
   static async hgetall(key: string): Promise<Record<string, string> | null> {
-    if (!UPSTASH_URL || !UPSTASH_TOKEN) return null
-    const result = await upstashCommand(["HGETALL", key])
-    if (!result || !Array.isArray(result) || result.length === 0) return null
-    const obj: Record<string, string> = {}
-    for (let i = 0; i < result.length; i += 2) {
-      obj[result[i]] = result[i + 1]
-    }
-    return obj
+    // Local Redis is already in-memory, no external sync needed
+    return null
   }
 
   /**
-   * Write a string to Upstash
+   * Write a string (no-op for local-only)
    */
   static async set(key: string, value: string): Promise<void> {
-    if (!isPersistentKey(key)) return
-    await upstashCommand(["SET", key, value])
+    // Local Redis is already in-memory, no external sync needed
+    return
   }
 
   /**
-   * Read a string from Upstash
+   * Read a string (no-op for local-only)
    */
   static async get(key: string): Promise<string | null> {
-    if (!UPSTASH_URL || !UPSTASH_TOKEN) return null
-    const result = await upstashCommand(["GET", key])
-    return result ?? null
+    // Local Redis is already in-memory, no external sync needed
+    return null
   }
 }
 
@@ -104,7 +47,7 @@ export class RedisPersistenceManager {
   }
 
   static async loadSnapshot(): Promise<Map<string, any> | null> {
-    console.log("[v0] [Persistence] Starting with in-memory store + Upstash sync for persistent keys")
+    console.log("[v0] [Persistence] Starting with pure in-memory local Redis")
     return null
   }
 
