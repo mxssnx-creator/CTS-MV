@@ -48,32 +48,6 @@ export function DashboardActiveConnectionsManager() {
     }
   }
 
-  useEffect(() => {
-    console.log(`[v0] [Manager] Initializing active connections manager (version: ${COMPONENT_VERSIONS.dashboardManager})`)
-    loadConnections()
-    checkGlobalEngine()
-    const connInterval = setInterval(loadConnections, 5000)
-    const engineInterval = setInterval(checkGlobalEngine, 3000)
-    
-    // Listen for relevant events and refresh
-    const handleEngineStateChange = () => {
-      console.log(`[v0] [Manager] Detected engine state change, refreshing...`)
-      checkGlobalEngine()
-    }
-    
-    if (typeof window !== 'undefined') {
-      window.addEventListener('engine-state-changed', handleEngineStateChange)
-    }
-    
-    return () => {
-      clearInterval(connInterval)
-      clearInterval(engineInterval)
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('engine-state-changed', handleEngineStateChange)
-      }
-    }
-  }, [])
-
   const loadConnections = async () => {
     try {
       const timestamp = new Date().getTime()
@@ -105,11 +79,6 @@ export function DashboardActiveConnectionsManager() {
         const isDashboardActive = conn.is_enabled_dashboard === true || conn.is_enabled_dashboard === "1"
         const isEnabled = conn.is_enabled === true || conn.is_enabled === "1"
 
-        // RULE: Only show connections that are:
-        // 1. From a base exchange (bybit, bingx, binance, okx, pionex, orangex)
-        // 2. Actually added to dashboard (is_dashboard_inserted = 1)
-        // 3. Enabled in Settings
-        // This ensures only properly configured base exchanges appear, not just any exchange
         if (isBase && isDashboardInserted && isEnabled) {
           if (seenIds.has(conn.id)) continue
           seenIds.add(conn.id)
@@ -134,6 +103,56 @@ export function DashboardActiveConnectionsManager() {
       setLoading(false)
     }
   }
+
+  const checkGlobalEngine = async () => {
+    try {
+      const res = await fetch("/api/trade-engine/status")
+      if (res.ok) {
+        const data = await res.json()
+        const wasRunning = globalEngineRef.current
+        const nowRunning = data.running === true
+        globalEngineRef.current = nowRunning
+        setGlobalEngineRunning(nowRunning)
+        if (!wasRunning && nowRunning) {
+          loadConnections()
+        }
+      }
+    } catch {
+      // Keep previous state on error
+    } finally {
+      setGlobalEngineLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    console.log(`[v0] [Manager] Initializing active connections manager (version: ${COMPONENT_VERSIONS.dashboardManager})`)
+    loadConnections()
+    checkGlobalEngine()
+    const connInterval = setInterval(loadConnections, 5000)
+    const engineInterval = setInterval(checkGlobalEngine, 3000)
+    
+    // Listen for relevant events and refresh
+    const handleEngineStateChange = () => {
+      console.log(`[v0] [Manager] Detected engine state change, refreshing...`)
+      checkGlobalEngine()
+    }
+    
+    if (typeof window !== 'undefined') {
+      window.addEventListener('engine-state-changed', handleEngineStateChange)
+    }
+    
+    return () => {
+      clearInterval(connInterval)
+      clearInterval(engineInterval)
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('engine-state-changed', handleEngineStateChange)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    console.log(`[v0] [Manager] Component loaded - ${VERSION}`)
+  }, [])
 
   const handleToggle = async (connectionId: string, currentState: boolean) => {
     const newState = !currentState
