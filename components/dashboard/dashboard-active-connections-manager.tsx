@@ -72,7 +72,7 @@ export function DashboardActiveConnectionsManager() {
         window.removeEventListener('engine-state-changed', handleEngineStateChange)
       }
     }
-  }, [loadConnections, checkGlobalEngine])
+  }, [])
 
   const loadConnections = async () => {
     try {
