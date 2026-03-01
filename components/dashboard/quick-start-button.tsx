@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Zap, Loader2, CheckCircle2, AlertCircle, RefreshCw } from "lucide-react"
 import { toast } from "@/lib/simple-toast"
+import { DetailedLoggingDialog } from "./detailed-logging-dialog"
 
 interface QuickStartStep {
   id: string
@@ -247,10 +248,12 @@ export function QuickStartButton() {
               </>
             )}
           </Button>
+          <DetailedLoggingDialog />
           <Button
             onClick={() => {
               setSteps(steps.map(s => ({ ...s, status: "pending", message: undefined })))
               setIsRunning(false)
+              setFunctionalOverview(null)
             }}
             disabled={isRunning}
             variant="outline"
