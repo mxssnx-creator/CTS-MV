@@ -142,55 +142,18 @@ export function OverallSettings({
 
       <Separator />
 
-      {/* Database Type Selection */}
+      {/* System Information */}
       <div className="space-y-4">
-        <h3 className="text-lg font-semibold">Database Type</h3>
+        <h3 className="text-lg font-semibold">System Database</h3>
         <p className="text-xs text-muted-foreground">
-          Select the database type. Changes require system restart.
+          This system uses Redis for all data storage and real-time processing.
         </p>
-        <div className="grid md:grid-cols-3 gap-4">
-          <Button
-            variant={databaseType === "sqlite" ? "default" : "outline"}
-            onClick={() => onDatabaseTypeChange("sqlite")}
-            disabled={databaseType === "sqlite"}
-          >
-            SQLite (Local)
-          </Button>
-          <Button
-            variant={databaseType === "postgres" ? "default" : "outline"}
-            onClick={() => onDatabaseTypeChange("postgres")}
-            disabled={databaseType === "postgres"}
-          >
-            PostgreSQL (Remote)
-          </Button>
-          <Button
-            variant={databaseType === "neon" ? "default" : "outline"}
-            onClick={() => onDatabaseTypeChange("neon")}
-            disabled={databaseType === "neon"}
-          >
-            Neon (Serverless)
-          </Button>
+        <div className="bg-muted rounded-lg p-4">
+          <p className="text-sm font-medium">Database: Redis (In-Memory Store)</p>
+          <p className="text-xs text-muted-foreground mt-2">
+            All trade data, connections, positions, and indicators are stored in Redis for optimal performance and real-time access.
+          </p>
         </div>
-        {databaseType === "postgres" && (
-          <div className="space-y-2 mt-4">
-            <Label>PostgreSQL Connection URL</Label>
-            <Input
-              value={settings.database_url || ""}
-              onChange={(e) => onSettingChange("database_url", e.target.value)}
-              placeholder="postgresql://user:password@host:port/database"
-            />
-          </div>
-        )}
-        {databaseType === "neon" && (
-          <div className="space-y-2 mt-4">
-            <Label>Neon Connection URL</Label>
-            <Input
-              value={settings.database_url || ""}
-              onChange={(e) => onSettingChange("database_url", e.target.value)}
-              placeholder="postgresql://user:password@ep-xxx.region.aws.neon.tech/database"
-            />
-          </div>
-        )}
       </div>
 
       {/* Save/Cancel Buttons */}
