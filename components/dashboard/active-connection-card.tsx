@@ -513,8 +513,8 @@ export function ActiveConnectionCard({
             </div>
           </CardHeader>
 
-          {/* Progress bar when engine is active */}
-          {connection.isActive && phase !== "idle" && phase !== "stopped" && (
+          {/* Progress bar when engine is active AND connection is enabled */}
+          {connection.isActive && globalEngineRunning && phase !== "idle" && phase !== "stopped" && (
             <CardContent className="pt-0 pb-3 px-4">
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-xs">

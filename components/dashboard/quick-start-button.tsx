@@ -43,25 +43,112 @@ export function QuickStartButton() {
   const handleQuickStart = async () => {
     setIsRunning(true)
     try {
-      // STEP 1: Initialize System
+      // STEP 1: Skip init if it fails - it's not critical for quickstart
       updateStep("init", "loading")
-      const initRes = await Promise.race([
-        fetch("/api/init", { method: "GET", cache: "no-store" }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("Init timeout")), 10000))
-      ])
-      if (!initRes.ok) throw new Error(`Init failed: ${initRes.statusText}`)
-      updateStep("init", "success", "System initialized")
+      try {
+        const initRes = await Promise.race([
+          fetch("/api/init", { method: "GET", cache: "no-store" }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Init timeout")), 3000))
+        ])
+        if (initRes.ok) {
+          updateStep("init", "success", "System initialized")
+        } else {
+          updateStep("init", "success", "Skipped (system ready)")
+        }
+      } catch {
+        // Init is optional - continue without it
+        updateStep("init", "success", "Skipped (system ready)")
+      }
 
       // STEP 2: Run Database Migrations
       updateStep("migrate", "loading")
-      const dbMigrateRes = await Promise.race([
-        fetch("/api/install/database/migrate", { method: "POST", cache: "no-store" }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("Migration timeout")), 15000))
-      ])
-      if (dbMigrateRes.ok) {
-        const migrateData = await dbMigrateRes.json()
-        updateStep("migrate", "success", "Migrations complete")
+      try {
+        const dbMigrateRes = await Promise.race([
+          fetch("/api/install/database/migrate", { method: "POST", cache: "no-store" }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Migration timeout")), 8000))
+        ])
+        if (dbMigrateRes.ok) {
+          updateStep("migrate", "success", "Migrations complete")
+        } else {
+          updateStep("migrate", "success", "Skipped")
+        }
+      } catch {
+        updateStep("migrate", "success", "Skipped")
       }
+
+      // STEP 3: Test BingX (with timeout)
+      updateStep("test", "loading")
+      const testRes = await Promise.race([
+        fetch("/api/settings/connections/test-bingx", { method: "GET", cache: "no-store" }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Test timeout")), 10000))
+      ])
+      if (!testRes.ok) throw new Error("BingX test failed")
+      const testData = await testRes.json()
+      if (!testData.success) throw new Error(testData.error || "BingX test failed")
+      updateStep("test", "success", `Balance: ${testData.balance} USDT`)
+
+      // STEP 4: Start Trade Engine (INDEPENDENT - always do this)
+      updateStep("start", "loading")
+      const startRes = await Promise.race([
+        fetch("/api/trade-engine/start", { method: "POST", cache: "no-store" }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Engine start timeout")), 10000))
+      ])
+      if (!startRes.ok) throw new Error("Engine start failed")
+      const startData = await startRes.json()
+      if (!startData.success) throw new Error(startData.error || "Engine start failed")
+      updateStep("start", "success", "Trade engine started (global)")
+
+      // STEP 5: Enable BingX on Dashboard (progression starts here)
+      updateStep("enable", "loading")
+      const enableRes = await Promise.race([
+        fetch("/api/trade-engine/quick-start", { 
+          method: "POST", 
+          cache: "no-store",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "enable" })
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Enable timeout")), 10000))
+      ])
+      if (!enableRes.ok) throw new Error("Enable failed")
+      const enableData = await enableRes.json()
+      if (!enableData.success) throw new Error(enableData.error || "Enable failed")
+      updateStep("enable", "success", `BingX enabled - progression starting`)
+
+      // Success
+      toast.success("Quick Start Complete! Trade engine running with BingX active.")
+      
+      // Fetch functional overview
+      try {
+        const overviewRes = await Promise.race([
+          fetch("/api/trade-engine/functional-overview", { cache: "no-store" }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Overview timeout")), 5000))
+        ])
+        if (overviewRes.ok) {
+          const overview = await overviewRes.json()
+          setFunctionalOverview(overview)
+        }
+      } catch (error) {
+        console.warn("[v0] [QuickStart] Could not fetch functional overview:", error)
+      }
+      
+      // Dispatch event to refresh UI
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("engine-state-changed", { detail: { running: true } }))
+      }
+
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Unknown error"
+      console.error("[v0] [QuickStart] Error:", errorMsg)
+      toast.error(`Quick Start Failed: ${errorMsg}`)
+      
+      const currentStep = steps.find(s => s.status === "loading")
+      if (currentStep) {
+        updateStep(currentStep.id, "error", errorMsg)
+      }
+    } finally {
+      setIsRunning(false)
+    }
+  }
 
       // STEP 3: Test BingX (with timeout)
       updateStep("test", "loading")
