@@ -498,55 +498,9 @@ export async function initRedis(): Promise<void> {
       console.log("[v0] [Redis] Connection test successful")
     }
     
-    // Migrate connections from file storage to Redis if not already done
-    try {
-      const client = getClient()
-      const existingConnIds = await client.smembers("connections")
-      
-      if (!existingConnIds || existingConnIds.length === 0) {
-        // Load from file storage
-        const fileConnections = await (await import("@/lib/connections-file-storage")).getAllConnections()
-        if (fileConnections && fileConnections.length > 0) {
-          console.log(`[v0] [Redis] Migrating ${fileConnections.length} connections from file storage to Redis...`)
-          
-          for (const conn of fileConnections) {
-            const connId = conn.id
-            // Store connection with proper field names and string values
-            const connData: Record<string, string> = {
-              id: connId,
-              name: conn.name || "",
-              exchange: conn.exchange || "",
-              api_key: conn.api_key || "",
-              api_secret: conn.api_secret || "",
-              api_passphrase: conn.api_passphrase || "",
-              api_type: conn.api_type || "spot",
-              connection_method: conn.connection_method || "rest",
-              connection_library: conn.connection_library || "ccxt",
-              margin_type: conn.margin_type || "isolated",
-              position_mode: conn.position_mode || "one-way",
-              is_testnet: (conn.is_testnet === true || conn.is_testnet === "1" || conn.is_testnet === 1) ? "1" : "0",
-              is_enabled: (conn.is_enabled === true || conn.is_enabled === "1" || conn.is_enabled === 1) ? "1" : "0",
-              is_enabled_dashboard: (conn.is_enabled_dashboard === true || conn.is_enabled_dashboard === "1" || conn.is_enabled_dashboard === 1) ? "1" : "0",
-              is_live_trade: (conn.is_live_trade === true || conn.is_live_trade === "1" || conn.is_live_trade === 1) ? "1" : "0",
-              is_predefined: (conn.is_predefined === true || conn.is_predefined === "1" || conn.is_predefined === 1) ? "1" : "0",
-              created_at: conn.created_at || new Date().toISOString(),
-              updated_at: conn.updated_at || new Date().toISOString(),
-            }
-            
-            // Store in Redis
-            await client.hset(`connection:${connId}`, connData)
-            await client.sadd("connections", connId)
-            console.log(`[v0] [Redis] Migrated connection: ${conn.exchange} - ${conn.name}`)
-          }
-          
-          console.log(`[v0] [Redis] Successfully migrated ${fileConnections.length} connections`)
-        }
-      } else {
-        console.log(`[v0] [Redis] Connections already in Redis: ${existingConnIds.length}`)
-      }
-    } catch (err) {
-      console.warn("[v0] [Redis] Connection migration warning:", err instanceof Error ? err.message : String(err))
-    }
+    // NOTE: Predefined connections (templates from file storage) are NOT migrated to Redis
+    // They are informational only and should NOT be used by the trade engine
+    // Only user-created connections should be stored in Redis for the engine to use
   }
 }
 
@@ -664,56 +618,14 @@ export async function getAllConnections(): Promise<any[]> {
   try {
     const ids = await client.smembers("connections")
     
-    // If no connections in Redis, try to load from file storage as fallback
+    // Return only user-created connections from Redis
+    // Predefined/template connections are kept in file storage as informational only
     if (!ids || ids.length === 0) {
-      console.log("[v0] [DB] No connections in Redis, attempting fallback to file storage...")
-      try {
-        const fileConnections = await (await import("@/lib/connections-file-storage")).getAllConnections()
-        if (fileConnections && fileConnections.length > 0) {
-          console.log(`[v0] [DB] Found ${fileConnections.length} connections in file storage, migrating to Redis...`)
-          
-          // Migrate to Redis
-          for (const conn of fileConnections) {
-            const connId = conn.id
-            const connData: Record<string, string> = {
-              id: connId,
-              name: conn.name || "",
-              exchange: conn.exchange || "",
-              api_key: conn.api_key || "",
-              api_secret: conn.api_secret || "",
-              api_passphrase: conn.api_passphrase || "",
-              api_type: conn.api_type || "spot",
-              connection_method: conn.connection_method || "rest",
-              connection_library: conn.connection_library || "ccxt",
-              margin_type: conn.margin_type || "isolated",
-              position_mode: conn.position_mode || "one-way",
-              is_testnet: (conn.is_testnet === true || conn.is_testnet === "1" || conn.is_testnet === 1) ? "1" : "0",
-              is_enabled: (conn.is_enabled === true || conn.is_enabled === "1" || conn.is_enabled === 1) ? "1" : "0",
-              is_enabled_dashboard: (conn.is_enabled_dashboard === true || conn.is_enabled_dashboard === "1" || conn.is_enabled_dashboard === 1) ? "1" : "0",
-              is_live_trade: (conn.is_live_trade === true || conn.is_live_trade === "1" || conn.is_live_trade === 1) ? "1" : "0",
-              is_predefined: (conn.is_predefined === true || conn.is_predefined === "1" || conn.is_predefined === 1) ? "1" : "0",
-              created_at: conn.created_at || new Date().toISOString(),
-              updated_at: conn.updated_at || new Date().toISOString(),
-            }
-            
-            await client.hset(`connection:${connId}`, connData)
-            await client.sadd("connections", connId)
-          }
-          
-          ids.push(...fileConnections.map(c => c.id))
-          console.log(`[v0] [DB] Successfully migrated ${fileConnections.length} connections to Redis`)
-        }
-      } catch (fileErr) {
-        console.warn("[v0] [DB] File storage fallback failed:", fileErr)
-      }
-      
-      // Still empty? Return empty array
-      if (!ids || ids.length === 0) {
-        return []
-      }
+      console.log("[v0] [DB] No user-created connections in Redis (predefined templates are file-based only)")
+      return []
     }
     
-    // Fetch all connections in parallel with Promise.all
+    // Fetch all user-created connections in parallel
     const results = await Promise.all(
       ids.map(id => client.hgetall(`connection:${id}`))
     )
@@ -759,7 +671,7 @@ export async function getAllConnections(): Promise<any[]> {
           is_testnet: toBool(data.is_testnet),
           is_enabled: toBool(data.is_enabled),
           is_enabled_dashboard: toBool(data.is_enabled_dashboard),
-          is_dashboard_inserted: data.is_dashboard_inserted, // Keep as string "1"/"0" for dashboard checks
+          is_dashboard_inserted: data.is_dashboard_inserted,
           is_active: toBool(data.is_active),
           is_predefined: toBool(data.is_predefined),
           is_inserted: toBool(data.is_inserted),
@@ -778,7 +690,7 @@ export async function getAllConnections(): Promise<any[]> {
     }
     return connections
   } catch (error) {
-    console.error("[v0] [DB] Failed to get all connections:", error)
+    console.error("[v0] [DB] Failed to get user-created connections:", error)
     return []
   }
 }
