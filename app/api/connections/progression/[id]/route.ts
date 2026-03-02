@@ -29,27 +29,67 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const engineState = await getSettings(`trade_engine_state:${connectionId}`)
     const engineRunningRaw = await getSettings(`engine_is_running:${connectionId}`)
     
-    // ALSO check if trade engine globally is running - if it is and this is an active connection, show activity
-    const globalEngineStatus = await getSettings("trade_engine:global:status")
-    const globalEngineRunning = globalEngineStatus === "running"
+    // Check if trade engine is actually running by checking Redis state directly
+    const client = await initRedis()
+    const tradeEngineStatus = await client.hgetall("trade_engine:status")
+    const isEngineRunning = tradeEngineStatus?.status === "running" || tradeEngineStatus?.running === "true"
     
     // Check if this connection is currently active/dashboard enabled
     const isActive = connection?.is_enabled_dashboard === "1" || connection?.is_enabled_dashboard === true
     
-    // Engine is running if: local flag is true OR global engine is running AND this connection is active
-    let engineRunning = engineRunningRaw === "true" || engineRunningRaw === true || (globalEngineRunning && isActive)
+    // Engine is running if: local flag is true OR trade engine is actually running AND this connection is active
+    let engineRunning = engineRunningRaw === "true" || engineRunningRaw === true || (isEngineRunning && isActive)
     
     console.log(`[v0] [Progression] Engine state for ${connName}:`, {
       running: engineRunning,
-      globalRunning: globalEngineRunning,
+      engineStatusRedis: tradeEngineStatus,
+      isEngineRunning,
       isActive,
       state: engineState,
     })
     
-    // If engine is running but no phase data, show initializing
-    const phase = progression?.phase || (engineRunning ? "realtime" : "idle")
-    const progress = engineRunning ? (Number(progression?.progress) || 50) : 0
-    const detail = progression?.detail || (engineRunning ? "Processing realtime indications..." : "Not running")
+    // Phase progression depends on what stage the connection is at
+    // Stages: idle -> initializing -> prehistoric_data -> indications -> strategies -> realtime -> live_trading
+    let phase = "idle"
+    let progress = 0
+    let detail = "Not running"
+    
+    if (engineRunning && isActive) {
+      // Engine is running and connection is active - show progression
+      // Default to realtime phase when running
+      phase = progression?.phase || "realtime"
+      progress = Number(progression?.progress) || 75
+      detail = progression?.detail || "Processing realtime indications and strategies"
+      
+      // Check if we have prehistoric data loaded
+      const prehistoricKey = `prehistoric:${connectionId}:data`
+      const prehistoricCount = await client.hlen(prehistoricKey)
+      
+      // Check if indications have been calculated
+      const indicationsKey = `indications:${connectionId}:results`
+      const indicationsCount = await client.hlen(indicationsKey)
+      
+      console.log(`[v0] [Progression] Data check for ${connName}:`, {
+        prehistoricCount,
+        indicationsCount,
+      })
+      
+      // Determine actual phase based on what data exists
+      if (prehistoricCount === 0 && indicationsCount === 0) {
+        phase = "initializing"
+        progress = 25
+        detail = "Initializing connection and loading configuration..."
+      } else if (prehistoricCount > 0 && indicationsCount === 0) {
+        phase = "prehistoric_data"
+        progress = 50
+        detail = `Loaded ${prehistoricCount} historical candles, calculating indications...`
+      } else if (prehistoricCount > 0 && indicationsCount > 0) {
+        phase = "indications"
+        progress = 75
+        detail = `Calculated ${indicationsCount} indication sets, processing realtime...`
+      }
+    }
+    
     const subItem = progression?.sub_item || ""
     const subCurrent = Number(progression?.sub_current) || 0
     const subTotal = Number(progression?.sub_total) || 0

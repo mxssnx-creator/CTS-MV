@@ -38,38 +38,57 @@ export async function GET() {
     const coordinatorReady = coordinator?.isRunning() || false
     
     // Check if indications engine is actually running (independently)
-    // Check multiple possible keys where cycle state might be stored
+    // The indications engine logs console output but we need to check Redis state
+    // Get all connection IDs that are active
+    const activeConnections = await client.smembers("connections") || []
+    
     let indicationsCycleCount = 0
     let indicationsEngineRunning = false
+    let totalIndicationsResults = 0
     
-    // Try various keys where indications state might be stored
-    const indicationState = await client.hgetall("engine:indications:state").catch(() => ({}))
-    const indicationGlobal = await client.hgetall("indications:global:state").catch(() => ({}))
-    const indicationRealtime = await client.hgetall("realtime:indications:state").catch(() => ({}))
+    // Check for indications state and results across all connections
+    for (const connId of activeConnections) {
+      const indicationResults = await client.hlen(`indications:${connId}:results`).catch(() => 0)
+      totalIndicationsResults += indicationResults
+      
+      // If any connection has indication results, engine is running
+      if (indicationResults > 0) {
+        indicationsEngineRunning = true
+      }
+    }
     
-    // Check for cycle count in any of these
-    indicationsCycleCount = parseInt(indicationState.cycleCount || indicationGlobal.cycleCount || indicationRealtime.cycleCount || "0")
-    
-    // Also check for indication keys existing (count indication:* keys)
-    const indicationKeys = allKeys.filter((k: string) => k.startsWith("indication:") || k.includes("indications"))
-    indicationsEngineRunning = indicationsCycleCount > 0 || indicationKeys.length > 100
+    // Also check global indications state
+    const globalIndicationsState = await client.hgetall("indications:global:state").catch(() => ({}))
+    if (globalIndicationsState?.cycleCount) {
+      indicationsCycleCount = parseInt(globalIndicationsState.cycleCount)
+      indicationsEngineRunning = indicationsCycleCount > 0 || totalIndicationsResults > 0
+    }
     
     // Check if strategies engine is running (independently)
     let strategiesCycleCount = 0
     let strategiesEngineRunning = false
+    let totalStrategiesResults = 0
     
-    const strategyState = await client.hgetall("engine:strategies:state").catch(() => ({}))
-    const strategyGlobal = await client.hgetall("strategies:global:state").catch(() => ({}))
+    // Check for strategies state and results across all connections
+    for (const connId of activeConnections) {
+      const strategyResults = await client.hlen(`strategies:${connId}:results`).catch(() => 0)
+      totalStrategiesResults += strategyResults
+      
+      if (strategyResults > 0) {
+        strategiesEngineRunning = true
+      }
+    }
     
-    strategiesCycleCount = parseInt(strategyState.cycleCount || strategyGlobal.cycleCount || "0")
-    
-    // Check for strategy keys existing
-    const strategyKeys = allKeys.filter((k: string) => k.startsWith("strategy:") || k.includes("strategies"))
-    strategiesEngineRunning = strategiesCycleCount > 0 || strategyKeys.length > 50
+    // Also check global strategies state
+    const globalStrategiesState = await client.hgetall("strategies:global:state").catch(() => ({}))
+    if (globalStrategiesState?.cycleCount) {
+      strategiesCycleCount = parseInt(globalStrategiesState.cycleCount)
+      strategiesEngineRunning = strategiesCycleCount > 0 || totalStrategiesResults > 0
+    }
 
     console.log(`[v0] [Monitoring] Engine running: ${engineRunning}, Coordinator ready: ${coordinatorReady}`)
-    console.log(`[v0] [Monitoring] Indications cycles: ${indicationsCycleCount}, keys: ${indicationKeys.length}, running: ${indicationsEngineRunning}`)
-    console.log(`[v0] [Monitoring] Strategies cycles: ${strategiesCycleCount}, keys: ${strategyKeys.length}, running: ${strategiesEngineRunning}`)
+    console.log(`[v0] [Monitoring] Indications: cycles=${indicationsCycleCount}, results=${totalIndicationsResults}, running=${indicationsEngineRunning}`)
+    console.log(`[v0] [Monitoring] Strategies: cycles=${strategiesCycleCount}, results=${totalStrategiesResults}, running=${strategiesEngineRunning}`)
 
     return NextResponse.json({
       cpu: cpuPercent,
@@ -94,6 +113,18 @@ export async function GET() {
         sets,
         positions1h,
         entries1h,
+      },
+      engines: {
+        indications: {
+          running: indicationsEngineRunning,
+          cycleCount: indicationsCycleCount,
+          resultsCount: totalIndicationsResults,
+        },
+        strategies: {
+          running: strategiesEngineRunning,
+          cycleCount: strategiesCycleCount,
+          resultsCount: totalStrategiesResults,
+        },
       },
       timestamp: new Date().toISOString(),
     })
