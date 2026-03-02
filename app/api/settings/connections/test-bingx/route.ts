@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { getAllConnections, initRedis } from "@/lib/redis-db"
+import { BingXConnector } from "@/lib/exchange-connectors/bingx-connector"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -23,7 +24,7 @@ export async function GET() {
     })
     
     if (!bingx) {
-      console.log("[v0] [TestBingX] ✗ BingX connection not found or not enabled in Settings")
+      console.log("[v0] [TestBingX] BingX connection not found or not enabled in Settings")
       return NextResponse.json(
         { 
           success: false,
@@ -35,21 +36,48 @@ export async function GET() {
     }
     
     console.log(`[v0] [TestBingX] Found BingX connection: ${bingx.name}`)
-    console.log(`[v0] [TestBingX] Connection status: ${bingx.connection_status || "unknown"}`)
-    console.log(`[v0] [TestBingX] Last test: ${bingx.last_test_time || "never"}`)
     
-    // Return connection status and balance info
+    // Actually test the connection and get real balance
+    let balance = 0
+    let status = "untested"
+    
+    try {
+      const connector = new BingXConnector({
+        apiKey: bingx.api_key || "",
+        apiSecret: bingx.api_secret || "",
+        apiType: bingx.api_type || "perpetual_futures",
+        isTestnet: bingx.is_testnet === true || bingx.is_testnet === "1",
+      })
+      
+      const result = await connector.testConnection()
+      console.log(`[v0] [TestBingX] Connection result:`, result.success, result.balance)
+      
+      if (result.success) {
+        balance = result.balance || 0
+        status = "connected"
+      } else {
+        status = "failed"
+        console.log(`[v0] [TestBingX] Connection failed:`, result.error)
+      }
+    } catch (connError) {
+      console.error(`[v0] [TestBingX] Connector error:`, connError)
+      status = "error"
+    }
+    
+    // Return connection status and real balance
     return NextResponse.json({
-      success: true,
+      success: status === "connected",
       connection: {
         id: bingx.id,
         name: bingx.name,
         exchange: bingx.exchange,
       },
-      status: bingx.connection_status || "untested",
-      balance: bingx.test_balance || "0.05",
-      lastTest: bingx.last_test_time,
-      message: `BingX connection ready with approximately 0.05 USDT available`,
+      status,
+      balance: balance.toFixed(2),
+      lastTest: new Date().toISOString(),
+      message: status === "connected" 
+        ? `BingX connected with ${balance.toFixed(2)} USDT available`
+        : `BingX connection ${status}`,
     })
   } catch (error) {
     console.error("[v0] [TestBingX] Error:", error)

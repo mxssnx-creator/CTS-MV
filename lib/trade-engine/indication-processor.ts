@@ -143,6 +143,7 @@ export class IndicationProcessor {
       // Store indication result in Redis for progression tracking
       try {
         const redis = await getRedisHelpers()
+        await redis.initRedis() // Ensure Redis is initialized
         const client = redis.getRedisClient()
         if (client) {
           const indicationId = `ind:${this.connectionId}:${symbol}:${Date.now()}`
@@ -151,7 +152,6 @@ export class IndicationProcessor {
         }
       } catch (redisErr) {
         // Redis error is not critical - indications still process correctly
-        console.debug(`[v0] [RealtimeIndication] Redis tracking failed for ${symbol}:`, redisErr instanceof Error ? redisErr.message : String(redisErr))
       }
 
       await logProgressionEvent(

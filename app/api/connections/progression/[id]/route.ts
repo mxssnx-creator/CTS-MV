@@ -25,16 +25,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const progression = await getSettings(`engine_progression:${connectionId}`)
     console.log(`[v0] [Progression] Raw progression data for ${connName}:`, progression)
     
-    // Get engine state and running flag
-    const engineState = await getSettings(`trade_engine_state:${connectionId}`)
-    const engineRunningRaw = await getSettings(`engine_is_running:${connectionId}`)
+    // Get engine state from the correct Redis key: trade_engine:global
+    const client = getRedisClient()
+    const engineHash = client ? await client.hgetall("trade_engine:global") : null
+    const isGloballyRunning = engineHash?.status === "running"
     
     // Check if this connection is currently active/dashboard enabled
     const isActive = connection?.is_enabled_dashboard === "1" || connection?.is_enabled_dashboard === true
     
-    // If this connection is active AND indications are being processed, engine is running
-    // The logs show indications process every cycle regardless of Redis state
-    const client = getRedisClient()
+    // Count indications processed for this connection
     let indicationsCount = 0
     if (client && isActive) {
       try {
@@ -44,8 +43,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
     
-    // Engine is running if: explicitly set OR connection is active AND has indications OR raw flag is true
-    const engineRunning = (engineRunningRaw === "true" || engineRunningRaw === true) || (isActive && indicationsCount > 0)
+    // Engine is running if: global engine is running AND this connection is active
+    const engineRunning = isGloballyRunning && isActive
     
     console.log(`[v0] [Progression] Engine state for ${connName}:`, {
       running: engineRunning,
