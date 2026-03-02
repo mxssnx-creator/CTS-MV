@@ -38,36 +38,43 @@ export async function GET() {
     
     console.log(`[v0] [SystemStats] Analyzing ${allConnections.length} total connections`)
     
-    // BASE = 6 primary exchanges
-    const baseConnections = allConnections.filter(isBaseExchange)
-    console.log(`[v0] [SystemStats] Base exchanges: ${baseConnections.length} connections (${baseConnections.map(c => c.exchange).join(", ")})`)
+    // Separate PREDEFINED (templates/information) from USER-CREATED (actual connections)
+    const predefinedConnections = allConnections.filter((c: any) => {
+      const p = c.is_predefined
+      return p === true || p === "1" || p === "true"
+    })
+    const userCreatedConnections = allConnections.filter((c: any) => {
+      const p = c.is_predefined
+      return !(p === true || p === "1" || p === "true")
+    })
+    console.log(`[v0] [SystemStats] Connection breakdown: ${predefinedConnections.length} predefined templates, ${userCreatedConnections.length} user-created`)
+    
+    // BASE = 6 primary exchanges (use ONLY user-created for metrics)
+    const baseConnections = userCreatedConnections.filter(isBaseExchange)
+    console.log(`[v0] [SystemStats] User-created base exchanges: ${baseConnections.length} connections (${baseConnections.map(c => c.exchange).join(", ")})`)
     
     const enabledBase = baseConnections.filter((c: any) => {
       const e = c.is_enabled
       return e === true || e === "1" || e === "true" || e === undefined || e === null
     })
-    console.log(`[v0] [SystemStats] Enabled base: ${enabledBase.length}`)
+    console.log(`[v0] [SystemStats] Enabled user-created base: ${enabledBase.length}`)
     
     // Check multiple test status field names and values
     const workingBase = baseConnections.filter((c: any) => {
       const status = c.last_test_status || c.test_status || c.connection_status
       return status === "success" || status === "ok" || status === "connected"
     })
-    console.log(`[v0] [SystemStats] Working/tested base: ${workingBase.length}`)
+    console.log(`[v0] [SystemStats] Working/tested user-created base: ${workingBase.length}`)
     
-    // ACTIVE = connections with is_enabled_dashboard = "1" (independent state)
-    const activeConnections = allConnections.filter((c: any) => {
+    // ACTIVE = connections with is_enabled_dashboard = "1" (use ONLY user-created for engine)
+    const activeConnections = userCreatedConnections.filter((c: any) => {
       const d = c.is_enabled_dashboard
       return d === true || d === "1" || d === "true"
     })
-    console.log(`[v0] [SystemStats] Dashboard-active connections: ${activeConnections.length} (${activeConnections.map(c => c.exchange).join(", ")})`)
+    console.log(`[v0] [SystemStats] Dashboard-active user-created connections: ${activeConnections.length} (${activeConnections.map(c => c.exchange).join(", ")})`)
     
-    // Dashboard-inserted (different from active) = should have bybit, bingx only
-    const dashboardInserted = allConnections.filter((c: any) => {
-      const d = c.is_dashboard_inserted
-      return d === true || d === "1"
-    })
-    console.log(`[v0] [SystemStats] Dashboard-inserted connections: ${dashboardInserted.length} (${dashboardInserted.map(c => c.exchange).join(", ")})`)
+    // Predefined connections shown as informational only
+    console.log(`[v0] [SystemStats] Available predefined templates: ${predefinedConnections.length} (${predefinedConnections.map(c => `${c.exchange}:${c.name}`).join(", ")})`)
     
     // Live vs Preset counts from active connections
     let liveTradeCount = 0
