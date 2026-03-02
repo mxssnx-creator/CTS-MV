@@ -165,33 +165,6 @@ export class IndicationProcessor {
     }
   }
 
-      const setsProcessor = new IndicationSetsProcessor(this.connectionId)
-      await setsProcessor.processAllIndicationSets(symbol, marketData)
-
-      // Store indication result in Redis for progression tracking
-      const redis = await getRedisHelpers()
-      await redis.initRedis()
-      const indicationId = `ind:${this.connectionId}:${symbol}:${Date.now()}`
-      const timestamp = new Date().toISOString()
-      await redis.saveIndication(this.connectionId, {
-        id: indicationId,
-        connectionId: this.connectionId,
-        symbol,
-        timestamp,
-        phase: "realtime",
-      })
-
-      await logProgressionEvent(
-        this.connectionId,
-        "indication_realtime",
-        "info",
-        `Processed indication sets for ${symbol}`
-      )
-    } catch (error) {
-      console.error(`[v0] [RealtimeIndication] Failed for ${symbol}:`, error instanceof Error ? error.message : String(error))
-    }
-  }
-
   /**
    * Calculate indication - evaluates all 4 types and returns strongest
    */

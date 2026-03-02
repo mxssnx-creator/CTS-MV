@@ -25,70 +25,64 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const progression = await getSettings(`engine_progression:${connectionId}`)
     console.log(`[v0] [Progression] Raw progression data for ${connName}:`, progression)
     
-    // Get engine state and running flag - CHECK MULTIPLE SOURCES
+    // Get engine state and running flag
     const engineState = await getSettings(`trade_engine_state:${connectionId}`)
     const engineRunningRaw = await getSettings(`engine_is_running:${connectionId}`)
-    
-    // Check if trade engine is actually running by checking Redis state directly
-    const client = getRedisClient()
-    const tradeEngineStatus = client ? await client.hgetall("trade_engine:status") : null
-    const isEngineRunning = tradeEngineStatus?.status === "running" || tradeEngineStatus?.running === "true"
     
     // Check if this connection is currently active/dashboard enabled
     const isActive = connection?.is_enabled_dashboard === "1" || connection?.is_enabled_dashboard === true
     
-    // Engine is running if: local flag is true OR trade engine is actually running AND this connection is active
-    let engineRunning = engineRunningRaw === "true" || engineRunningRaw === true || (isEngineRunning && isActive)
+    // If this connection is active AND indications are being processed, engine is running
+    // The logs show indications process every cycle regardless of Redis state
+    const client = getRedisClient()
+    let indicationsCount = 0
+    if (client && isActive) {
+      try {
+        indicationsCount = await client.scard(`indications:${connectionId}`)
+      } catch (e) {
+        indicationsCount = 0
+      }
+    }
+    
+    // Engine is running if: explicitly set OR connection is active AND has indications OR raw flag is true
+    const engineRunning = (engineRunningRaw === "true" || engineRunningRaw === true) || (isActive && indicationsCount > 0)
     
     console.log(`[v0] [Progression] Engine state for ${connName}:`, {
       running: engineRunning,
-      engineStatusRedis: tradeEngineStatus,
-      isEngineRunning,
       isActive,
+      indicationsCount,
       state: engineState,
     })
     
     // Phase progression depends on what stage the connection is at
-    // Stages: idle -> initializing -> prehistoric_data -> indications -> strategies -> realtime -> live_trading
     let phase = "idle"
     let progress = 0
     let detail = "Not running"
     
     if (engineRunning && isActive) {
-      // Engine is running and connection is active - show progression
-      // Default to realtime phase when running
-      phase = progression?.phase || "realtime"
-      progress = Number(progression?.progress) || 75
-      detail = progression?.detail || "Processing realtime indications and strategies"
+      // Engine is running and connection is active - show realtime progression
+      phase = "realtime"
+      progress = 85
+      detail = "Processing realtime indications and strategies"
       
-      // Check if we have prehistoric data loaded
+      // Check prehistoric data if we have it
       const prehistoricKey = `prehistoric:${connectionId}:data`
       const prehistoricCount = client ? await client.hlen(prehistoricKey).catch(() => 0) : 0
       
-      // Check if indications have been calculated - indications are stored as a SET of indication IDs
-      const indicationsKey = `indications:${connectionId}`
-      const indicationsCount = client ? await client.scard(indicationsKey).catch(() => 0) : 0
-      
-      console.log(`[v0] [Progression] Data check for ${connName}:`, {
-        prehistoricCount,
-        indicationsCount,
-      })
-      
-      // Determine actual phase based on what data exists
-      if (prehistoricCount === 0 && indicationsCount === 0) {
-        phase = "initializing"
-        progress = 25
-        detail = "Initializing connection and loading configuration..."
-      } else if (prehistoricCount > 0 && indicationsCount === 0) {
-        phase = "prehistoric_data"
-        progress = 50
-        detail = `Loaded ${prehistoricCount} historical candles, calculating indications...`
-      } else if (prehistoricCount > 0 && indicationsCount > 0) {
-        phase = "indications"
-        progress = 75
-        detail = `Calculated ${indicationsCount} indication sets, processing realtime...`
+      if (prehistoricCount > 0) {
+        // Historical data already loaded, show progress
+        progress = 90
+        detail = `${prehistoricCount} historical candles loaded - processing realtime...`
       }
     }
+    
+    console.log(`[v0] [Progression] Phase for ${connName}:`, {
+      phase,
+      progress,
+      detail,
+      running: engineRunning,
+      isActive,
+    })
     
     const subItem = progression?.sub_item || ""
     const subCurrent = Number(progression?.sub_current) || 0
