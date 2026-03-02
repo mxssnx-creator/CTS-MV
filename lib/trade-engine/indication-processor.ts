@@ -146,9 +146,18 @@ export class IndicationProcessor {
         await redis.initRedis() // Ensure Redis is initialized
         const client = redis.getRedisClient()
         if (client) {
-          const indicationId = `ind:${this.connectionId}:${symbol}:${Date.now()}`
-          // Add to set of indications for this connection
-          await client.sadd(`indications:${this.connectionId}`, indicationId)
+          const indicationId = `ind:${this.connectionId || "global"}:${symbol}:${Date.now()}`
+          // Add to set of indications for this connection (or global if no connection)
+          const connKey = this.connectionId || "global"
+          await client.sadd(`indications:${connKey}`, indicationId)
+          // Also add to global indications set for monitoring
+          await client.sadd("indications:global", indicationId)
+          // Update global indications state for monitoring
+          await client.hset("indications:global:state", {
+            cycleCount: Date.now().toString(),
+            lastSymbol: symbol,
+            lastUpdate: new Date().toISOString(),
+          })
         }
       } catch (redisErr) {
         // Redis error is not critical - indications still process correctly

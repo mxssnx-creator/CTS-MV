@@ -47,7 +47,7 @@ export async function GET() {
         apiSecret: bingx.api_secret || "",
         apiType: bingx.api_type || "perpetual_futures",
         isTestnet: bingx.is_testnet === true || bingx.is_testnet === "1",
-      })
+      }, "bingx")
       
       const result = await connector.testConnection()
       console.log(`[v0] [TestBingX] Connection result:`, result.success, result.balance)

@@ -58,11 +58,18 @@ export async function GET() {
       }
     }
     
-    // Also check global indications state
+    // Check global indications set (indications run without specific connection)
+    const globalIndicationsCount = await client.scard("indications:global").catch(() => 0)
+    totalIndicationsResults += globalIndicationsCount
+    if (globalIndicationsCount > 0) {
+      indicationsEngineRunning = true
+    }
+    
+    // Also check global indications state hash
     const globalIndicationsState = await client.hgetall("indications:global:state").catch(() => ({}))
     if (globalIndicationsState?.cycleCount) {
       indicationsCycleCount = parseInt(globalIndicationsState.cycleCount)
-      indicationsEngineRunning = indicationsCycleCount > 0 || totalIndicationsResults > 0
+      indicationsEngineRunning = true
     }
     
     // FALLBACK: Check if indications are being processed by checking a realtime indicator key

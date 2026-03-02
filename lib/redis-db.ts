@@ -497,6 +497,56 @@ export async function initRedis(): Promise<void> {
     if (pong === "PONG") {
       console.log("[v0] [Redis] Connection test successful")
     }
+    
+    // Migrate connections from file storage to Redis if not already done
+    try {
+      const client = getClient()
+      const existingConnIds = await client.smembers("connections")
+      
+      if (!existingConnIds || existingConnIds.length === 0) {
+        // Load from file storage
+        const fileConnections = await (await import("@/lib/connections-file-storage")).getAllConnections()
+        if (fileConnections && fileConnections.length > 0) {
+          console.log(`[v0] [Redis] Migrating ${fileConnections.length} connections from file storage to Redis...`)
+          
+          for (const conn of fileConnections) {
+            const connId = conn.id || `conn-${conn.exchange}-${Date.now()}`
+            const connData = {
+              id: connId,
+              name: conn.name || "",
+              exchange: conn.exchange || "",
+              api_key: conn.api_key || "",
+              api_secret: conn.api_secret || "",
+              api_passphrase: conn.api_passphrase || "",
+              api_type: conn.api_type || "spot",
+              api_subtype: conn.api_subtype || "",
+              connection_method: conn.connection_method || "rest",
+              connection_library: conn.connection_library || "ccxt",
+              margin_type: conn.margin_type || "",
+              position_mode: conn.position_mode || "",
+              is_testnet: conn.is_testnet ? "1" : "0",
+              is_enabled: conn.is_enabled ? "1" : "0",
+              is_enabled_dashboard: conn.is_enabled_dashboard ? "1" : "0",
+              is_inserted: conn.is_inserted ? "1" : "0",
+              is_predefined: conn.is_predefined ? "1" : "0",
+              is_live_trade: conn.is_live_trade ? "1" : "0",
+              is_preset_trade: conn.is_preset_trade ? "1" : "0",
+              created_at: conn.created_at || new Date().toISOString(),
+              updated_at: conn.updated_at || new Date().toISOString(),
+              ...conn,
+            }
+            
+            // Store in Redis
+            await client.hset(`connection:${connId}`, connData)
+            await client.sadd("connections", connId)
+          }
+          
+          console.log(`[v0] [Redis] Successfully migrated ${fileConnections.length} connections`)
+        }
+      }
+    } catch (err) {
+      console.warn("[v0] [Redis] Connection migration warning:", err instanceof Error ? err.message : String(err))
+    }
   }
 }
 
