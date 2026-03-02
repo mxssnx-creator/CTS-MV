@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { initRedis, getSettings, getConnection } from "@/lib/redis-db"
+import { initRedis, getRedisClient, getSettings, getConnection } from "@/lib/redis-db"
 
 export const dynamic = "force-dynamic"
 
@@ -30,8 +30,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const engineRunningRaw = await getSettings(`engine_is_running:${connectionId}`)
     
     // Check if trade engine is actually running by checking Redis state directly
-    const client = await initRedis()
-    const tradeEngineStatus = await client.hgetall("trade_engine:status")
+    const client = getRedisClient()
+    const tradeEngineStatus = client ? await client.hgetall("trade_engine:status") : null
     const isEngineRunning = tradeEngineStatus?.status === "running" || tradeEngineStatus?.running === "true"
     
     // Check if this connection is currently active/dashboard enabled
@@ -63,11 +63,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       
       // Check if we have prehistoric data loaded
       const prehistoricKey = `prehistoric:${connectionId}:data`
-      const prehistoricCount = await client.hlen(prehistoricKey)
+      const prehistoricCount = client ? await client.hlen(prehistoricKey).catch(() => 0) : 0
       
       // Check if indications have been calculated
       const indicationsKey = `indications:${connectionId}:results`
-      const indicationsCount = await client.hlen(indicationsKey)
+      const indicationsCount = client ? await client.hlen(indicationsKey).catch(() => 0) : 0
       
       console.log(`[v0] [Progression] Data check for ${connName}:`, {
         prehistoricCount,

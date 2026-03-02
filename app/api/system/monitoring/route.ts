@@ -49,10 +49,11 @@ export async function GET() {
     // Check for indications state and results across all connections
     for (const connId of activeConnections) {
       const indicationResults = await client.hlen(`indications:${connId}:results`).catch(() => 0)
-      totalIndicationsResults += indicationResults
+      const indicationSets = await client.hlen(`indication_sets:${connId}`).catch(() => 0)
+      totalIndicationsResults += (indicationResults + indicationSets)
       
       // If any connection has indication results, engine is running
-      if (indicationResults > 0) {
+      if (indicationResults > 0 || indicationSets > 0) {
         indicationsEngineRunning = true
       }
     }
@@ -64,6 +65,19 @@ export async function GET() {
       indicationsEngineRunning = indicationsCycleCount > 0 || totalIndicationsResults > 0
     }
     
+    // FALLBACK: Check if indications are being processed by checking a realtime indicator key
+    // This detects if indications engine is running even if cycle state isn't stored
+    if (!indicationsEngineRunning) {
+      const realtimeIndicationCheck = await client.get("indications:realtime:last_update").catch(() => null)
+      const lastUpdate = realtimeIndicationCheck ? parseInt(realtimeIndicationCheck) : 0
+      const now = Date.now()
+      const recentlyUpdated = (now - lastUpdate) < 5000 // Within last 5 seconds
+      if (recentlyUpdated) {
+        indicationsEngineRunning = true
+        indicationsCycleCount = 1 // Mark as running
+      }
+    }
+    
     // Check if strategies engine is running (independently)
     let strategiesCycleCount = 0
     let strategiesEngineRunning = false
@@ -72,9 +86,10 @@ export async function GET() {
     // Check for strategies state and results across all connections
     for (const connId of activeConnections) {
       const strategyResults = await client.hlen(`strategies:${connId}:results`).catch(() => 0)
-      totalStrategiesResults += strategyResults
+      const strategySets = await client.hlen(`strategy_sets:${connId}`).catch(() => 0)
+      totalStrategiesResults += (strategyResults + strategySets)
       
-      if (strategyResults > 0) {
+      if (strategyResults > 0 || strategySets > 0) {
         strategiesEngineRunning = true
       }
     }
@@ -84,6 +99,18 @@ export async function GET() {
     if (globalStrategiesState?.cycleCount) {
       strategiesCycleCount = parseInt(globalStrategiesState.cycleCount)
       strategiesEngineRunning = strategiesCycleCount > 0 || totalStrategiesResults > 0
+    }
+    
+    // FALLBACK: Check strategies realtime indicator
+    if (!strategiesEngineRunning) {
+      const realtimeStrategyCheck = await client.get("strategies:realtime:last_update").catch(() => null)
+      const lastUpdate = realtimeStrategyCheck ? parseInt(realtimeStrategyCheck) : 0
+      const now = Date.now()
+      const recentlyUpdated = (now - lastUpdate) < 5000
+      if (recentlyUpdated) {
+        strategiesEngineRunning = true
+        strategiesCycleCount = 1 // Mark as running
+      }
     }
 
     console.log(`[v0] [Monitoring] Engine running: ${engineRunning}, Coordinator ready: ${coordinatorReady}`)
