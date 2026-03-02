@@ -48,9 +48,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     
     console.log(`[v0] [Progression] Engine state for ${connName}:`, {
       running: engineRunning,
+      isGloballyRunning,
       isActive,
       indicationsCount,
-      state: engineState,
     })
     
     // Phase progression depends on what stage the connection is at
