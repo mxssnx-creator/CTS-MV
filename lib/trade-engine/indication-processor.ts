@@ -12,6 +12,7 @@ async function getRedisHelpers() {
   const mod = await import("@/lib/redis-db")
   return {
     initRedis: mod.initRedis,
+    getRedisClient: mod.getRedisClient,
     getMarketData: mod.getMarketData ?? (async (_s: string) => null),
     saveIndication: mod.saveIndication ?? (async (_d: any) => ""),
     getSettings: mod.getSettings,
@@ -135,6 +136,34 @@ export class IndicationProcessor {
       if (!marketData) {
         return
       }
+
+      const setsProcessor = new IndicationSetsProcessor(this.connectionId)
+      await setsProcessor.processAllIndicationSets(symbol, marketData)
+
+      // Store indication result in Redis for progression tracking
+      try {
+        const redis = await getRedisHelpers()
+        const client = redis.getRedisClient()
+        if (client) {
+          const indicationId = `ind:${this.connectionId}:${symbol}:${Date.now()}`
+          // Add to set of indications for this connection
+          await client.sadd(`indications:${this.connectionId}`, indicationId)
+        }
+      } catch (redisErr) {
+        // Redis error is not critical - indications still process correctly
+        console.debug(`[v0] [RealtimeIndication] Redis tracking failed for ${symbol}:`, redisErr instanceof Error ? redisErr.message : String(redisErr))
+      }
+
+      await logProgressionEvent(
+        this.connectionId,
+        "indication_realtime",
+        "info",
+        `Processed indication sets for ${symbol}`
+      )
+    } catch (error) {
+      console.error(`[v0] [RealtimeIndication] Failed for ${symbol}:`, error instanceof Error ? error.message : String(error))
+    }
+  }
 
       const setsProcessor = new IndicationSetsProcessor(this.connectionId)
       await setsProcessor.processAllIndicationSets(symbol, marketData)
