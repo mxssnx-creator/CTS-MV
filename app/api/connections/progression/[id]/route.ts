@@ -120,16 +120,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           current: subCurrent,
           total: subTotal,
         },
-        startedAt: engineState?.started_at || null,
-        updatedAt: progression?.updated_at || engineState?.updated_at || new Date().toISOString(),
+        startedAt: engineHash?.started_at || null,
+        updatedAt: progression?.updated_at || new Date().toISOString(),
         details: {
-          historicalDataLoaded: currentIdx >= 3, // past prehistoric_data
-          indicationsCalculated: currentIdx >= 4 || engineRunning, // past indications or engine running
-          strategiesProcessed: currentIdx >= 5 || engineRunning,   // past strategies or engine running
-          liveProcessingActive: currentIdx >= 5 || engineRunning,  // realtime or live_trading or engine running
+          historicalDataLoaded: currentIdx >= 3,
+          indicationsCalculated: currentIdx >= 4 || engineRunning,
+          strategiesProcessed: currentIdx >= 5 || engineRunning,
+          liveProcessingActive: currentIdx >= 5 || engineRunning,
           liveTradingActive: phase === "live_trading",
         },
-        error: engineState?.error_message || (phase === "error" ? detail : null),
+        error: phase === "error" ? detail : null,
       },
     }
 
