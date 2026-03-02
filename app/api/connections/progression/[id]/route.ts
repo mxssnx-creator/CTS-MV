@@ -65,9 +65,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       const prehistoricKey = `prehistoric:${connectionId}:data`
       const prehistoricCount = client ? await client.hlen(prehistoricKey).catch(() => 0) : 0
       
-      // Check if indications have been calculated
-      const indicationsKey = `indications:${connectionId}:results`
-      const indicationsCount = client ? await client.hlen(indicationsKey).catch(() => 0) : 0
+      // Check if indications have been calculated - indications are stored as a SET of indication IDs
+      const indicationsKey = `indications:${connectionId}`
+      const indicationsCount = client ? await client.scard(indicationsKey).catch(() => 0) : 0
       
       console.log(`[v0] [Progression] Data check for ${connName}:`, {
         prehistoricCount,

@@ -48,12 +48,12 @@ export async function GET() {
     
     // Check for indications state and results across all connections
     for (const connId of activeConnections) {
-      const indicationResults = await client.hlen(`indications:${connId}:results`).catch(() => 0)
-      const indicationSets = await client.hlen(`indication_sets:${connId}`).catch(() => 0)
-      totalIndicationsResults += (indicationResults + indicationSets)
+      // Indications are stored as a SET of indication IDs, so use scard() not hlen()
+      const indicationCount = await client.scard(`indications:${connId}`).catch(() => 0)
+      totalIndicationsResults += indicationCount
       
       // If any connection has indication results, engine is running
-      if (indicationResults > 0 || indicationSets > 0) {
+      if (indicationCount > 0) {
         indicationsEngineRunning = true
       }
     }
