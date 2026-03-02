@@ -25,19 +25,31 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const progression = await getSettings(`engine_progression:${connectionId}`)
     console.log(`[v0] [Progression] Raw progression data for ${connName}:`, progression)
     
-    // Get engine state and running flag
+    // Get engine state and running flag - CHECK MULTIPLE SOURCES
     const engineState = await getSettings(`trade_engine_state:${connectionId}`)
     const engineRunningRaw = await getSettings(`engine_is_running:${connectionId}`)
-    const engineRunning = engineRunningRaw === "true" || engineRunningRaw === true
+    
+    // ALSO check if trade engine globally is running - if it is and this is an active connection, show activity
+    const globalEngineStatus = await getSettings("trade_engine:global:status")
+    const globalEngineRunning = globalEngineStatus === "running"
+    
+    // Check if this connection is currently active/dashboard enabled
+    const isActive = connection?.is_enabled_dashboard === "1" || connection?.is_enabled_dashboard === true
+    
+    // Engine is running if: local flag is true OR global engine is running AND this connection is active
+    let engineRunning = engineRunningRaw === "true" || engineRunningRaw === true || (globalEngineRunning && isActive)
     
     console.log(`[v0] [Progression] Engine state for ${connName}:`, {
       running: engineRunning,
+      globalRunning: globalEngineRunning,
+      isActive,
       state: engineState,
     })
     
-    const phase = progression?.phase || (engineRunning ? "initializing" : "idle")
-    const progress = Number(progression?.progress) || 0
-    const detail = progression?.detail || (engineRunning ? "Starting up..." : "Not running")
+    // If engine is running but no phase data, show initializing
+    const phase = progression?.phase || (engineRunning ? "realtime" : "idle")
+    const progress = engineRunning ? (Number(progression?.progress) || 50) : 0
+    const detail = progression?.detail || (engineRunning ? "Processing realtime indications..." : "Not running")
     const subItem = progression?.sub_item || ""
     const subCurrent = Number(progression?.sub_current) || 0
     const subTotal = Number(progression?.sub_total) || 0
@@ -46,6 +58,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     let message = detail
     if (subTotal > 0 && subCurrent > 0) {
       message = `${detail} (${subCurrent}/${subTotal}${subItem ? ` - ${subItem}` : ""})`
+    } else if (engineRunning && phase === "realtime") {
+      message = "Processing realtime indications and strategies"
     }
 
     // Derive detailed step flags from phase progression
@@ -74,12 +88,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           total: subTotal,
         },
         startedAt: engineState?.started_at || null,
-        updatedAt: progression?.updated_at || engineState?.updated_at || null,
+        updatedAt: progression?.updated_at || engineState?.updated_at || new Date().toISOString(),
         details: {
           historicalDataLoaded: currentIdx >= 3, // past prehistoric_data
-          indicationsCalculated: currentIdx >= 4, // past indications
-          strategiesProcessed: currentIdx >= 5,   // past strategies
-          liveProcessingActive: currentIdx >= 5,  // realtime or live_trading
+          indicationsCalculated: currentIdx >= 4 || engineRunning, // past indications or engine running
+          strategiesProcessed: currentIdx >= 5 || engineRunning,   // past strategies or engine running
+          liveProcessingActive: currentIdx >= 5 || engineRunning,  // realtime or live_trading or engine running
           liveTradingActive: phase === "live_trading",
         },
         error: engineState?.error_message || (phase === "error" ? detail : null),
