@@ -501,6 +501,138 @@ export async function initRedis(): Promise<void> {
     // NOTE: Predefined connections (templates from file storage) are NOT migrated to Redis
     // They are informational only and should NOT be used by the trade engine
     // Only user-created connections should be stored in Redis for the engine to use
+    
+    // Initialize 6 user-created connections if they don't exist
+    await initializeDefaultUserConnections()
+  }
+}
+
+/**
+ * Initialize 6 default user-created connections (2 active for engine)
+ * These are actual connections, not templates
+ */
+export async function initializeDefaultUserConnections(): Promise<void> {
+  const client = getClient()
+  try {
+    const existingIds = await client.smembers("connections")
+    if (existingIds && existingIds.length > 0) {
+      console.log(`[v0] [Connections] User connections already initialized: ${existingIds.length} connections`)
+      return
+    }
+    
+    console.log("[v0] [Connections] Initializing 6 default user-created connections...")
+    
+    // Create 6 user-created connections
+    const userConnections = [
+      // ACTIVE connections (2)
+      {
+        id: "conn-bingx-01",
+        name: "BingX Live",
+        exchange: "bingx",
+        api_key: "",
+        api_secret: "",
+        api_type: "perpetual_futures",
+        is_enabled: true,
+        is_enabled_dashboard: true,  // ACTIVE
+        is_predefined: false,
+        is_live_trade: false,
+      },
+      {
+        id: "conn-bybit-01",
+        name: "Bybit Live",
+        exchange: "bybit",
+        api_key: "",
+        api_secret: "",
+        api_type: "perpetual_futures",
+        is_enabled: true,
+        is_enabled_dashboard: true,  // ACTIVE
+        is_predefined: false,
+        is_live_trade: false,
+      },
+      // INACTIVE connections (4)
+      {
+        id: "conn-okx-01",
+        name: "OKX Trading",
+        exchange: "okx",
+        api_key: "",
+        api_secret: "",
+        api_passphrase: "",
+        api_type: "spot",
+        is_enabled: false,
+        is_enabled_dashboard: false,
+        is_predefined: false,
+        is_live_trade: false,
+      },
+      {
+        id: "conn-binance-01",
+        name: "Binance Spot",
+        exchange: "binance",
+        api_key: "",
+        api_secret: "",
+        api_type: "spot",
+        is_enabled: false,
+        is_enabled_dashboard: false,
+        is_predefined: false,
+        is_live_trade: false,
+      },
+      {
+        id: "conn-pionex-01",
+        name: "Pionex Trading",
+        exchange: "pionex",
+        api_key: "",
+        api_secret: "",
+        api_type: "spot",
+        is_enabled: false,
+        is_enabled_dashboard: false,
+        is_predefined: false,
+        is_live_trade: false,
+      },
+      {
+        id: "conn-orangex-01",
+        name: "OrangeX Trading",
+        exchange: "orangex",
+        api_key: "",
+        api_secret: "",
+        api_type: "spot",
+        is_enabled: false,
+        is_enabled_dashboard: false,
+        is_predefined: false,
+        is_live_trade: false,
+      },
+    ]
+    
+    for (const conn of userConnections) {
+      const connData: Record<string, string> = {
+        id: conn.id,
+        name: conn.name,
+        exchange: conn.exchange,
+        api_key: conn.api_key || "",
+        api_secret: conn.api_secret || "",
+        api_passphrase: conn.api_passphrase || "",
+        api_type: conn.api_type || "spot",
+        connection_method: "rest",
+        connection_library: "ccxt",
+        margin_type: "isolated",
+        position_mode: "one-way",
+        is_testnet: "0",
+        is_enabled: (conn.is_enabled === true || conn.is_enabled === "1") ? "1" : "0",
+        is_enabled_dashboard: (conn.is_enabled_dashboard === true || conn.is_enabled_dashboard === "1") ? "1" : "0",
+        is_live_trade: (conn.is_live_trade === true || conn.is_live_trade === "1") ? "1" : "0",
+        is_predefined: "0", // These are user-created, not predefined
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+      
+      await client.hset(`connection:${conn.id}`, connData)
+      await client.sadd("connections", conn.id)
+      
+      const status = (conn.is_enabled_dashboard === true || conn.is_enabled_dashboard === "1") ? "ACTIVE" : "inactive"
+      console.log(`[v0] [Connections] Created: ${conn.exchange.toUpperCase()} - ${conn.name} [${status}]`)
+    }
+    
+    console.log("[v0] [Connections] Successfully initialized 6 user-created connections (2 active, 4 inactive)")
+  } catch (err) {
+    console.warn("[v0] [Connections] Error initializing user connections:", err instanceof Error ? err.message : String(err))
   }
 }
 
