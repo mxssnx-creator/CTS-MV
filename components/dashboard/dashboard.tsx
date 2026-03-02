@@ -75,7 +75,36 @@ export function Dashboard() {
     databaseSize: 128,
   })
 
-  // Define loadStats BEFORE useEffect
+  // Filter ExchangeConnectionsActive by selected exchange
+  const filteredConnections = useMemo(() => {
+    if (!selectedExchange) {
+      return exchangeConnectionsActive
+    }
+    return exchangeConnectionsActive.filter(conn => conn.exchange === selectedExchange)
+  }, [exchangeConnectionsActive, selectedExchange])
+
+  useEffect(() => {
+    console.log("[v0] [Dashboard] Mounted")
+    // Don't await these - let them load in background
+    // This ensures the dashboard renders immediately
+    loadExchangeConnectionsActive().catch(err => {
+      console.warn("[v0] [Dashboard] Failed to load connections:", err)
+    })
+    loadStats()
+    
+    const interval = setInterval(() => {
+      loadStats()
+    }, 5000)
+    
+    return () => clearInterval(interval)
+  }, [])
+
+  // Reload stats when selected exchange changes
+  useEffect(() => {
+    console.log("[v0] [Dashboard] Exchange changed to:", selectedExchange)
+    loadStats()
+  }, [selectedExchange])
+
   const loadStats = async () => {
     try {
       const url = selectedExchange 
@@ -100,81 +129,6 @@ export function Dashboard() {
       console.error("Failed to load stats:", error)
     }
   }
-
-  // Filter ExchangeConnectionsActive by selected exchange
-  const filteredConnections = useMemo(() => {
-    if (!selectedExchange || !exchangeConnectionsActive) {
-      return exchangeConnectionsActive || []
-    }
-    return exchangeConnectionsActive.filter(conn => {
-      // Support multiple property names for exchange
-      const connExchange = (conn as any).exchange || (conn as any).exchangeName || ""
-      return connExchange.toLowerCase().includes(selectedExchange.toLowerCase())
-    })
-  }, [exchangeConnectionsActive, selectedExchange])
-
-  useEffect(() => {
-    // Initialize all systems on dashboard load
-    const initializeSystems = async () => {
-      try {
-        console.log("[v0] [Dashboard] Initializing systems...")
-        
-        // Call init endpoint with timeout
-        const initController = new AbortController()
-        const initTimeout = setTimeout(() => initController.abort(), 5000)
-        
-        try {
-          const initResponse = await fetch("/api/init", { 
-            method: "GET",
-            cache: "no-store",
-            signal: initController.signal
-          })
-          clearTimeout(initTimeout)
-          
-          if (initResponse.ok) {
-            const initData = await initResponse.json()
-            console.log("[v0] [Dashboard] Systems initialized:", initData)
-          }
-        } catch (err) {
-          clearTimeout(initTimeout)
-          if (err instanceof Error && err.name !== 'AbortError') {
-            console.warn("[v0] [Dashboard] Init failed:", err)
-          }
-        }
-        
-        // Load active connections with timeout
-        const connController = new AbortController()
-        const connTimeout = setTimeout(() => connController.abort(), 5000)
-        
-        try {
-          await Promise.race([
-            loadExchangeConnectionsActive(),
-            new Promise((_, reject) => setTimeout(() => reject(new Error("Load timeout")), 5000))
-          ])
-        } catch (err) {
-          clearTimeout(connTimeout)
-          console.warn("[v0] [Dashboard] Load connections timeout or failed:", err)
-        }
-      } catch (error) {
-        console.error("[v0] [Dashboard] Failed to initialize systems:", error)
-      }
-    }
-    
-    initializeSystems()
-    loadStats()
-    
-    const interval = setInterval(() => {
-      loadStats()
-    }, 5000)
-    
-    return () => clearInterval(interval)
-  }, [])
-
-  // Reload stats when selected exchange changes
-  useEffect(() => {
-    console.log("[v0] [Dashboard] Exchange changed to:", selectedExchange)
-    loadStats()
-  }, [selectedExchange, loadStats])
 
   return (
     <div className="flex-1 space-y-6 p-6">
