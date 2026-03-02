@@ -36,8 +36,40 @@ export async function GET() {
     const globalState = await client.hgetall("trade_engine:global").catch(() => ({}))
     const engineRunning = globalState?.status === "running"
     const coordinatorReady = coordinator?.isRunning() || false
+    
+    // Check if indications engine is actually running (independently)
+    // Check multiple possible keys where cycle state might be stored
+    let indicationsCycleCount = 0
+    let indicationsEngineRunning = false
+    
+    // Try various keys where indications state might be stored
+    const indicationState = await client.hgetall("engine:indications:state").catch(() => ({}))
+    const indicationGlobal = await client.hgetall("indications:global:state").catch(() => ({}))
+    const indicationRealtime = await client.hgetall("realtime:indications:state").catch(() => ({}))
+    
+    // Check for cycle count in any of these
+    indicationsCycleCount = parseInt(indicationState.cycleCount || indicationGlobal.cycleCount || indicationRealtime.cycleCount || "0")
+    
+    // Also check for indication keys existing (count indication:* keys)
+    const indicationKeys = allKeys.filter((k: string) => k.startsWith("indication:") || k.includes("indications"))
+    indicationsEngineRunning = indicationsCycleCount > 0 || indicationKeys.length > 100
+    
+    // Check if strategies engine is running (independently)
+    let strategiesCycleCount = 0
+    let strategiesEngineRunning = false
+    
+    const strategyState = await client.hgetall("engine:strategies:state").catch(() => ({}))
+    const strategyGlobal = await client.hgetall("strategies:global:state").catch(() => ({}))
+    
+    strategiesCycleCount = parseInt(strategyState.cycleCount || strategyGlobal.cycleCount || "0")
+    
+    // Check for strategy keys existing
+    const strategyKeys = allKeys.filter((k: string) => k.startsWith("strategy:") || k.includes("strategies"))
+    strategiesEngineRunning = strategiesCycleCount > 0 || strategyKeys.length > 50
 
     console.log(`[v0] [Monitoring] Engine running: ${engineRunning}, Coordinator ready: ${coordinatorReady}`)
+    console.log(`[v0] [Monitoring] Indications cycles: ${indicationsCycleCount}, keys: ${indicationKeys.length}, running: ${indicationsEngineRunning}`)
+    console.log(`[v0] [Monitoring] Strategies cycles: ${strategiesCycleCount}, keys: ${strategyKeys.length}, running: ${strategiesEngineRunning}`)
 
     return NextResponse.json({
       cpu: cpuPercent,
@@ -46,8 +78,8 @@ export async function GET() {
       memoryTotal: Math.round(memUsage.heapTotal / 1024),
       services: {
         tradeEngine: engineRunning,
-        indicationsEngine: coordinatorReady,
-        strategiesEngine: coordinatorReady,
+        indicationsEngine: indicationsEngineRunning,
+        strategiesEngine: strategiesEngineRunning,
         websocket: true, // Assume websocket is always active
       },
       modules: {

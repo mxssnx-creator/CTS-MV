@@ -16,7 +16,26 @@ export async function GET() {
     await initRedis()
     const client = getRedisClient()
     
-    const allConnections = await getAllConnections()
+    // Double-ensure Redis is ready and connections are loaded
+    let allConnections = await getAllConnections()
+    
+    // If no connections found, try fetching directly from Redis
+    if (allConnections.length === 0) {
+      const connectionIds = await client.smembers("connections")
+      console.log(`[v0] [SystemStats] Direct Redis lookup: found ${connectionIds?.length || 0} connection IDs`)
+      
+      if (connectionIds && connectionIds.length > 0) {
+        const conns = []
+        for (const id of connectionIds) {
+          const data = await client.hgetall(`connection:${id}`)
+          if (data && Object.keys(data).length > 0) {
+            conns.push(data)
+          }
+        }
+        allConnections = conns
+      }
+    }
+    
     console.log(`[v0] [SystemStats] Analyzing ${allConnections.length} total connections`)
     
     // BASE = 6 primary exchanges

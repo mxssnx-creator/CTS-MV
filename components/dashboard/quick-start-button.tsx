@@ -42,42 +42,55 @@ export function QuickStartButton() {
 
   const handleQuickStart = async () => {
     setIsRunning(true)
+    console.log("[v0] [QuickStart] ========================================")
+    console.log("[v0] [QuickStart] QUICKSTART SEQUENCE INITIATED")
+    console.log("[v0] [QuickStart] ========================================")
     try {
       // STEP 1: Skip init if it fails - it's not critical for quickstart
       updateStep("init", "loading")
+      console.log("[v0] [QuickStart] STEP 1: Initialize System")
       try {
         const initRes = await Promise.race([
           fetch("/api/init", { method: "GET", cache: "no-store" }),
           new Promise((_, reject) => setTimeout(() => reject(new Error("Init timeout")), 3000))
         ])
         if (initRes.ok) {
+          console.log("[v0] [QuickStart] ✓ System initialized successfully")
           updateStep("init", "success", "System initialized")
         } else {
+          console.log("[v0] [QuickStart] ⚠ System init skipped (already ready)")
           updateStep("init", "success", "Skipped (system ready)")
         }
-      } catch {
+      } catch (err) {
         // Init is optional - continue without it
+        console.log("[v0] [QuickStart] ⚠ Init failed, continuing (optional):", err)
         updateStep("init", "success", "Skipped (system ready)")
       }
 
       // STEP 2: Run Database Migrations
       updateStep("migrate", "loading")
+      console.log("[v0] [QuickStart] STEP 2: Run Database Migrations")
       try {
         const dbMigrateRes = await Promise.race([
           fetch("/api/install/database/migrate", { method: "POST", cache: "no-store" }),
           new Promise((_, reject) => setTimeout(() => reject(new Error("Migration timeout")), 8000))
         ])
         if (dbMigrateRes.ok) {
+          const migrateData = await dbMigrateRes.json()
+          console.log("[v0] [QuickStart] ✓ Migrations complete:", migrateData)
           updateStep("migrate", "success", "Migrations complete")
         } else {
+          console.log("[v0] [QuickStart] ⚠ Migrations skipped")
           updateStep("migrate", "success", "Skipped")
         }
-      } catch {
+      } catch (err) {
+        console.log("[v0] [QuickStart] ⚠ Migrations failed, continuing:", err)
         updateStep("migrate", "success", "Skipped")
       }
 
       // STEP 3: Test BingX (with timeout)
       updateStep("test", "loading")
+      console.log("[v0] [QuickStart] STEP 3: Test BingX Connection")
       const testRes = await Promise.race([
         fetch("/api/settings/connections/test-bingx", { method: "GET", cache: "no-store" }),
         new Promise((_, reject) => setTimeout(() => reject(new Error("Test timeout")), 10000))
@@ -85,10 +98,12 @@ export function QuickStartButton() {
       if (!testRes.ok) throw new Error("BingX test failed")
       const testData = await testRes.json()
       if (!testData.success) throw new Error(testData.error || "BingX test failed")
+      console.log("[v0] [QuickStart] ✓ BingX connection verified | Balance:", testData.balance, "USDT")
       updateStep("test", "success", `Balance: ${testData.balance} USDT`)
 
       // STEP 4: Start Trade Engine (INDEPENDENT - always do this)
       updateStep("start", "loading")
+      console.log("[v0] [QuickStart] STEP 4: Start Global Trade Engine")
       const startRes = await Promise.race([
         fetch("/api/trade-engine/start", { method: "POST", cache: "no-store" }),
         new Promise((_, reject) => setTimeout(() => reject(new Error("Engine start timeout")), 10000))
@@ -96,10 +111,13 @@ export function QuickStartButton() {
       if (!startRes.ok) throw new Error("Engine start failed")
       const startData = await startRes.json()
       if (!startData.success) throw new Error(startData.error || "Engine start failed")
+      console.log("[v0] [QuickStart] ✓ Trade engine started (global)")
+      console.log("[v0] [QuickStart] Engine status:", startData)
       updateStep("start", "success", "Trade engine started (global)")
 
       // STEP 5: Enable BingX on Dashboard (progression starts here)
       updateStep("enable", "loading")
+      console.log("[v0] [QuickStart] STEP 5: Enable BingX on Dashboard")
       const enableRes = await Promise.race([
         fetch("/api/trade-engine/quick-start", { 
           method: "POST", 
@@ -112,12 +130,18 @@ export function QuickStartButton() {
       if (!enableRes.ok) throw new Error("Enable failed")
       const enableData = await enableRes.json()
       if (!enableData.success) throw new Error(enableData.error || "Enable failed")
+      console.log("[v0] [QuickStart] ✓ BingX enabled on dashboard")
+      console.log("[v0] [QuickStart] Active connection:", enableData.connection)
       updateStep("enable", "success", `BingX enabled - progression starting`)
 
       // Success
+      console.log("[v0] [QuickStart] ========================================")
+      console.log("[v0] [QuickStart] ✓ QUICKSTART COMPLETE")
+      console.log("[v0] [QuickStart] ========================================")
       toast.success("Quick Start Complete! Trade engine running with BingX active.")
       
       // Fetch functional overview
+      console.log("[v0] [QuickStart] Fetching functional overview...")
       try {
         const overviewRes = await Promise.race([
           fetch("/api/trade-engine/functional-overview", { cache: "no-store" }),
@@ -125,10 +149,26 @@ export function QuickStartButton() {
         ])
         if (overviewRes.ok) {
           const overview = await overviewRes.json()
+          console.log("[v0] [QuickStart] Functional Overview:", overview)
           setFunctionalOverview(overview)
         }
       } catch (error) {
         console.warn("[v0] [QuickStart] Could not fetch functional overview:", error)
+      }
+
+      // Fetch prehistoric logging data
+      console.log("[v0] [QuickStart] Fetching prehistoric data...")
+      try {
+        const prehistoricRes = await Promise.race([
+          fetch("/api/quickstart/prehistoric-log", { cache: "no-store" }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Prehistoric log timeout")), 5000))
+        ])
+        if (prehistoricRes.ok) {
+          const prehistoricData = await prehistoricRes.json()
+          console.log("[v0] [QuickStart] Prehistoric Data:", prehistoricData.prehistoric)
+        }
+      } catch (error) {
+        console.warn("[v0] [QuickStart] Could not fetch prehistoric data:", error)
       }
       
       // Dispatch event to refresh UI
@@ -138,7 +178,8 @@ export function QuickStartButton() {
 
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : "Unknown error"
-      console.error("[v0] [QuickStart] Error:", errorMsg)
+      console.error("[v0] [QuickStart] ✗ Error:", errorMsg)
+      console.error("[v0] [QuickStart] Stack:", error)
       toast.error(`Quick Start Failed: ${errorMsg}`)
       
       const currentStep = steps.find(s => s.status === "loading")
