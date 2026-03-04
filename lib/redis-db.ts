@@ -733,45 +733,38 @@ export async function updateConnection(connectionId: string, updates: any): Prom
 }
 
 export async function getAllConnections(): Promise<any[]> {
-  const client = getClient()
+  const client = getClient();
   try {
-    const ids = await client.smembers("connections")
+    const ids = await client.smembers("connections");
     
-    // Return only user-created connections from Redis
-    // Predefined/template connections are kept in file storage as informational only
     if (!ids || ids.length === 0) {
-      console.log("[v0] [DB] No user-created connections in Redis (predefined templates are file-based only)")
-      return []
+      console.log("[v0] [DB] No user-created connections in Redis");
+      return [];
     }
     
-    // Fetch all user-created connections in parallel
     const results = await Promise.all(
       ids.map(id => client.hgetall(`connection:${id}`))
-    )
+    );
     
-    const connections = []
+    const toBool = (val: any): boolean => {
+      if (typeof val === 'boolean') return val;
+      if (typeof val === 'string') return val === '1' || val === 'true';
+      return !!val;
+    };
+    
+    const connections: any[] = [];
     for (let i = 0; i < results.length; i++) {
-      const data = results[i]
+      const data = results[i];
       
       if (data && Object.keys(data).length > 0) {
-        // Helper to convert string booleans to actual booleans
-        const toBool = (val: any): boolean => {
-          if (typeof val === 'boolean') return val
-          if (typeof val === 'string') return val === '1' || val === 'true'
-          return !!val
-        }
-        
-        // Parse test logs from JSON string if needed
-        let testLogs: string[] = []
+        let testLogs: string[] = [];
         if (data.last_test_log) {
           try {
-            if (typeof data.last_test_log === 'string') {
-              testLogs = JSON.parse(data.last_test_log)
-            } else if (Array.isArray(data.last_test_log)) {
-              testLogs = data.last_test_log
-            }
-          } catch (e) {
-            testLogs = [data.last_test_log]
+            testLogs = typeof data.last_test_log === 'string' 
+              ? JSON.parse(data.last_test_log) 
+              : (Array.isArray(data.last_test_log) ? data.last_test_log : [data.last_test_log]);
+          } catch {
+            testLogs = [data.last_test_log];
           }
         }
 
@@ -804,13 +797,13 @@ export async function getAllConnections(): Promise<any[]> {
           api_capabilities: data.api_capabilities || "",
           created_at: data.created_at,
           updated_at: data.updated_at,
-        })
+        });
       }
     }
-    return connections
+    return connections;
   } catch (error) {
-    console.error("[v0] [DB] Failed to get user-created connections:", error)
-    return []
+    console.error("[v0] [DB] Failed to get connections:", error);
+    return [];
   }
 }
 
