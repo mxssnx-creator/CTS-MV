@@ -508,7 +508,7 @@ export async function initRedis(): Promise<void> {
 }
 
 /**
- * Initialize 6 default user-created connections (2 active for engine)
+ * Initialize 4 default user-created connections with predefined values
  * These are actual connections, not templates
  * Removes any predefined connections that may exist
  */
@@ -539,112 +539,80 @@ export async function initializeDefaultUserConnections(): Promise<void> {
     // Import predefined values for base exchanges
     const { CONNECTION_PREDEFINITIONS } = await import("@/lib/connection-predefinitions")
     
-    // Map to get predefined values by exchange
-    const predefinedByExchange: Record<string, any> = {}
+    // Map predefined connections by exchange for direct lookup
+    const predefinedMap: Record<string, any> = {}
     for (const pred of CONNECTION_PREDEFINITIONS) {
-      predefinedByExchange[pred.exchange] = pred
+      predefinedMap[pred.exchange] = pred
     }
     
-    // Create 4 base user-created connections with predefined exchange configs
-    const userConnections = [
-      // ACTIVE connections (2) - Bybit and BingX with predefined values
+    // Define the 4 base connections using predefined configs
+    const baseConnectionConfigs = [
       {
-        id: "conn-bybit-01",
-        name: "Bybit Live",
+        connId: "conn-bybit-01",
+        connName: "Bybit Live",
         exchange: "bybit",
-        api_key: "",
-        api_secret: "",
-        api_type: predefinedByExchange.bybit?.apiType || "unified",
-        connection_method: predefinedByExchange.bybit?.connectionMethod || "library",
-        connection_library: predefinedByExchange.bybit?.connectionLibrary || "native",
-        margin_type: predefinedByExchange.bybit?.marginType || "cross",
-        position_mode: predefinedByExchange.bybit?.positionMode || "hedge",
-        is_enabled: true,
-        is_enabled_dashboard: true,  // ACTIVE
-        is_predefined: false,
-        is_live_trade: false,
+        isActive: true,
       },
       {
-        id: "conn-bingx-01",
-        name: "BingX Live",
+        connId: "conn-bingx-01",
+        connName: "BingX Live",
         exchange: "bingx",
-        api_key: "",
-        api_secret: "",
-        api_type: predefinedByExchange.bingx?.apiType || "perpetual_futures",
-        connection_method: predefinedByExchange.bingx?.connectionMethod || "library",
-        connection_library: predefinedByExchange.bingx?.connectionLibrary || "native",
-        margin_type: predefinedByExchange.bingx?.marginType || "cross",
-        position_mode: predefinedByExchange.bingx?.positionMode || "hedge",
-        is_enabled: true,
-        is_enabled_dashboard: true,  // ACTIVE
-        is_predefined: false,
-        is_live_trade: false,
+        isActive: true,
       },
-      // INACTIVE connections (2) - Pionex and OrangeX with predefined values
       {
-        id: "conn-pionex-01",
-        name: "Pionex Trading",
+        connId: "conn-pionex-01",
+        connName: "Pionex Trading",
         exchange: "pionex",
-        api_key: "",
-        api_secret: "",
-        api_type: predefinedByExchange.pionex?.apiType || "perpetual_futures",
-        connection_method: predefinedByExchange.pionex?.connectionMethod || "library",
-        connection_library: predefinedByExchange.pionex?.connectionLibrary || "native",
-        margin_type: predefinedByExchange.pionex?.marginType || "cross",
-        position_mode: predefinedByExchange.pionex?.positionMode || "hedge",
-        is_enabled: false,
-        is_enabled_dashboard: false,
-        is_predefined: false,
-        is_live_trade: false,
+        isActive: false,
       },
       {
-        id: "conn-orangex-01",
-        name: "OrangeX Trading",
+        connId: "conn-orangex-01",
+        connName: "OrangeX Trading",
         exchange: "orangex",
-        api_key: "",
-        api_secret: "",
-        api_type: predefinedByExchange.orangex?.apiType || "perpetual_futures",
-        connection_method: predefinedByExchange.orangex?.connectionMethod || "library",
-        connection_library: predefinedByExchange.orangex?.connectionLibrary || "native",
-        margin_type: predefinedByExchange.orangex?.marginType || "cross",
-        position_mode: predefinedByExchange.orangex?.positionMode || "hedge",
-        is_enabled: false,
-        is_enabled_dashboard: false,
-        is_predefined: false,
-        is_live_trade: false,
+        isActive: false,
       },
     ]
     
-    for (const conn of userConnections) {
+    for (const config of baseConnectionConfigs) {
+      const predefined = predefinedMap[config.exchange]
+      if (!predefined) {
+        console.warn(`[v0] [Connections] Predefined config not found for ${config.exchange}, skipping`)
+        continue
+      }
+      
+      // Build connection data directly from predefined values
       const connData: Record<string, string> = {
-        id: conn.id,
-        name: conn.name,
-        exchange: conn.exchange,
-        api_key: conn.api_key || "",
-        api_secret: conn.api_secret || "",
-        api_passphrase: conn.api_passphrase || "",
-        api_type: conn.api_type || "spot",
-        connection_method: conn.connection_method || "library",
-        connection_library: conn.connection_library || "native",
-        margin_type: conn.margin_type || "cross",
-        position_mode: conn.position_mode || "hedge",
+        id: config.connId,
+        name: config.connName,
+        exchange: config.exchange,
+        // Use predefined values directly
+        api_type: String(predefined.apiType || ""),
+        connection_method: String(predefined.connectionMethod || "library"),
+        connection_library: String(predefined.connectionLibrary || "native"),
+        margin_type: String(predefined.marginType || "cross"),
+        position_mode: String(predefined.positionMode || "hedge"),
+        // Empty API credentials - user must enter their own
+        api_key: "",
+        api_secret: "",
+        api_passphrase: "",
         is_testnet: "0",
-        is_enabled: (conn.is_enabled === true || conn.is_enabled === "1") ? "1" : "0",
-        is_enabled_dashboard: (conn.is_enabled_dashboard === true || conn.is_enabled_dashboard === "1") ? "1" : "0",
-        is_live_trade: (conn.is_live_trade === true || conn.is_live_trade === "1") ? "1" : "0",
+        is_enabled: config.isActive ? "1" : "0",
+        is_enabled_dashboard: config.isActive ? "1" : "0",
+        is_live_trade: "0",
         is_predefined: "0", // These are user-created, not predefined
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }
       
-      await client.hset(`connection:${conn.id}`, connData)
-      await client.sadd("connections", conn.id)
+      // Store in Redis
+      await client.hset(`connection:${config.connId}`, connData)
+      await client.sadd("connections", config.connId)
       
-      const status = (conn.is_enabled_dashboard === true || conn.is_enabled_dashboard === "1") ? "ACTIVE" : "inactive"
-      console.log(`[v0] [Connections] Created: ${conn.exchange.toUpperCase()} - ${conn.name} [${conn.api_type}] [${status}]`)
+      const status = config.isActive ? "ACTIVE" : "inactive"
+      console.log(`[v0] [Connections] Created: ${config.exchange.toUpperCase()} - ${config.connName} [apiType=${predefined.apiType}] [${predefined.connectionMethod}] [${status}]`)
     }
     
-    console.log("[v0] [Connections] Successfully initialized 4 base user-created connections with predefined configs (2 active: Bybit, BingX | 2 inactive: Pionex, OrangeX)")
+    console.log("[v0] [Connections] Successfully initialized 4 base user-created connections (2 active: Bybit, BingX | 2 inactive: Pionex, OrangeX)")
   } catch (err) {
     console.warn("[v0] [Connections] Error initializing user connections:", err instanceof Error ? err.message : String(err))
   }
