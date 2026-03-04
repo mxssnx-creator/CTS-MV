@@ -5,7 +5,6 @@
 
 import { initRedis, createConnection, getAllConnections, saveMarketData, setSettings, getSettings, updateConnection, getRedisClient } from "@/lib/redis-db"
 import { runMigrations } from "@/lib/redis-migrations"
-import { getPredefinedAsExchangeConnections } from "@/lib/connection-predefinitions"
 import { initializeTradeEngineAutoStart } from "@/lib/trade-engine-auto-start"
 import { getGlobalTradeEngineCoordinator } from "@/lib/trade-engine"
 import { getDefaultSettings } from "@/lib/settings-storage"
@@ -79,58 +78,10 @@ async function seedMarketData() {
 }
 
 async function seedPredefinedConnections() {
-  console.log("[v0] [Seed] Starting connections seeding...")
-  try {
-    const predefined = getPredefinedAsExchangeConnections()
-    console.log(`[v0] [Seed] Got ${predefined.length} predefined connections from schema`)
-    
-    const existing = await getAllConnections() || []
-    console.log(`[v0] [Seed] Found ${existing.length} existing connections in database`)
-    
-    let seededCount = 0
-    
-    for (const conn of predefined) {
-      try {
-        const exists = existing.some((c: any) => c.id === conn.id)
-        if (!exists) {
-          // Ensure enabled connections are also active for trade engine auto-start
-          const connectionData = {
-            ...conn,
-            is_active: conn.is_enabled !== false, // Active if enabled
-          }
-          console.log(`[v0] [Seed] Creating: ${conn.name} (enabled: ${conn.is_enabled}, active: ${connectionData.is_active})`)
-          await createConnection(connectionData)
-          seededCount++
-        } else {
-          console.log(`[v0] [Seed] Skipping ${conn.name} - already exists`)
-        }
-      } catch (error) {
-        console.warn(`[v0] [Seed] ✗ Failed to seed ${conn.name}:`, error instanceof Error ? error.message : String(error))
-      }
-    }
-    console.log(`[v0] [Seed] Complete: ${seededCount} new connections created`)
-    
-    // Log summary of active connections for trade engine startup
-    const allConnections = await getAllConnections()
-    console.log(`[v0] [Seed] Retrieved ${allConnections.length} total connections from database`)
-    
-    // Log each connection's active state for debugging
-    allConnections.forEach((c: any, idx: number) => {
-      const activeStr = c.is_active === true ? "✓ ACTIVE" : "✗ INACTIVE"
-      console.log(`  [${idx + 1}] ${c.name}: ${activeStr} (enabled=${c.is_enabled}, active=${c.is_active}, type=${typeof c.is_active})`)
-    })
-    
-    // Filter for truly active connections (boolean true)
-    const activeConnections = allConnections.filter((c: any) => c.is_active === true)
-    console.log(`[v0] [Seed] Connection Summary: ${activeConnections.length}/${allConnections.length} active and ready for trade engines`)
-    
-    // Log the active ones
-    activeConnections.forEach((c: any) => {
-      console.log(`  → Ready: ${c.name} (${c.exchange})`)
-    })
-  } catch (error) {
-    console.error("[v0] [Seed] Failed to seed predefined connections:", error instanceof Error ? error.message : String(error))
-  }
+  console.log("[v0] [Seed] Connections seeding DISABLED - only 4 user-created base connections are used")
+  // Predefined connections are file-based templates only and should NOT be stored in Redis
+  // The 4 user-created connections (BingX, Bybit, Pionex, OrangeX) are initialized in redis-db.ts
+  return
 }
 
 async function initializeDefaultSettings() {
