@@ -546,30 +546,31 @@ export async function initializeDefaultUserConnections(): Promise<void> {
     }
     
     // Define the 4 base connections using predefined configs
+    // For live trading: BingX has real API keys, others need user credentials
     const baseConnectionConfigs = [
-      {
-        connId: "conn-bybit-01",
-        connName: "Bybit Live",
-        exchange: "bybit",
-        isActive: true,
-      },
       {
         connId: "conn-bingx-01",
         connName: "BingX Live",
         exchange: "bingx",
-        isActive: true,
+        isActive: true,  // BingX has real API keys - can be active immediately
+      },
+      {
+        connId: "conn-bybit-01",
+        connName: "Bybit Live",
+        exchange: "bybit",
+        isActive: false, // Needs user API keys
       },
       {
         connId: "conn-pionex-01",
         connName: "Pionex Trading",
         exchange: "pionex",
-        isActive: false,
+        isActive: false, // Test keys only
       },
       {
         connId: "conn-orangex-01",
         connName: "OrangeX Trading",
         exchange: "orangex",
-        isActive: false,
+        isActive: false, // Test keys only
       },
     ]
     
@@ -579,6 +580,19 @@ export async function initializeDefaultUserConnections(): Promise<void> {
         console.warn(`[v0] [Connections] Predefined config not found for ${config.exchange}, skipping`)
         continue
       }
+      
+      // Check if this connection has valid real API keys (not empty, not test keys)
+      const hasRealApiKey = predefined.apiKey && 
+        predefined.apiKey.length >= 20 && 
+        !predefined.apiKey.includes("00998877") &&
+        !predefined.apiKey.includes("PLACEHOLDER") &&
+        !predefined.apiKey.includes("your_")
+      
+      const hasRealSecret = predefined.apiSecret && 
+        predefined.apiSecret.length >= 10 && 
+        !predefined.apiSecret.includes("00998877") &&
+        !predefined.apiSecret.includes("PLACEHOLDER") &&
+        !predefined.apiSecret.includes("your_")
       
       // Build connection data directly from predefined values, including real API keys
       const connData: Record<string, string> = {
@@ -592,16 +606,17 @@ export async function initializeDefaultUserConnections(): Promise<void> {
         margin_type: String(predefined.marginType || "cross"),
         position_mode: String(predefined.positionMode || "hedge"),
         // Use real API credentials from predefined connections
-        api_key: predefined.apiKey || "",
-        api_secret: predefined.apiSecret || "",
+        api_key: hasRealApiKey ? (predefined.apiKey || "") : "",
+        api_secret: hasRealSecret ? (predefined.apiSecret || "") : "",
         api_passphrase: "",
         is_testnet: "0",
-        is_enabled: config.isActive ? "1" : "0",
-        is_enabled_dashboard: config.isActive ? "1" : "0",
+        // Only enable dashboard for connections with real API keys
+        is_enabled: (hasRealApiKey && hasRealSecret) ? "1" : "0",
+        is_enabled_dashboard: (hasRealApiKey && hasRealSecret) ? "1" : "0",
         is_live_trade: "0",
         is_predefined: "0", // These are user-created, not predefined
-        is_inserted: "1", // Mark as inserted/configured by user so API keys are used
-        is_active: config.isActive ? "1" : "0",
+        is_inserted: "1", // Mark as inserted/configured
+        is_active: (hasRealApiKey && hasRealSecret) ? "1" : "0",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }
@@ -610,11 +625,12 @@ export async function initializeDefaultUserConnections(): Promise<void> {
       await client.hset(`connection:${config.connId}`, connData)
       await client.sadd("connections", config.connId)
       
-      const status = config.isActive ? "ACTIVE" : "inactive"
-      console.log(`[v0] [Connections] Created: ${config.exchange.toUpperCase()} - ${config.connName} [apiType=${predefined.apiType}] [${predefined.connectionMethod}] [${status}]`)
+      const keyStatus = (hasRealApiKey && hasRealSecret) ? "with REAL keys" : "placeholder (user entry needed)"
+      const status = (hasRealApiKey && hasRealSecret) ? "ACTIVE" : "inactive"
+      console.log(`[v0] [Connections] Created: ${config.exchange.toUpperCase()} - ${config.connName} [apiType=${predefined.apiType}] [${keyStatus}] [${status}]`)
     }
     
-    console.log("[v0] [Connections] Successfully initialized 4 base user-created connections (2 active: Bybit, BingX | 2 inactive: Pionex, OrangeX)")
+    console.log("[v0] [Connections] Successfully initialized 4 base user-created connections (BingX ACTIVE with real keys | Bybit/Pionex/OrangeX inactive - awaiting user credentials)")
   } catch (err) {
     console.warn("[v0] [Connections] Error initializing user connections:", err instanceof Error ? err.message : String(err))
   }
