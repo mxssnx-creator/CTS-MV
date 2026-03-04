@@ -534,18 +534,31 @@ export async function initializeDefaultUserConnections(): Promise<void> {
       }
     }
     
-    console.log("[v0] [Connections] Initializing 6 default user-created connections...")
+    console.log("[v0] [Connections] Initializing 6 default user-created connections with predefined values...")
     
-    // Create 6 user-created connections
+    // Import predefined values for base exchanges
+    const { CONNECTION_PREDEFINITIONS } = await import("@/lib/connection-predefinitions")
+    
+    // Map to get predefined values by exchange
+    const predefinedByExchange: Record<string, any> = {}
+    for (const pred of CONNECTION_PREDEFINITIONS) {
+      predefinedByExchange[pred.exchange] = pred
+    }
+    
+    // Create 6 user-created connections with predefined exchange configs
     const userConnections = [
-      // ACTIVE connections (2)
+      // ACTIVE connections (2) - Use predefined values from Bybit and BingX
       {
         id: "conn-bingx-01",
         name: "BingX Live",
         exchange: "bingx",
         api_key: "",
         api_secret: "",
-        api_type: "perpetual_futures",
+        api_type: predefinedByExchange.bingx?.apiType || "perpetual_futures",
+        connection_method: predefinedByExchange.bingx?.connectionMethod || "library",
+        connection_library: predefinedByExchange.bingx?.connectionLibrary || "native",
+        margin_type: predefinedByExchange.bingx?.marginType || "cross",
+        position_mode: predefinedByExchange.bingx?.positionMode || "hedge",
         is_enabled: true,
         is_enabled_dashboard: true,  // ACTIVE
         is_predefined: false,
@@ -557,13 +570,17 @@ export async function initializeDefaultUserConnections(): Promise<void> {
         exchange: "bybit",
         api_key: "",
         api_secret: "",
-        api_type: "perpetual_futures",
+        api_type: predefinedByExchange.bybit?.apiType || "unified",
+        connection_method: predefinedByExchange.bybit?.connectionMethod || "library",
+        connection_library: predefinedByExchange.bybit?.connectionLibrary || "native",
+        margin_type: predefinedByExchange.bybit?.marginType || "cross",
+        position_mode: predefinedByExchange.bybit?.positionMode || "hedge",
         is_enabled: true,
         is_enabled_dashboard: true,  // ACTIVE
         is_predefined: false,
         is_live_trade: false,
       },
-      // INACTIVE connections (4)
+      // INACTIVE connections (4) - Use OKX, Binance, Pionex, OrangeX with predefined values
       {
         id: "conn-okx-01",
         name: "OKX Trading",
@@ -571,7 +588,11 @@ export async function initializeDefaultUserConnections(): Promise<void> {
         api_key: "",
         api_secret: "",
         api_passphrase: "",
-        api_type: "spot",
+        api_type: predefinedByExchange.okx?.apiType || "unified",
+        connection_method: predefinedByExchange.okx?.connectionMethod || "library",
+        connection_library: predefinedByExchange.okx?.connectionLibrary || "native",
+        margin_type: predefinedByExchange.okx?.marginType || "cross",
+        position_mode: predefinedByExchange.okx?.positionMode || "hedge",
         is_enabled: false,
         is_enabled_dashboard: false,
         is_predefined: false,
@@ -583,7 +604,11 @@ export async function initializeDefaultUserConnections(): Promise<void> {
         exchange: "binance",
         api_key: "",
         api_secret: "",
-        api_type: "spot",
+        api_type: predefinedByExchange.binance?.apiType || "perpetual_futures",
+        connection_method: predefinedByExchange.binance?.connectionMethod || "library",
+        connection_library: predefinedByExchange.binance?.connectionLibrary || "native",
+        margin_type: predefinedByExchange.binance?.marginType || "cross",
+        position_mode: predefinedByExchange.binance?.positionMode || "hedge",
         is_enabled: false,
         is_enabled_dashboard: false,
         is_predefined: false,
@@ -595,7 +620,11 @@ export async function initializeDefaultUserConnections(): Promise<void> {
         exchange: "pionex",
         api_key: "",
         api_secret: "",
-        api_type: "spot",
+        api_type: predefinedByExchange.pionex?.apiType || "perpetual_futures",
+        connection_method: predefinedByExchange.pionex?.connectionMethod || "library",
+        connection_library: predefinedByExchange.pionex?.connectionLibrary || "native",
+        margin_type: predefinedByExchange.pionex?.marginType || "cross",
+        position_mode: predefinedByExchange.pionex?.positionMode || "hedge",
         is_enabled: false,
         is_enabled_dashboard: false,
         is_predefined: false,
@@ -607,7 +636,11 @@ export async function initializeDefaultUserConnections(): Promise<void> {
         exchange: "orangex",
         api_key: "",
         api_secret: "",
-        api_type: "spot",
+        api_type: predefinedByExchange.orangex?.apiType || "perpetual_futures",
+        connection_method: predefinedByExchange.orangex?.connectionMethod || "library",
+        connection_library: predefinedByExchange.orangex?.connectionLibrary || "native",
+        margin_type: predefinedByExchange.orangex?.marginType || "cross",
+        position_mode: predefinedByExchange.orangex?.positionMode || "hedge",
         is_enabled: false,
         is_enabled_dashboard: false,
         is_predefined: false,
@@ -624,10 +657,10 @@ export async function initializeDefaultUserConnections(): Promise<void> {
         api_secret: conn.api_secret || "",
         api_passphrase: conn.api_passphrase || "",
         api_type: conn.api_type || "spot",
-        connection_method: "rest",
-        connection_library: "ccxt",
-        margin_type: "isolated",
-        position_mode: "one-way",
+        connection_method: conn.connection_method || "library",
+        connection_library: conn.connection_library || "native",
+        margin_type: conn.margin_type || "cross",
+        position_mode: conn.position_mode || "hedge",
         is_testnet: "0",
         is_enabled: (conn.is_enabled === true || conn.is_enabled === "1") ? "1" : "0",
         is_enabled_dashboard: (conn.is_enabled_dashboard === true || conn.is_enabled_dashboard === "1") ? "1" : "0",
@@ -641,10 +674,10 @@ export async function initializeDefaultUserConnections(): Promise<void> {
       await client.sadd("connections", conn.id)
       
       const status = (conn.is_enabled_dashboard === true || conn.is_enabled_dashboard === "1") ? "ACTIVE" : "inactive"
-      console.log(`[v0] [Connections] Created: ${conn.exchange.toUpperCase()} - ${conn.name} [${status}]`)
+      console.log(`[v0] [Connections] Created: ${conn.exchange.toUpperCase()} - ${conn.name} [${conn.api_type}] [${status}]`)
     }
     
-    console.log("[v0] [Connections] Successfully initialized 6 user-created connections (2 active, 4 inactive)")
+    console.log("[v0] [Connections] Successfully initialized 6 user-created connections with predefined configs (2 active, 4 inactive)")
   } catch (err) {
     console.warn("[v0] [Connections] Error initializing user connections:", err instanceof Error ? err.message : String(err))
   }
