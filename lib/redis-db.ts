@@ -515,124 +515,103 @@ export async function initRedis(): Promise<void> {
 export async function initializeDefaultUserConnections(): Promise<void> {
   const client = getClient()
   try {
+    // Always clear existing connections to ensure clean state
     const existingIds = await client.smembers("connections")
-    
-    // Check if we have ONLY the 4 expected user connections (4 base exchanges)
-    const expectedUserConnIds = ["conn-bybit-01", "conn-bingx-01", "conn-pionex-01", "conn-orangex-01"]
-    
-    if (existingIds && existingIds.length === 4 && expectedUserConnIds.every(id => existingIds.includes(id))) {
-      console.log(`[v0] [Connections] User connections already properly initialized: ${existingIds.length} connections`)
-      return
-    }
-    
-    // If we have connections but they're NOT our 4, clear them (probably predefined from old run)
     if (existingIds && existingIds.length > 0) {
-      console.log(`[v0] [Connections] Clearing ${existingIds.length} existing connections (not our 4 base user-created ones)`)
+      console.log(`[v0] [Connections] Clearing ${existingIds.length} existing connections for fresh start`)
       for (const id of existingIds) {
         await client.del(`connection:${id}`)
         await client.srem("connections", id)
       }
     }
     
-    console.log("[v0] [Connections] Initializing 4 default base user-created connections with predefined values...")
+    console.log("[v0] [Connections] Initializing default connections with real API keys...")
     
     // Import predefined values for base exchanges
     const { CONNECTION_PREDEFINITIONS } = await import("@/lib/connection-predefinitions")
     
-    // Map predefined connections by exchange for direct lookup
-    const predefinedMap: Record<string, any> = {}
-    for (const pred of CONNECTION_PREDEFINITIONS) {
-      predefinedMap[pred.exchange] = pred
+    // Find BingX predefined connection with real API keys
+    const bingxPredefined = CONNECTION_PREDEFINITIONS.find((p: any) => p.exchange === "bingx")
+    
+    if (!bingxPredefined) {
+      console.error("[v0] [Connections] BingX predefined connection not found!")
+      return
     }
     
-    // Define the 4 base connections using predefined configs
-    // For live trading: BingX has real API keys, others need user credentials
-    const baseConnectionConfigs = [
-      {
-        connId: "conn-bingx-01",
-        connName: "BingX Live",
-        exchange: "bingx",
-        isActive: true,  // BingX has real API keys - can be active immediately
-      },
-      {
-        connId: "conn-bybit-01",
-        connName: "Bybit Live",
-        exchange: "bybit",
-        isActive: false, // Needs user API keys
-      },
-      {
-        connId: "conn-pionex-01",
-        connName: "Pionex Trading",
-        exchange: "pionex",
-        isActive: false, // Test keys only
-      },
-      {
-        connId: "conn-orangex-01",
-        connName: "OrangeX Trading",
-        exchange: "orangex",
-        isActive: false, // Test keys only
-      },
+    console.log(`[v0] [Connections] Found BingX with apiKey length: ${bingxPredefined.apiKey?.length || 0}`)
+    
+    // Create BingX connection with REAL API keys from predefined
+    const bingxData: Record<string, string> = {
+      id: "conn-bingx-01",
+      name: "BingX Live",
+      exchange: "bingx",
+      api_type: bingxPredefined.apiType,
+      connection_method: bingxPredefined.connectionMethod,
+      connection_library: bingxPredefined.connectionLibrary,
+      margin_type: bingxPredefined.marginType,
+      position_mode: bingxPredefined.positionMode,
+      api_key: bingxPredefined.apiKey,
+      api_secret: bingxPredefined.apiSecret,
+      api_passphrase: "",
+      is_testnet: "0",
+      is_enabled: "1",
+      is_enabled_dashboard: "1",
+      is_live_trade: "0",
+      is_predefined: "0",
+      is_inserted: "1",
+      is_active: "1",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+    
+    await client.hset("connection:conn-bingx-01", bingxData)
+    await client.sadd("connections", "conn-bingx-01")
+    
+    console.log(`[v0] [Connections] ✅ Created BingX Live [${bingxPredefined.apiType}] [ACTIVE with REAL keys]`)
+    console.log(`[v0] [Connections] BingX API Key stored: ${bingxData.api_key.substring(0, 20)}...`)
+    
+    // Create 3 inactive placeholder connections for other exchanges
+    const otherExchanges = [
+      { id: "conn-bybit-01", name: "Bybit Live", exchange: "bybit" },
+      { id: "conn-pionex-01", name: "Pionex Trading", exchange: "pionex" },
+      { id: "conn-orangex-01", name: "OrangeX Trading", exchange: "orangex" },
     ]
     
-    for (const config of baseConnectionConfigs) {
-      const predefined = predefinedMap[config.exchange]
-      if (!predefined) {
-        console.warn(`[v0] [Connections] Predefined config not found for ${config.exchange}, skipping`)
-        continue
-      }
+    for (const ex of otherExchanges) {
+      const exPredefined = CONNECTION_PREDEFINITIONS.find((p: any) => p.exchange === ex.exchange)
+      if (!exPredefined) continue
       
-      // Check if this connection has valid real API keys (not empty, not test keys)
-      const hasRealApiKey = predefined.apiKey && 
-        predefined.apiKey.length >= 20 && 
-        !predefined.apiKey.includes("00998877") &&
-        !predefined.apiKey.includes("PLACEHOLDER") &&
-        !predefined.apiKey.includes("your_")
-      
-      const hasRealSecret = predefined.apiSecret && 
-        predefined.apiSecret.length >= 10 && 
-        !predefined.apiSecret.includes("00998877") &&
-        !predefined.apiSecret.includes("PLACEHOLDER") &&
-        !predefined.apiSecret.includes("your_")
-      
-      // Build connection data directly from predefined values, including real API keys
-      const connData: Record<string, string> = {
-        id: config.connId,
-        name: config.connName,
-        exchange: config.exchange,
-        // Use predefined values directly
-        api_type: String(predefined.apiType || ""),
-        connection_method: String(predefined.connectionMethod || "library"),
-        connection_library: String(predefined.connectionLibrary || "native"),
-        margin_type: String(predefined.marginType || "cross"),
-        position_mode: String(predefined.positionMode || "hedge"),
-        // Use real API credentials from predefined connections
-        api_key: hasRealApiKey ? (predefined.apiKey || "") : "",
-        api_secret: hasRealSecret ? (predefined.apiSecret || "") : "",
+      const exData: Record<string, string> = {
+        id: ex.id,
+        name: ex.name,
+        exchange: ex.exchange,
+        api_type: exPredefined.apiType,
+        connection_method: exPredefined.connectionMethod,
+        connection_library: exPredefined.connectionLibrary,
+        margin_type: exPredefined.marginType,
+        position_mode: exPredefined.positionMode,
+        api_key: "",
+        api_secret: "",
         api_passphrase: "",
         is_testnet: "0",
-        // Only enable dashboard for connections with real API keys
-        is_enabled: (hasRealApiKey && hasRealSecret) ? "1" : "0",
-        is_enabled_dashboard: (hasRealApiKey && hasRealSecret) ? "1" : "0",
+        is_enabled: "0",
+        is_enabled_dashboard: "0",
         is_live_trade: "0",
-        is_predefined: "0", // These are user-created, not predefined
-        is_inserted: "1", // Mark as inserted/configured
-        is_active: (hasRealApiKey && hasRealSecret) ? "1" : "0",
+        is_predefined: "0",
+        is_inserted: "0", // Not inserted - user must add credentials
+        is_active: "0",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }
       
-      // Store in Redis
-      await client.hset(`connection:${config.connId}`, connData)
-      await client.sadd("connections", config.connId)
-      
-      const keyStatus = (hasRealApiKey && hasRealSecret) ? "with REAL keys" : "placeholder (user entry needed)"
-      const status = (hasRealApiKey && hasRealSecret) ? "ACTIVE" : "inactive"
-      console.log(`[v0] [Connections] Created: ${config.exchange.toUpperCase()} - ${config.connName} [apiType=${predefined.apiType}] [${keyStatus}] [${status}]`)
+      await client.hset(`connection:${ex.id}`, exData)
+      await client.sadd("connections", ex.id)
+      console.log(`[v0] [Connections] Created ${ex.exchange.toUpperCase()} - ${ex.name} [inactive - awaiting credentials]`)
     }
     
-    console.log("[v0] [Connections] Successfully initialized 4 base user-created connections (BingX ACTIVE with real keys | Bybit/Pionex/OrangeX inactive - awaiting user credentials)")
+    console.log("[v0] [Connections] ✅ Successfully initialized: 1 ACTIVE (BingX with real keys) + 3 inactive placeholders")
   } catch (err) {
-    console.warn("[v0] [Connections] Error initializing user connections:", err instanceof Error ? err.message : String(err))
+    console.error("[v0] [Connections] Error initializing user connections:", err instanceof Error ? err.message : String(err))
   }
 }
 
