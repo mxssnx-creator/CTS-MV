@@ -600,6 +600,8 @@ export async function initializeDefaultUserConnections(): Promise<void> {
         is_enabled_dashboard: config.isActive ? "1" : "0",
         is_live_trade: "0",
         is_predefined: "0", // These are user-created, not predefined
+        is_inserted: "1", // Mark as inserted/configured by user so API keys are used
+        is_active: config.isActive ? "1" : "0",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }
