@@ -517,24 +517,24 @@ export async function initializeDefaultUserConnections(): Promise<void> {
   try {
     const existingIds = await client.smembers("connections")
     
-    // Check if we have ONLY the 6 expected user connections
-    const expectedUserConnIds = ["conn-bingx-01", "conn-bybit-01", "conn-okx-01", "conn-binance-01", "conn-pionex-01", "conn-orangex-01"]
+    // Check if we have ONLY the 4 expected user connections (4 base exchanges)
+    const expectedUserConnIds = ["conn-bybit-01", "conn-bingx-01", "conn-pionex-01", "conn-orangex-01"]
     
-    if (existingIds && existingIds.length === 6 && expectedUserConnIds.every(id => existingIds.includes(id))) {
+    if (existingIds && existingIds.length === 4 && expectedUserConnIds.every(id => existingIds.includes(id))) {
       console.log(`[v0] [Connections] User connections already properly initialized: ${existingIds.length} connections`)
       return
     }
     
-    // If we have connections but they're NOT our 6, clear them (probably predefined from old run)
+    // If we have connections but they're NOT our 4, clear them (probably predefined from old run)
     if (existingIds && existingIds.length > 0) {
-      console.log(`[v0] [Connections] Clearing ${existingIds.length} existing connections (not our 6 user-created ones)`)
+      console.log(`[v0] [Connections] Clearing ${existingIds.length} existing connections (not our 4 base user-created ones)`)
       for (const id of existingIds) {
         await client.del(`connection:${id}`)
         await client.srem("connections", id)
       }
     }
     
-    console.log("[v0] [Connections] Initializing 6 default user-created connections with predefined values...")
+    console.log("[v0] [Connections] Initializing 4 default base user-created connections with predefined values...")
     
     // Import predefined values for base exchanges
     const { CONNECTION_PREDEFINITIONS } = await import("@/lib/connection-predefinitions")
@@ -545,25 +545,9 @@ export async function initializeDefaultUserConnections(): Promise<void> {
       predefinedByExchange[pred.exchange] = pred
     }
     
-    // Create 6 user-created connections with predefined exchange configs
+    // Create 4 base user-created connections with predefined exchange configs
     const userConnections = [
-      // ACTIVE connections (2) - Use predefined values from Bybit and BingX
-      {
-        id: "conn-bingx-01",
-        name: "BingX Live",
-        exchange: "bingx",
-        api_key: "",
-        api_secret: "",
-        api_type: predefinedByExchange.bingx?.apiType || "perpetual_futures",
-        connection_method: predefinedByExchange.bingx?.connectionMethod || "library",
-        connection_library: predefinedByExchange.bingx?.connectionLibrary || "native",
-        margin_type: predefinedByExchange.bingx?.marginType || "cross",
-        position_mode: predefinedByExchange.bingx?.positionMode || "hedge",
-        is_enabled: true,
-        is_enabled_dashboard: true,  // ACTIVE
-        is_predefined: false,
-        is_live_trade: false,
-      },
+      // ACTIVE connections (2) - Bybit and BingX with predefined values
       {
         id: "conn-bybit-01",
         name: "Bybit Live",
@@ -580,40 +564,23 @@ export async function initializeDefaultUserConnections(): Promise<void> {
         is_predefined: false,
         is_live_trade: false,
       },
-      // INACTIVE connections (4) - Use OKX, Binance, Pionex, OrangeX with predefined values
       {
-        id: "conn-okx-01",
-        name: "OKX Trading",
-        exchange: "okx",
+        id: "conn-bingx-01",
+        name: "BingX Live",
+        exchange: "bingx",
         api_key: "",
         api_secret: "",
-        api_passphrase: "",
-        api_type: predefinedByExchange.okx?.apiType || "unified",
-        connection_method: predefinedByExchange.okx?.connectionMethod || "library",
-        connection_library: predefinedByExchange.okx?.connectionLibrary || "native",
-        margin_type: predefinedByExchange.okx?.marginType || "cross",
-        position_mode: predefinedByExchange.okx?.positionMode || "hedge",
-        is_enabled: false,
-        is_enabled_dashboard: false,
+        api_type: predefinedByExchange.bingx?.apiType || "perpetual_futures",
+        connection_method: predefinedByExchange.bingx?.connectionMethod || "library",
+        connection_library: predefinedByExchange.bingx?.connectionLibrary || "native",
+        margin_type: predefinedByExchange.bingx?.marginType || "cross",
+        position_mode: predefinedByExchange.bingx?.positionMode || "hedge",
+        is_enabled: true,
+        is_enabled_dashboard: true,  // ACTIVE
         is_predefined: false,
         is_live_trade: false,
       },
-      {
-        id: "conn-binance-01",
-        name: "Binance Spot",
-        exchange: "binance",
-        api_key: "",
-        api_secret: "",
-        api_type: predefinedByExchange.binance?.apiType || "perpetual_futures",
-        connection_method: predefinedByExchange.binance?.connectionMethod || "library",
-        connection_library: predefinedByExchange.binance?.connectionLibrary || "native",
-        margin_type: predefinedByExchange.binance?.marginType || "cross",
-        position_mode: predefinedByExchange.binance?.positionMode || "hedge",
-        is_enabled: false,
-        is_enabled_dashboard: false,
-        is_predefined: false,
-        is_live_trade: false,
-      },
+      // INACTIVE connections (2) - Pionex and OrangeX with predefined values
       {
         id: "conn-pionex-01",
         name: "Pionex Trading",
@@ -677,7 +644,7 @@ export async function initializeDefaultUserConnections(): Promise<void> {
       console.log(`[v0] [Connections] Created: ${conn.exchange.toUpperCase()} - ${conn.name} [${conn.api_type}] [${status}]`)
     }
     
-    console.log("[v0] [Connections] Successfully initialized 6 user-created connections with predefined configs (2 active, 4 inactive)")
+    console.log("[v0] [Connections] Successfully initialized 4 base user-created connections with predefined configs (2 active: Bybit, BingX | 2 inactive: Pionex, OrangeX)")
   } catch (err) {
     console.warn("[v0] [Connections] Error initializing user connections:", err instanceof Error ? err.message : String(err))
   }
