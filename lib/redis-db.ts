@@ -580,7 +580,7 @@ export async function initializeDefaultUserConnections(): Promise<void> {
         continue
       }
       
-      // Build connection data directly from predefined values
+      // Build connection data directly from predefined values, including real API keys
       const connData: Record<string, string> = {
         id: config.connId,
         name: config.connName,
@@ -591,9 +591,9 @@ export async function initializeDefaultUserConnections(): Promise<void> {
         connection_library: String(predefined.connectionLibrary || "native"),
         margin_type: String(predefined.marginType || "cross"),
         position_mode: String(predefined.positionMode || "hedge"),
-        // Empty API credentials - user must enter their own
-        api_key: "",
-        api_secret: "",
+        // Use real API credentials from predefined connections
+        api_key: predefined.apiKey || "",
+        api_secret: predefined.apiSecret || "",
         api_passphrase: "",
         is_testnet: "0",
         is_enabled: config.isActive ? "1" : "0",
