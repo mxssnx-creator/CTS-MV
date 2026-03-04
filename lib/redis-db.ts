@@ -538,20 +538,24 @@ export async function initializeDefaultUserConnections(): Promise<void> {
       return
     }
     
-    console.log(`[v0] [Connections] Found BingX with apiKey length: ${bingxPredefined.apiKey?.length || 0}`)
+    console.log(`[v0] [Connections] Found BingX with apiKey length: ${bingxPredefined.apiKey?.length || 0}, apiSecret length: ${bingxPredefined.apiSecret?.length || 0}`)
+    
+    if (!bingxPredefined.apiKey || bingxPredefined.apiKey.length < 16) {
+      console.warn("[v0] [Connections] BingX API key is empty or too short!")
+    }
     
     // Create BingX connection with REAL API keys from predefined
     const bingxData: Record<string, string> = {
       id: "conn-bingx-01",
       name: "BingX Live",
       exchange: "bingx",
-      api_type: bingxPredefined.apiType,
-      connection_method: bingxPredefined.connectionMethod,
-      connection_library: bingxPredefined.connectionLibrary,
-      margin_type: bingxPredefined.marginType,
-      position_mode: bingxPredefined.positionMode,
-      api_key: bingxPredefined.apiKey,
-      api_secret: bingxPredefined.apiSecret,
+      api_type: String(bingxPredefined.apiType),
+      connection_method: String(bingxPredefined.connectionMethod),
+      connection_library: String(bingxPredefined.connectionLibrary),
+      margin_type: String(bingxPredefined.marginType),
+      position_mode: String(bingxPredefined.positionMode),
+      api_key: String(bingxPredefined.apiKey || ""),
+      api_secret: String(bingxPredefined.apiSecret || ""),
       api_passphrase: "",
       is_testnet: "0",
       is_enabled: "1",
@@ -564,11 +568,15 @@ export async function initializeDefaultUserConnections(): Promise<void> {
       updated_at: new Date().toISOString(),
     }
     
+    console.log(`[v0] [Connections] BingX data prepared - api_key length: ${bingxData.api_key.length}, api_secret length: ${bingxData.api_secret.length}`)
+    
     await client.hset("connection:conn-bingx-01", bingxData)
     await client.sadd("connections", "conn-bingx-01")
     
+    // Verify it was stored
+    const stored = await client.hgetall("connection:conn-bingx-01")
+    console.log(`[v0] [Connections] ✅ Stored BingX - api_key in Redis: ${stored.api_key?.substring(0, 20) || "MISSING"}...`)
     console.log(`[v0] [Connections] ✅ Created BingX Live [${bingxPredefined.apiType}] [ACTIVE with REAL keys]`)
-    console.log(`[v0] [Connections] BingX API Key stored: ${bingxData.api_key.substring(0, 20)}...`)
     
     // Create 3 inactive placeholder connections for other exchanges
     const otherExchanges = [
