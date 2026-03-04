@@ -486,6 +486,8 @@ function flattenForHmset(obj: Record<string, string>): string[] {
 
 // ========== Init / Client ==========
 
+let connectionsInitialized = false
+
 export async function initRedis(): Promise<void> {
   if (!redisInstance) {
     redisInstance = new InlineLocalRedis()
@@ -497,12 +499,12 @@ export async function initRedis(): Promise<void> {
     if (pong === "PONG") {
       console.log("[v0] [Redis] Connection test successful")
     }
-    
-    // NOTE: Predefined connections (templates from file storage) are NOT migrated to Redis
-    // They are informational only and should NOT be used by the trade engine
-    // Only user-created connections should be stored in Redis for the engine to use
-    
-    // Initialize 6 user-created connections if they don't exist
+  }
+  
+  // ALWAYS initialize connections on every startup to ensure clean 4-connection state
+  // This clears any old predefined connections from Redis snapshot
+  if (!connectionsInitialized) {
+    connectionsInitialized = true
     await initializeDefaultUserConnections()
   }
 }
