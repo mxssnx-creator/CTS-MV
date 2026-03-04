@@ -60,46 +60,15 @@ export async function GET(request: NextRequest) {
       connections = await getAllConnections()
     }
 
-    // Auto-initialize predefined connections if none exist
+    // Auto-initialize ONLY user-created connections (not predefined templates)
+    // Predefined connections are informational only and should NOT be stored in Redis
     if (connections.length === 0) {
-      console.log("[v0] [API] No connections found, auto-initializing predefined connections...")
+      console.log("[v0] [API] No connections found in Redis, using file-based predefined templates as information only")
+      console.log("[v0] [API] User must create actual connections from templates - none auto-initialized")
       
-      for (const predefined of CONNECTION_PREDEFINITIONS) {
-        try {
-          const shouldBeOnDashboard = DASHBOARD_AUTO_INSERTED.includes(predefined.exchange)
-          const connection = {
-            id: predefined.id,
-            name: predefined.name,
-            exchange: predefined.exchange,
-            api_type: predefined.apiType || "perpetual_futures",
-            connection_method: predefined.connectionMethod || "rest",
-            connection_library: predefined.connectionLibrary || "native",
-            margin_type: predefined.marginType || "cross",
-            position_mode: predefined.positionMode || "hedge",
-            is_testnet: false,
-            is_enabled: false, // Disabled by default (user must enable in Settings)
-            is_enabled_dashboard: false, // Not active by default
-            is_dashboard_inserted: shouldBeOnDashboard ? "1" : "0", // Only bybit/bingx on dashboard
-            is_predefined: true,
-            is_live_trade: false, // Main engine disabled by default
-            is_preset_trade: false, // Preset engine disabled by default
-            api_key: predefined.apiKey || "",
-            api_secret: predefined.apiSecret || "",
-            api_passphrase: "",
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          }
-          
-          await createConnection(connection)
-          console.log(`[v0] [API] Auto-created predefined connection: ${predefined.name} (dashboard_inserted=${shouldBeOnDashboard})`)
-        } catch (error) {
-          console.error(`[v0] [API] Failed to auto-create ${predefined.name}:`, error)
-        }
-      }
-      
-      // Reload connections after initialization
-      connections = await getAllConnections()
-      console.log("[v0] [API] Predefined connections initialized, total:", connections.length)
+      // DO NOT auto-create predefined connections
+      // They remain as file-based templates only
+      // The initializeDefaultUserConnections() in redis-db.ts handles creating 6 user-created connections
     }
 
     if (exchange) {
