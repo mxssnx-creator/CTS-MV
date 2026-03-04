@@ -510,14 +510,28 @@ export async function initRedis(): Promise<void> {
 /**
  * Initialize 6 default user-created connections (2 active for engine)
  * These are actual connections, not templates
+ * Removes any predefined connections that may exist
  */
 export async function initializeDefaultUserConnections(): Promise<void> {
   const client = getClient()
   try {
     const existingIds = await client.smembers("connections")
-    if (existingIds && existingIds.length > 0) {
-      console.log(`[v0] [Connections] User connections already initialized: ${existingIds.length} connections`)
+    
+    // Check if we have ONLY the 6 expected user connections
+    const expectedUserConnIds = ["conn-bingx-01", "conn-bybit-01", "conn-okx-01", "conn-binance-01", "conn-pionex-01", "conn-orangex-01"]
+    
+    if (existingIds && existingIds.length === 6 && expectedUserConnIds.every(id => existingIds.includes(id))) {
+      console.log(`[v0] [Connections] User connections already properly initialized: ${existingIds.length} connections`)
       return
+    }
+    
+    // If we have connections but they're NOT our 6, clear them (probably predefined from old run)
+    if (existingIds && existingIds.length > 0) {
+      console.log(`[v0] [Connections] Clearing ${existingIds.length} existing connections (not our 6 user-created ones)`)
+      for (const id of existingIds) {
+        await client.del(`connection:${id}`)
+        await client.srem("connections", id)
+      }
     }
     
     console.log("[v0] [Connections] Initializing 6 default user-created connections...")
