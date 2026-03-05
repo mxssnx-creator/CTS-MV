@@ -17,19 +17,21 @@ export async function GET() {
     await initRedis()
     const allConnections = await getAllConnections()
     
-    // Find BingX connection
+    // Find BingX connection with credentials (is_inserted="1")
     const bingx = allConnections.find((c: any) => {
       const exch = (c.exchange || "").toLowerCase()
-      return exch === "bingx" && (c.is_enabled || c.is_enabled === "1")
+      const hasCredentials = c.is_inserted === "1" || c.is_inserted === true
+      const isPredefined = c.is_predefined === "1" || c.is_predefined === true
+      return exch === "bingx" && hasCredentials && !isPredefined
     })
     
     if (!bingx) {
-      console.log("[v0] [TestBingX] BingX connection not found or not enabled in Settings")
+      console.log("[v0] [TestBingX] BingX connection not found or no credentials")
       return NextResponse.json(
         { 
           success: false,
-          error: "BingX connection not found or not enabled",
-          message: "Enable BingX in Settings first"
+          error: "BingX connection not found or no credentials",
+          message: "Add BingX credentials in Settings first"
         },
         { status: 404 }
       )
