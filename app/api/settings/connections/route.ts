@@ -7,7 +7,7 @@ import { API_VERSIONS } from "@/lib/system-version"
 export const runtime = "nodejs"
 
 const API_VERSION = API_VERSIONS.connections
-const DASHBOARD_AUTO_INSERTED = ["bybit", "bingx"]
+const ACTIVE_AUTO_INSERTED = ["bybit", "bingx"]
 
 export async function GET(request: NextRequest) {
   try {
@@ -23,51 +23,51 @@ export async function GET(request: NextRequest) {
     const clientVersion = searchParams.get("v")
     const exchange = searchParams.get("exchange")
     const enabled = searchParams.get("enabled")
-    const dashboard = searchParams.get("dashboard")
+    const active = searchParams.get("active")
 
     console.log(`[v0] [API] [Connections] ${API_VERSION} - Client version: ${clientVersion}`)
 
     await initRedis()
     let connections = await getAllConnections()
 
-    // CRITICAL MIGRATION: Enforce ONLY bybit and bingx on dashboard
-    // This must run on EVERY request to ensure consistency
+    // CRITICAL MIGRATION: Enforce ONLY bybit and bingx as active-insertable
+    // This must run on every request to ensure consistency
     console.log(`[v0] [API] [Connections] ${API_VERSION}: Checking ${connections.length} connections for migration...`)
     
-    // Only update connections if dashboard_inserted flags are incorrect
+    // Only update connections if active_inserted flags are incorrect
     // Don't update on every request - that causes performance issues and potential duplicates
     let migratedCount = 0
     const connectionsNeedingUpdate: any[] = []
     
     for (const c of connections) {
       const exch = (c.exchange || "").toLowerCase().trim()
-      const shouldBeOnDashboard = DASHBOARD_AUTO_INSERTED.includes(exch)
-      const dashboardInserted = c.is_dashboard_inserted === "1" || c.is_dashboard_inserted === true
-      const needsDashboardSet = shouldBeOnDashboard && !dashboardInserted
-      const needsDashboardReset = !shouldBeOnDashboard && dashboardInserted
+      const shouldBeActive = ACTIVE_AUTO_INSERTED.includes(exch)
+      const activeInserted = c.is_active_inserted === "1" || c.is_active_inserted === true
+      const needsActiveSet = shouldBeActive && !activeInserted
+      const needsActiveReset = !shouldBeActive && activeInserted
       
-      if (needsDashboardSet || needsDashboardReset) {
-        connectionsNeedingUpdate.push({ connection: c, shouldBeOnDashboard })
+      if (needsActiveSet || needsActiveReset) {
+        connectionsNeedingUpdate.push({ connection: c, shouldBeActive })
       }
     }
     
     // Only perform updates if there are actual changes needed
     if (connectionsNeedingUpdate.length > 0) {
-      for (const { connection: c, shouldBeOnDashboard } of connectionsNeedingUpdate) {
-        const newValue = shouldBeOnDashboard ? "1" : "0"
+      for (const { connection: c, shouldBeActive } of connectionsNeedingUpdate) {
+        const newValue = shouldBeActive ? "1" : "0"
         await updateConnection(c.id, {
           ...c,
-          is_dashboard_inserted: newValue,
+          is_active_inserted: newValue,
           updated_at: new Date().toISOString(),
         })
         migratedCount++
-        console.log(`[v0] [API] [Connections] ${API_VERSION}: ${c.exchange}: dashboard_inserted=${shouldBeOnDashboard ? "SET to 1" : "RESET to 0"}`)
+        console.log(`[v0] [API] [Connections] ${API_VERSION}: ${c.exchange}: is_active_inserted=${shouldBeActive ? "SET to 1" : "RESET to 0"}`)
       }
       console.log(`[v0] [API] [Connections] ${API_VERSION}: Updated ${migratedCount} connections`)
       // Reload after updates
       connections = await getAllConnections()
     } else {
-      console.log(`[v0] [API] [Connections] ${API_VERSION}: All dashboard flags correct, no updates needed`)
+      console.log(`[v0] [API] [Connections] ${API_VERSION}: All active flags correct, no updates needed`)
     }
 
     // Auto-initialize ONLY user-created connections (not predefined templates)
@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
       
       // DO NOT auto-create predefined connections
       // They remain as file-based templates only
-      // The initializeDefaultUserConnections() in redis-db.ts handles creating 6 user-created connections
+      // The initializeDefaultUserConnections() in redis-db.ts handles creating 4 user-created connections
     }
 
     if (exchange) {
@@ -95,7 +95,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Filter by is_enabled_dashboard for actively using connections (INDEPENDENT from Settings)
-    if (dashboard === "true") {
+    if (active === "true") {
       connections = connections.filter((c) => {
         // Handle both boolean and string representations
         const isEnabledDash = c.is_enabled_dashboard === true || c.is_enabled_dashboard === "1" || c.is_enabled_dashboard === "true"
@@ -106,8 +106,8 @@ export async function GET(request: NextRequest) {
     // Log what we're returning
     const bybitBingx = connections.filter(c => ["bybit", "bingx"].includes((c.exchange || "").toLowerCase()))
     console.log(`[v0] [API] [Connections] ${API_VERSION}: Returning ${connections.length} total connections`)
-    console.log(`[v0] [API] [Connections] ${API_VERSION}: Dashboard-inserted (bybit/bingx):`, 
-      bybitBingx.map(c => ({ name: c.name, exchange: c.exchange, is_dashboard_inserted: c.is_dashboard_inserted })))
+    console.log(`[v0] [API] [Connections] ${API_VERSION}: Active-inserted (bybit/bingx):`, 
+      bybitBingx.map(c => ({ name: c.name, exchange: c.exchange, is_active_inserted: c.is_active_inserted })))
     
     return NextResponse.json({ success: true, count: connections.length, connections, version: API_VERSION }, { headers })
   } catch (error) {

@@ -65,8 +65,8 @@ export async function GET() {
             is_testnet: false,
             // Settings states - all start disabled, user enables when they add API keys
             is_enabled: "0",
-            // Dashboard states - INDEPENDENT from Settings
-            is_dashboard_inserted: shouldDashboardInsert ? "1" : "0", // Only bybit/bingx on dashboard
+            // Active states - INDEPENDENT from Settings
+            is_active_inserted: shouldDashboardInsert ? "1" : "0", // Only bybit/bingx active-insertable
             is_enabled_dashboard: "0", // Always disabled by default
             is_predefined: true,
             api_key: predefined.apiKey || "",
@@ -86,20 +86,20 @@ export async function GET() {
       }
     }
     
-    console.log(`[v0] [Init] Created ${createdConnections.length} dashboard connections (bybit, bingx)`)
+    console.log(`[v0] [Init] Created ${createdConnections.length} active connections (bybit, bingx)`)
     
-    // MIGRATION: Ensure bybit and bingx have is_dashboard_inserted set (one-time migration)
+    // MIGRATION: Ensure bybit and bingx have is_active_inserted set (one-time migration)
     const allConns = await getAllConnections()
     let migratedCount = 0
     for (const conn of allConns) {
       const exchange = (conn.exchange || "").toLowerCase().trim()
-      const shouldBeOnDashboard = DASHBOARD_AUTO_INSERT.includes(exchange)
+      const shouldBeActive = DASHBOARD_AUTO_INSERT.includes(exchange)
       
-      // Only migrate if is_dashboard_inserted is undefined (not yet set)
-      if (shouldBeOnDashboard && conn.is_dashboard_inserted === undefined) {
+      // Only migrate if is_active_inserted is undefined (not yet set)
+      if (shouldBeActive && conn.is_active_inserted === undefined) {
         await updateConnection(conn.id, {
           ...conn,
-          is_dashboard_inserted: "1", // Add to dashboard
+          is_active_inserted: "1", // Add as active-insertable
           is_enabled_dashboard: "0",   // But disabled by default
           updated_at: new Date().toISOString(),
         })

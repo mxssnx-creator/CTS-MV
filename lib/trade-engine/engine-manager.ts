@@ -313,6 +313,7 @@ export class TradeEngineManager {
     let cycleCount = 0
     let totalDuration = 0
     let errorCount = 0
+    let totalStrategiesEvaluated = 0
 
     this.strategyTimer = setInterval(async () => {
       const startTime = Date.now()
@@ -321,20 +322,32 @@ export class TradeEngineManager {
         const symbols = await this.getSymbols()
 
         // Process strategies for all symbols asynchronously
-        await Promise.all(symbols.map((symbol) => this.strategyProcessor.processStrategy(symbol)))
+        // Strategy processor will retrieve indications from Redis and evaluate through BASE → MAIN → REAL → LIVE flow
+        const strategyResults = await Promise.all(
+          symbols.map((symbol) => this.strategyProcessor.processStrategy(symbol))
+        )
 
         const duration = Date.now() - startTime
         cycleCount++
         totalDuration += duration
 
+        // Count total strategies evaluated across all symbols
+        const evaluatedThisCycle = strategyResults.reduce((sum, result) => sum + (result?.strategiesEvaluated || 0), 0)
+        totalStrategiesEvaluated += evaluatedThisCycle
+
         this.componentHealth.strategies.lastCycleDuration = duration
         this.componentHealth.strategies.successRate = ((cycleCount - errorCount) / cycleCount) * 100
 
-        // Log successful strategy run
+        // Log detailed strategy run with calculations
+        console.log(`[v0] [StrategyEngine] Cycle ${cycleCount}: Evaluated ${evaluatedThisCycle} total strategies across ${symbols.length} symbols`)
+        
         await logProgressionEvent(this.connectionId, "strategies", "info", `Processed strategies for ${symbols.length} symbols`, {
           cycleDuration_ms: duration,
           cycleCount,
           symbolsCount: symbols.length,
+          strategiesEvaluatedThisCycle: evaluatedThisCycle,
+          totalStrategiesEvaluated,
+          avgStrategiesPerSymbol: Math.round(evaluatedThisCycle / symbols.length),
         })
 
         // Update engine state in Redis
@@ -344,6 +357,7 @@ export class TradeEngineManager {
           last_strategy_run: new Date().toISOString(),
           strategy_cycle_count: cycleCount,
           strategy_avg_duration_ms: totalDuration / cycleCount,
+          total_strategies_evaluated: totalStrategiesEvaluated,
         })
       } catch (error) {
         errorCount++

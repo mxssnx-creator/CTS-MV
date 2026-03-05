@@ -526,12 +526,12 @@ const migrations: Migration[] = [
           const isDashboardInsertedByDefault = dashboardInsertedExchanges.includes(connId)
           
           await client.hset(`connection:${connId}`, {
-            is_dashboard_inserted: isDashboardInsertedByDefault ? "1" : "0",
+            is_active_inserted: isDashboardInsertedByDefault ? "1" : "0",
             is_enabled_dashboard: "0", // Always start with dashboard toggle OFF (must manually enable)
             updated_at: new Date().toISOString(),
           })
           updatedDashboard++
-          console.log(`[v0] Migration 016: ${connId} -> dashboard_inserted=${isDashboardInsertedByDefault ? "1" : "0"}, dashboard_active=0`)
+          console.log(`[v0] Migration 016: ${connId} -> is_active_inserted=${isDashboardInsertedByDefault ? "1" : "0"}, dashboard_active=0`)
         }
       }
       

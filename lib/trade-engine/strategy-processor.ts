@@ -20,50 +20,68 @@ export class StrategyProcessor {
 
   /**
    * Process strategy - executes complete coordinated flow
-   * BASE → Evaluate BASE → MAIN → REAL → LIVE
+   * BASE → Evaluate BASE → MAIN → REAL → LIVE with detailed calculations
    */
-  async processStrategy(symbol: string, isPrehistoric: boolean = false): Promise<void> {
+  async processStrategy(symbol: string, indications: any[] = []): Promise<{ strategiesEvaluated: number; liveReady: number }> {
     try {
       await initRedis()
-      const indications = await this.getActiveIndications(symbol)
+      
+      // If no indications passed, retrieve from Redis (populated by indication processor)
+      if (!indications || indications.length === 0) {
+        indications = await this.getActiveIndications(symbol)
+      }
 
       if (indications.length === 0) {
-        return
+        return { strategiesEvaluated: 0, liveReady: 0 }
       }
+
+      console.log(`[v0] [StrategyFlow] ${symbol}: Starting progressive evaluation with ${indications.length} indications`)
 
       // Execute complete strategy coordination flow
       const coordinator = new StrategyCoordinator(this.connectionId)
-      const results = await coordinator.executeStrategyFlow(symbol, indications, isPrehistoric)
+      const results = await coordinator.executeStrategyFlow(symbol, indications, false)
 
-      // Get final stats for logging
-      const liveResult = results.find(r => r.type === "live")
-      const totalLiveStrategies = liveResult?.passedEvaluation || 0
+      // Calculate totals across all stages
+      let totalEvaluated = 0
+      let totalLiveReady = 0
+      const stageSummary: Record<string, any> = {}
 
-      if (totalLiveStrategies > 0 || results.some(r => r.passedEvaluation > 0)) {
-        if (isPrehistoric) {
-          await ProgressionStateManager.incrementPrehistoricCycle(this.connectionId, symbol)
-          console.log(
-            `[v0] [PrehistoricStrategy] ${symbol}: Flow complete | Total LIVE ready: ${totalLiveStrategies} (evaluation only, no trades)`
-          )
-        } else {
-          await ProgressionStateManager.incrementCycle(this.connectionId, true, totalLiveStrategies)
-          console.log(
-            `[v0] [RealtimeStrategy] ${symbol}: Flow complete | Total LIVE ready: ${totalLiveStrategies} (executable)`
-          )
+      for (const result of results) {
+        totalEvaluated += result.totalCreated
+        totalLiveReady += result.passedEvaluation
+        
+        stageSummary[result.type] = {
+          created: result.totalCreated,
+          passed: result.passedEvaluation,
+          failed: result.failedEvaluation,
+          avgProfitFactor: result.avgProfitFactor.toFixed(2),
+          avgDrawdownTime: `${Math.round(result.avgDrawdownTime)}min`,
         }
 
-        await logProgressionEvent(this.connectionId, `strategies_${isPrehistoric ? "prehistoric" : "realtime"}`, "info", `Strategy flow completed for ${symbol}`, {
-          results,
-          liveReady: totalLiveStrategies,
-          phase: isPrehistoric ? "prehistoric" : "realtime",
+        console.log(
+          `[v0] [StrategyFlow] ${symbol} ${result.type.toUpperCase()}: ${result.passedEvaluation}/${result.totalCreated} passed | ` +
+          `PF=${result.avgProfitFactor.toFixed(2)} | DDT=${Math.round(result.avgDrawdownTime)}min`
+        )
+      }
+
+      if (totalLiveReady > 0) {
+        console.log(`[v0] [StrategyFlow] ${symbol}: ✅ READY FOR TRADING - ${totalLiveReady} live strategies created`)
+        
+        await logProgressionEvent(this.connectionId, `strategies_realtime`, "info", `Strategy flow completed for ${symbol}`, {
+          stageSummary,
+          totalCreated: totalEvaluated,
+          totalLiveReady,
+          indicationsProcessed: indications.length,
         })
       }
+
+      return { strategiesEvaluated: totalEvaluated, liveReady: totalLiveReady }
     } catch (error) {
-      await ProgressionStateManager.incrementCycle(this.connectionId, false, 0)
       console.error(
         `[v0] [Strategy] Failed for ${symbol}:`,
         error instanceof Error ? error.message : String(error)
       )
+      return { strategiesEvaluated: 0, liveReady: 0 }
     }
   }
 

@@ -128,17 +128,82 @@ export class IndicationProcessor {
 
   /**
    * Process real-time indication - delegates to independent sets processor
-   * Same calculation logic as prehistoric, but with trade execution enabled
+   * Returns array of active indications for strategy processing
    */
-  async processIndication(symbol: string): Promise<void> {
+  async processIndication(symbol: string): Promise<any[]> {
     try {
       const marketData = await this.getLatestMarketDataCached(symbol)
       if (!marketData) {
-        return
+        return []
       }
 
       const setsProcessor = new IndicationSetsProcessor(this.connectionId)
       await setsProcessor.processAllIndicationSets(symbol, marketData)
+
+      // Retrieve the indication sets that were just calculated
+      const directionSet = await setsProcessor.getSetStats(symbol, "direction")
+      const moveSet = await setsProcessor.getSetStats(symbol, "move")
+      const activeSet = await setsProcessor.getSetStats(symbol, "active")
+      const optimalSet = await setsProcessor.getSetStats(symbol, "optimal")
+
+      // Build indications array from the set stats
+      const indications: any[] = []
+
+      if (directionSet?.data) {
+        indications.push({
+          type: "direction",
+          symbol,
+          ...directionSet.data,
+          profitFactor: directionSet.data.profit_factor || 1.0,
+          drawdownTime: directionSet.data.drawdown_time || 0,
+          confidence: directionSet.data.confidence || 0.5,
+          positionState: directionSet.data.position_state || "new",
+          continuousPosition: directionSet.data.continuous_position || false,
+          metadata: directionSet.data.metadata || {}
+        })
+      }
+
+      if (moveSet?.data) {
+        indications.push({
+          type: "move",
+          symbol,
+          ...moveSet.data,
+          profitFactor: moveSet.data.profit_factor || 1.0,
+          drawdownTime: moveSet.data.drawdown_time || 0,
+          confidence: moveSet.data.confidence || 0.5,
+          positionState: moveSet.data.position_state || "new",
+          continuousPosition: moveSet.data.continuous_position || false,
+          metadata: moveSet.data.metadata || {}
+        })
+      }
+
+      if (activeSet?.data) {
+        indications.push({
+          type: "active",
+          symbol,
+          ...activeSet.data,
+          profitFactor: activeSet.data.profit_factor || 1.0,
+          drawdownTime: activeSet.data.drawdown_time || 0,
+          confidence: activeSet.data.confidence || 0.5,
+          positionState: activeSet.data.position_state || "new",
+          continuousPosition: activeSet.data.continuous_position || false,
+          metadata: activeSet.data.metadata || {}
+        })
+      }
+
+      if (optimalSet?.data) {
+        indications.push({
+          type: "optimal",
+          symbol,
+          ...optimalSet.data,
+          profitFactor: optimalSet.data.profit_factor || 1.0,
+          drawdownTime: optimalSet.data.drawdown_time || 0,
+          confidence: optimalSet.data.confidence || 0.5,
+          positionState: optimalSet.data.position_state || "new",
+          continuousPosition: optimalSet.data.continuous_position || false,
+          metadata: optimalSet.data.metadata || {}
+        })
+      }
 
       // Store indication result in Redis for progression tracking
       try {
@@ -163,14 +228,20 @@ export class IndicationProcessor {
         // Redis error is not critical - indications still process correctly
       }
 
+      console.log(`[v0] [RealtimeIndication] ${symbol}: Processed ${indications.length} indication types`)
+
       await logProgressionEvent(
         this.connectionId,
         "indication_realtime",
         "info",
-        `Processed indication sets for ${symbol}`
+        `Processed indication sets for ${symbol}`,
+        { indicationTypes: indications.length }
       )
+
+      return indications
     } catch (error) {
       console.error(`[v0] [RealtimeIndication] Failed for ${symbol}:`, error instanceof Error ? error.message : String(error))
+      return []
     }
   }
 

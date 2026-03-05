@@ -586,7 +586,7 @@ export async function initializeDefaultUserConnections(): Promise<void> {
         is_testnet: "0",
         is_enabled: base.enabled ? "1" : "0",
         is_enabled_dashboard: base.enabled ? "1" : "0",
-        is_dashboard_inserted: base.dashboardInserted ? "1" : "0",  // Mark for dashboard management
+        is_active_inserted: base.dashboardInserted ? "1" : "0",  // Mark as active-insertable for management
         is_live_trade: "0",
         is_predefined: "0", // User-created, not predefined template
         is_inserted: "1",   // Inserted with real credentials
@@ -598,12 +598,12 @@ export async function initializeDefaultUserConnections(): Promise<void> {
       await client.hset(`connection:${base.connId}`, connData)
       await client.sadd("connections", base.connId)
       
-      const insertedStatus = base.dashboardInserted ? "[Dashboard Inserted]" : "[System]"
+      const insertedStatus = base.dashboardInserted ? "[Active Inserted]" : "[System]"
       const enabledStatus = base.enabled ? "[ENABLED]" : "[disabled - ready for activation]"
       console.log(`[v0] [Connections] Created ${connData.name} ${insertedStatus} ${enabledStatus}`)
     }
     
-    console.log("[v0] [Connections] ✅ Successfully initialized: 4 base connections (BingX/Bybit for dashboard, Pionex/OrangeX for system)")
+    console.log("[v0] [Connections] ✅ Successfully initialized: 4 base connections (BingX/Bybit for active insertion, Pionex/OrangeX for system)")
   } catch (err) {
     console.error("[v0] [Connections] Error initializing user connections:", err instanceof Error ? err.message : String(err))
   }
@@ -769,7 +769,7 @@ export async function getAllConnections(): Promise<any[]> {
           is_testnet: toBool(data.is_testnet),
           is_enabled: toBool(data.is_enabled),
           is_enabled_dashboard: toBool(data.is_enabled_dashboard),
-          is_dashboard_inserted: data.is_dashboard_inserted,
+          is_active_inserted: data.is_active_inserted || data.is_dashboard_inserted, // Support both names for migration
           is_active: toBool(data.is_active),
           is_predefined: toBool(data.is_predefined),
           is_inserted: toBool(data.is_inserted),
