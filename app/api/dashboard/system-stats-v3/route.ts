@@ -53,24 +53,26 @@ export async function GET() {
     const baseConnections = userCreatedConnections.filter(isBaseExchange)
     console.log(`[v0] [SystemStats] User-created base exchanges: ${baseConnections.length} connections (${baseConnections.map(c => c.exchange).join(", ")})`)
     
+    // "Enabled" = connections with real credentials inserted (is_inserted="1")
     const enabledBase = baseConnections.filter((c: any) => {
-      const e = c.is_enabled
-      return e === true || e === "1" || e === "true" || e === undefined || e === null
+      const i = c.is_inserted
+      return i === true || i === "1" || i === "true"
     })
-    console.log(`[v0] [SystemStats] Enabled user-created base: ${enabledBase.length}`)
+    console.log(`[v0] [SystemStats] Credentials-inserted user-created base: ${enabledBase.length}`)
     
-    // Check multiple test status field names and values
+    // "Working" = connections where API test succeeded
     const workingBase = baseConnections.filter((c: any) => {
       const status = c.last_test_status || c.test_status || c.connection_status
       return status === "success" || status === "ok" || status === "connected"
     })
     console.log(`[v0] [SystemStats] Working/tested user-created base: ${workingBase.length}`)
     
-    // ACTIVE = connections with is_active_inserted = "1" (inserted for dashboard management)
-    // These are BingX and Bybit — inserted but not yet enabled for trading
+    // ACTIVE PANEL = connections with is_active_inserted = "1" (dashboard panel connections)
+    // These are BingX X01 and Bybit X03 — shown in Active Connections panel
     const activeConnections = userCreatedConnections.filter((c: any) => {
       const ai = c.is_active_inserted
-      return ai === true || ai === "1" || ai === "true"
+      const di = c.is_dashboard_inserted // fallback old field
+      return ai === true || ai === "1" || ai === "true" || di === true || di === "1" || di === "true"
     })
     console.log(`[v0] [SystemStats] Active-inserted user-created connections: ${activeConnections.length} (${activeConnections.map((c: any) => c.exchange).join(", ")})`)
     

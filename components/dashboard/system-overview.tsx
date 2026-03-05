@@ -254,16 +254,20 @@ export function SystemOverview() {
             </div>
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Inserted</span>
+                <span className="text-muted-foreground">Base</span>
                 <span className="font-semibold">{stats.exchangeConnections.total}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Enabled</span>
-                <span className="font-semibold text-green-600">{stats.exchangeConnections.enabled}</span>
+                <span className="text-muted-foreground" title="Connections with API credentials stored">Credentials</span>
+                <span className={`font-semibold ${stats.exchangeConnections.enabled > 0 ? "text-green-600" : "text-muted-foreground"}`}>
+                  {stats.exchangeConnections.enabled}
+                </span>
               </div>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground" title="Only connections where test succeeded">Working</span>
-                <span className="font-semibold text-blue-600">{stats.exchangeConnections.working}</span>
+                <span className="text-muted-foreground" title="Connections where API test passed">Working</span>
+                <span className={`font-semibold ${stats.exchangeConnections.working > 0 ? "text-blue-600" : "text-muted-foreground"}`}>
+                  {stats.exchangeConnections.working}
+                </span>
               </div>
               <div className="pt-1 border-t mt-2">
                 <Badge className={`text-[10px] h-5 w-full justify-center ${getStatusColor(stats.exchangeConnections.status)}`}>
@@ -274,27 +278,33 @@ export function SystemOverview() {
           </div>
 
           {/* Active Connections */}
-          <div className={`p-3 rounded-lg border-l-4 ${stats.activeConnections.active > 0 ? "border-l-green-500" : "border-l-gray-400"} bg-muted/30`}>
+          <div className={`p-3 rounded-lg border-l-4 ${stats.activeConnections.active > 0 ? "border-l-green-500" : stats.activeConnections.total > 0 ? "border-l-blue-400" : "border-l-gray-400"} bg-muted/30`}>
             <div className="flex items-center gap-2 mb-2">
               <Activity className="h-4 w-4 text-muted-foreground" />
               <span className="text-xs font-semibold text-muted-foreground">Active Connections</span>
             </div>
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Total</span>
+                <span className="text-muted-foreground" title="Connections in the Active panel">In Panel</span>
                 <span className="font-semibold">{stats.activeConnections.total}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Active</span>
-                <span className={`font-semibold ${stats.activeConnections.active > 0 ? "text-green-600" : ""}`}>{stats.activeConnections.active}</span>
+                <span className="text-muted-foreground" title="Enabled via the Enable toggle">Enabled</span>
+                <span className={`font-semibold ${stats.activeConnections.active > 0 ? "text-green-600" : "text-muted-foreground"}`}>
+                  {stats.activeConnections.active}
+                </span>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Live Trade</span>
-                <span className="font-semibold text-blue-600">{stats.activeConnections.liveTrade}</span>
+                <span className={`font-semibold ${stats.activeConnections.liveTrade > 0 ? "text-blue-600" : "text-muted-foreground"}`}>
+                  {stats.activeConnections.liveTrade}
+                </span>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Preset Mode</span>
-                <span className="font-semibold text-purple-600">{stats.activeConnections.presetTrade}</span>
+                <span className={`font-semibold ${stats.activeConnections.presetTrade > 0 ? "text-purple-600" : "text-muted-foreground"}`}>
+                  {stats.activeConnections.presetTrade}
+                </span>
               </div>
             </div>
           </div>

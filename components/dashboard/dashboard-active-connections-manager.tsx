@@ -75,23 +75,36 @@ export function DashboardActiveConnectionsManager() {
       for (const conn of allConnections) {
         const exchange = (conn.exchange || "").toLowerCase().trim()
         const isBase = BASE_EXCHANGES.includes(exchange)
-        const isDashboardInserted = conn.is_dashboard_inserted === "1" || conn.is_dashboard_inserted === true
-        const isDashboardActive = conn.is_enabled_dashboard === true || conn.is_enabled_dashboard === "1"
-        const isEnabled = conn.is_enabled === true || conn.is_enabled === "1"
 
-        if (isBase && isDashboardInserted && isEnabled) {
+        // is_active_inserted = "1" means this connection is inserted for dashboard management
+        // (BingX X01 and Bybit X03 are the two dashboard connections)
+        const isActiveInserted =
+          conn.is_active_inserted === "1" ||
+          conn.is_active_inserted === true ||
+          // fallback: old field name in case of existing data
+          conn.is_dashboard_inserted === "1" ||
+          conn.is_dashboard_inserted === true
+
+        // isActive = connection has been enabled by the user via the Enable toggle
+        const isActive =
+          conn.is_enabled_dashboard === true ||
+          conn.is_enabled_dashboard === "1" ||
+          conn.is_enabled === true ||
+          conn.is_enabled === "1"
+
+        if (isBase && isActiveInserted) {
           if (seenIds.has(conn.id)) continue
           seenIds.add(conn.id)
           activeConns.push({
             id: `active-${conn.id}`,
             connectionId: conn.id,
             exchangeName: conn.exchange ? conn.exchange.charAt(0).toUpperCase() + conn.exchange.slice(1) : "Unknown",
-            isActive: isDashboardActive,
+            isActive,
             isBaseEnabled: true,
             addedAt: conn.created_at || new Date().toISOString(),
             details: conn,
           })
-          console.log(`[v0] [Manager] ✓ Added to active: ${conn.name} (active=${isDashboardActive})`)
+          console.log(`[v0] [Manager] + Added to active panel: ${conn.name} (enabled=${isActive})`)
         }
       }
       
