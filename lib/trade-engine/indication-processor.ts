@@ -149,59 +149,59 @@ export class IndicationProcessor {
       // Build indications array from the set stats
       const indications: any[] = []
 
-      if (directionSet?.data) {
+      if (directionSet && Object.keys(directionSet).length > 0) {
         indications.push({
           type: "direction",
           symbol,
-          ...directionSet.data,
-          profitFactor: directionSet.data.profit_factor || 1.0,
-          drawdownTime: directionSet.data.drawdown_time || 0,
-          confidence: directionSet.data.confidence || 0.5,
-          positionState: directionSet.data.position_state || "new",
-          continuousPosition: directionSet.data.continuous_position || false,
-          metadata: directionSet.data.metadata || {}
+          ...directionSet,
+          profitFactor: directionSet.avgProfitFactor || 1.0,
+          drawdownTime: directionSet.avgDrawdownTime || 0,
+          confidence: directionSet.confidence || 0.5,
+          positionState: "new",
+          continuousPosition: false,
+          metadata: directionSet.metadata || {}
         })
       }
 
-      if (moveSet?.data) {
+      if (moveSet && Object.keys(moveSet).length > 0) {
         indications.push({
           type: "move",
           symbol,
-          ...moveSet.data,
-          profitFactor: moveSet.data.profit_factor || 1.0,
-          drawdownTime: moveSet.data.drawdown_time || 0,
-          confidence: moveSet.data.confidence || 0.5,
-          positionState: moveSet.data.position_state || "new",
-          continuousPosition: moveSet.data.continuous_position || false,
-          metadata: moveSet.data.metadata || {}
+          ...moveSet,
+          profitFactor: moveSet.avgProfitFactor || 1.0,
+          drawdownTime: moveSet.avgDrawdownTime || 0,
+          confidence: moveSet.confidence || 0.5,
+          positionState: "new",
+          continuousPosition: false,
+          metadata: moveSet.metadata || {}
         })
       }
 
-      if (activeSet?.data) {
+      if (activeSet && Object.keys(activeSet).length > 0) {
         indications.push({
           type: "active",
           symbol,
-          ...activeSet.data,
-          profitFactor: activeSet.data.profit_factor || 1.0,
-          drawdownTime: activeSet.data.drawdown_time || 0,
-          confidence: activeSet.data.confidence || 0.5,
-          positionState: activeSet.data.position_state || "new",
-          continuousPosition: activeSet.data.continuous_position || false,
-          metadata: activeSet.data.metadata || {}
+          ...activeSet,
+          profitFactor: activeSet.avgProfitFactor || 1.0,
+          drawdownTime: activeSet.avgDrawdownTime || 0,
+          confidence: activeSet.confidence || 0.5,
+          positionState: "new",
+          continuousPosition: false,
+          metadata: activeSet.metadata || {}
         })
       }
 
-      if (optimalSet?.data) {
+      if (optimalSet && Object.keys(optimalSet).length > 0) {
         indications.push({
           type: "optimal",
           symbol,
-          ...optimalSet.data,
-          profitFactor: optimalSet.data.profit_factor || 1.0,
-          drawdownTime: optimalSet.data.drawdown_time || 0,
-          confidence: optimalSet.data.confidence || 0.5,
-          positionState: optimalSet.data.position_state || "new",
-          continuousPosition: optimalSet.data.continuous_position || false,
-          metadata: optimalSet.data.metadata || {}
+          ...optimalSet,
+          profitFactor: optimalSet.avgProfitFactor || 1.0,
+          drawdownTime: optimalSet.avgDrawdownTime || 0,
+          confidence: optimalSet.confidence || 0.5,
+          positionState: "new",
+          continuousPosition: false,
+          metadata: optimalSet.metadata || {}
         })
       }
 

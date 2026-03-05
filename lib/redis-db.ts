@@ -502,10 +502,14 @@ export async function initRedis(): Promise<void> {
   }
   
   // ALWAYS initialize connections on every startup to ensure clean 4-connection state
-  // This clears any old predefined connections from Redis snapshot
+  // Force reinit by resetting flag to ensure fresh connections
+  connectionsInitialized = false
+  
   if (!connectionsInitialized) {
     connectionsInitialized = true
+    console.log("[v0] [Connections] Starting initialization of 4 base user-created connections...")
     await initializeDefaultUserConnections()
+    console.log("[v0] [Connections] Initialization complete")
   }
 }
 
@@ -517,17 +521,20 @@ export async function initRedis(): Promise<void> {
 export async function initializeDefaultUserConnections(): Promise<void> {
   const client = getClient()
   try {
-    // Always clear existing connections to ensure clean state
+    // CRITICAL: Always clear ALL existing connections - including predefined that may be in Redis snapshot
+    console.log("[v0] [Connections] Clearing all connections from Redis snapshot...")
     const existingIds = await client.smembers("connections")
     if (existingIds && existingIds.length > 0) {
-      console.log(`[v0] [Connections] Clearing ${existingIds.length} existing connections for fresh start`)
+      console.log(`[v0] [Connections] Found ${existingIds.length} existing connections - removing all...`)
       for (const id of existingIds) {
         await client.del(`connection:${id}`)
-        await client.srem("connections", id)
       }
+      // Delete the connections set itself
+      await client.del("connections")
+      console.log(`[v0] [Connections] Cleared ${existingIds.length} connections and connections set from Redis`)
     }
     
-    console.log("[v0] [Connections] Initializing 4 base connections with predefined real API keys...")
+    console.log("[v0] [Connections] Initializing 4 base user-created connections with predefined real API keys...")
     
     // Import predefined values for base exchanges
     const { CONNECTION_PREDEFINITIONS } = await import("@/lib/connection-predefinitions")
@@ -588,8 +595,8 @@ export async function initializeDefaultUserConnections(): Promise<void> {
         is_enabled_dashboard: base.enabled ? "1" : "0",
         is_active_inserted: base.dashboardInserted ? "1" : "0",  // Mark as active-insertable for management
         is_live_trade: "0",
-        is_predefined: "0", // User-created, not predefined template
-        is_inserted: "1",   // Inserted with real credentials
+        is_predefined: "0", // User-created, not predefined template - CRITICAL for engine selection
+        is_inserted: "1",   // Inserted with real credentials - CRITICAL for validation
         is_active: base.enabled ? "1" : "0",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -600,10 +607,10 @@ export async function initializeDefaultUserConnections(): Promise<void> {
       
       const insertedStatus = base.dashboardInserted ? "[Active Inserted]" : "[System]"
       const enabledStatus = base.enabled ? "[ENABLED]" : "[disabled - ready for activation]"
-      console.log(`[v0] [Connections] Created ${connData.name} ${insertedStatus} ${enabledStatus}`)
+      console.log(`[v0] [Connections] ✓ Created ${connData.name} ${insertedStatus} ${enabledStatus}`)
     }
     
-    console.log("[v0] [Connections] ✅ Successfully initialized: 4 base connections (BingX/Bybit for active insertion, Pionex/OrangeX for system)")
+    console.log("[v0] [Connections] ✅ Successfully initialized: 4 base user-created connections (is_predefined=0, is_inserted=1)")
   } catch (err) {
     console.error("[v0] [Connections] Error initializing user connections:", err instanceof Error ? err.message : String(err))
   }
