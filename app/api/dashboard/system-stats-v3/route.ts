@@ -66,12 +66,13 @@ export async function GET() {
     })
     console.log(`[v0] [SystemStats] Working/tested user-created base: ${workingBase.length}`)
     
-    // ACTIVE = connections with is_enabled_dashboard = "1" (use ONLY user-created for engine)
+    // ACTIVE = connections with is_active_inserted = "1" (inserted for dashboard management)
+    // These are BingX and Bybit — inserted but not yet enabled for trading
     const activeConnections = userCreatedConnections.filter((c: any) => {
-      const d = c.is_enabled_dashboard
-      return d === true || d === "1" || d === "true"
+      const ai = c.is_active_inserted
+      return ai === true || ai === "1" || ai === "true"
     })
-    console.log(`[v0] [SystemStats] Dashboard-active user-created connections: ${activeConnections.length} (${activeConnections.map(c => c.exchange).join(", ")})`)
+    console.log(`[v0] [SystemStats] Active-inserted user-created connections: ${activeConnections.length} (${activeConnections.map((c: any) => c.exchange).join(", ")})`)
     
     // Predefined connections shown as informational only
     console.log(`[v0] [SystemStats] Available predefined templates: ${predefinedConnections.length} (${predefinedConnections.map(c => `${c.exchange}:${c.name}`).join(", ")})`)

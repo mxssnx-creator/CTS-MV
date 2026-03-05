@@ -499,17 +499,14 @@ export async function initRedis(): Promise<void> {
     if (pong === "PONG") {
       console.log("[v0] [Redis] Connection test successful")
     }
-  }
-  
-  // ALWAYS initialize connections on every startup to ensure clean 4-connection state
-  // Force reinit by resetting flag to ensure fresh connections
-  connectionsInitialized = false
-  
-  if (!connectionsInitialized) {
-    connectionsInitialized = true
-    console.log("[v0] [Connections] Starting initialization of 4 base user-created connections...")
-    await initializeDefaultUserConnections()
-    console.log("[v0] [Connections] Initialization complete")
+    
+    // Initialize connections ONCE on first Redis creation — not on every initRedis() call
+    if (!connectionsInitialized) {
+      connectionsInitialized = true
+      console.log("[v0] [Connections] Starting initialization of 4 base user-created connections...")
+      await initializeDefaultUserConnections()
+      console.log("[v0] [Connections] Initialization complete")
+    }
   }
 }
 
@@ -521,18 +518,19 @@ export async function initRedis(): Promise<void> {
 export async function initializeDefaultUserConnections(): Promise<void> {
   const client = getClient()
   try {
-    // CRITICAL: Always clear ALL existing connections - including predefined that may be in Redis snapshot
-    console.log("[v0] [Connections] Clearing all connections from Redis snapshot...")
-    const existingIds = await client.smembers("connections")
-    if (existingIds && existingIds.length > 0) {
-      console.log(`[v0] [Connections] Found ${existingIds.length} existing connections - removing all...`)
-      for (const id of existingIds) {
-        await client.del(`connection:${id}`)
+    // CRITICAL: Wipe every connection:* key that exists (catches stale predefined entries
+    // not listed in the "connections" set, e.g. from old snapshots)
+    console.log("[v0] [Connections] Wiping all connection:* keys from Redis snapshot...")
+    const allConnKeys = await client.keys("connection:*")
+    if (allConnKeys.length > 0) {
+      for (const key of allConnKeys) {
+        await client.del(key)
       }
-      // Delete the connections set itself
-      await client.del("connections")
-      console.log(`[v0] [Connections] Cleared ${existingIds.length} connections and connections set from Redis`)
+      console.log(`[v0] [Connections] Deleted ${allConnKeys.length} connection:* keys`)
     }
+    // Also delete the connections index set
+    await client.del("connections")
+    console.log("[v0] [Connections] Connections index cleared")
     
     console.log("[v0] [Connections] Initializing 4 base user-created connections with predefined real API keys...")
     
