@@ -499,14 +499,15 @@ export async function initRedis(): Promise<void> {
     if (pong === "PONG") {
       console.log("[v0] [Redis] Connection test successful")
     }
-    
-    // Initialize connections ONCE on first Redis creation — not on every initRedis() call
-    if (!connectionsInitialized) {
-      connectionsInitialized = true
-      console.log("[v0] [Connections] Starting initialization of 4 base user-created connections...")
-      await initializeDefaultUserConnections()
-      console.log("[v0] [Connections] Initialization complete")
-    }
+  }
+  
+  // ALWAYS initialize user connections on every startup (once per process)
+  // This clears stale predefined connections from snapshot and ensures 4 base connections
+  if (!connectionsInitialized) {
+    connectionsInitialized = true
+    console.log("[v0] [Connections] Starting initialization of 4 base user-created connections...")
+    await initializeDefaultUserConnections()
+    console.log("[v0] [Connections] Initialization complete")
   }
 }
 

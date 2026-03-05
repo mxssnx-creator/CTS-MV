@@ -284,60 +284,9 @@ const migrations: Migration[] = [
     version: 11,
     up: async (client: any) => {
       await client.set("_schema_version", "11")
-      const enabledExchangesSettings: string[] = ["bybit", "bingx", "pionex", "orangex"] // Settings: enabled for trade engine
-      const insertedExchangesDashboard: string[] = ["bybit", "bingx"] // Dashboard: visible/inserted by default
-      const connections = [
-        { id: "bybit-x03", name: "Bybit X03", exchange: "bybit", api_type: "unified" },
-        { id: "bingx-x01", name: "BingX X01", exchange: "bingx", api_type: "perpetual_futures" },
-        { id: "binance-x01", name: "Binance X01", exchange: "binance", api_type: "perpetual_futures" },
-        { id: "okx-x01", name: "OKX X01", exchange: "okx", api_type: "unified" },
-        { id: "gateio-x01", name: "Gate.io X01", exchange: "gateio", api_type: "perpetual_futures" },
-        { id: "kucoin-x01", name: "KuCoin X01", exchange: "kucoin", api_type: "perpetual_futures" },
-        { id: "mexc-x01", name: "MEXC X01", exchange: "mexc", api_type: "perpetual_futures" },
-        { id: "bitget-x01", name: "Bitget X01", exchange: "bitget", api_type: "perpetual_futures" },
-        { id: "pionex-x01", name: "Pionex X01", exchange: "pionex", api_type: "perpetual_futures" },
-        { id: "orangex-x01", name: "OrangeX X01", exchange: "orangex", api_type: "perpetual_futures" },
-        { id: "huobi-x01", name: "Huobi X01", exchange: "huobi", api_type: "perpetual_futures" },
-      ]
-
-      let seededCount = 0
-      for (const conn of connections) {
-        try {
-          const key = `connection:${conn.id}`
-          const existing = await client.hgetall(key)
-          if (!existing || Object.keys(existing).length === 0) {
-            const isEnabledSettings = enabledExchangesSettings.includes(conn.exchange)
-            const isEnabledDashboard = insertedExchangesDashboard.includes(conn.exchange)
-            const storageData = {
-              id: conn.id,
-              name: conn.name,
-              exchange: conn.exchange,
-              api_key: "00998877009988770099887700998877",
-              api_secret: "00998877009988770099887700998877",
-              api_type: conn.api_type,
-              connection_method: "library",
-              connection_library: "native",
-              margin_type: "cross",
-              position_mode: "hedge",
-              is_testnet: "0",
-              is_enabled: isEnabledSettings ? "1" : "0", // Settings: base connection enabled by default
-              is_enabled_dashboard: isEnabledDashboard ? "1" : "0", // Dashboard/Active: disabled by default, bybit/bingx enabled as examples
-              is_active: isEnabledSettings ? "1" : "0",
-              is_predefined: "1",
-              is_live_trade: "0",
-              is_preset_trade: "0",
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            }
-            await client.hset(key, storageData)
-            await client.sadd("connections", conn.id)
-            seededCount++
-          }
-        } catch (error) {
-          console.warn(`[v0] Failed to seed ${conn.name}:`, error instanceof Error ? error.message : "unknown")
-        }
-      }
-      console.log(`[v0] Migration 011: Seeded ${seededCount}/${connections.length} connections`)
+      // DISABLED: Predefined connections are now managed by initializeDefaultUserConnections()
+      // in redis-db.ts which ensures only 4 user-created base connections exist
+      console.log("[v0] Migration 011: SKIPPED - predefined connections now managed by initRedis()")
     },
     down: async (client: any) => {
       await client.set("_schema_version", "10")
@@ -348,35 +297,9 @@ const migrations: Migration[] = [
     version: 12,
     up: async (client: any) => {
       await client.set("_schema_version", "12")
-      
-      // Ensure all connections have proper active list state
-      // This runs AFTER migration 011 which seeds the connections
-      const connections = await client.smembers("connections")
-      let updated = 0
-      let total = connections.length
-      
-      console.log(`[v0] Migration 012: Processing ${total} connections for active list visibility`)
-      
-      for (const connId of connections) {
-        const connData = await client.hgetall(`connection:${connId}`)
-        if (connData && Object.keys(connData).length > 0) {
-          const exchange = (connData.exchange || "").toLowerCase()
-          
-          // Mark Bybit and BingX as actively using by default (is_enabled_dashboard = true)
-          // All others start as not actively using (is_enabled_dashboard = false)
-          const shouldBeActivelyUsing = ["bybit", "bingx"].includes(exchange)
-          const newDashboardValue = shouldBeActivelyUsing ? "1" : "0"
-          
-          // Always set/update the field to ensure it exists
-          connData.is_enabled_dashboard = newDashboardValue
-          await client.hset(`connection:${connId}`, connData)
-          updated++
-          
-          console.log(`[v0] Migration 012: Set ${connId} (${exchange}) active list = ${newDashboardValue}`)
-        }
-      }
-      
-      console.log(`[v0] Migration 012: Complete - Updated ${updated}/${total} connections for active list`)
+      // DISABLED: Dashboard connection management now handled by initializeDefaultUserConnections()
+      // which creates BingX X01 and Bybit X03 with is_active_inserted="1" for dashboard panel
+      console.log("[v0] Migration 012: SKIPPED - dashboard connections now managed by initRedis()")
     },
     down: async (client: any) => {
       await client.set("_schema_version", "11")
