@@ -646,7 +646,7 @@ export async function saveConnection(connection: any): Promise<void> {
     is_testnet: convertToString(connection.is_testnet),
     is_enabled: convertToString(connection.is_enabled),
     is_enabled_dashboard: convertToString(connection.is_enabled_dashboard),
-    is_dashboard_inserted: convertToString(connection.is_dashboard_inserted),
+    is_active_inserted: convertToString(connection.is_active_inserted ?? connection.is_dashboard_inserted),
     is_inserted: convertToString(connection.is_inserted),
     is_active: convertToString(connection.is_active),
     is_predefined: convertToString(connection.is_predefined),
@@ -825,48 +825,29 @@ export async function getEnabledConnections(): Promise<any[]> {
 
 /**
  * Get active connections for trade engine
- * Active = is_enabled_dashboard === true (visible on dashboard)
- * These are the ONLY connections the trade engine should process
+ * Returns all user-created (non-predefined) connections.
+ * is_active_inserted="1" means shown in the Active panel on the dashboard (BingX, Bybit).
  */
 export async function getActiveConnectionsForEngine(): Promise<any[]> {
   const all = await getAllConnections()
   
-  // Debug: log all connections and their dashboard states
   console.log(`[v0] [DB] [ActiveConnections] Found ${all.length} total connections:`)
   all.forEach((c: any) => {
-    const isDashboardEnabled = c.is_enabled_dashboard === true || c.is_enabled_dashboard === "1" || c.is_enabled_dashboard === "true"
-    const isPredefined = c.is_predefined === true || c.is_predefined === "1" || c.is_predefined === "true"
+    const isActiveInserted = c.is_active_inserted === true || c.is_active_inserted === "1"
+    const isPredefined = c.is_predefined === true || c.is_predefined === "1"
     const status = isPredefined ? "(PREDEFINED - template only)" : "(USER-CREATED)"
-    console.log(`  - ${c.name}: dashboard_enabled=${isDashboardEnabled}, ${status}`)
+    console.log(`  - ${c.name}: active_inserted=${isActiveInserted}, ${status}`)
   })
   
-  // Filter for ONLY user-created (non-predefined) connections that are dashboard-enabled
+  // Filter for ONLY user-created (non-predefined) connections
   const filtered = all.filter((c: any) => {
-    // Must be dashboard-enabled
-    const isEnabled = c.is_enabled_dashboard === true || c.is_enabled_dashboard === "1" || c.is_enabled_dashboard === "true"
-    
-    // Must NOT be a predefined/template connection
     const isPredefined = c.is_predefined === true || c.is_predefined === "1" || c.is_predefined === "true"
-    
-    // Return only user-created, enabled connections
-    return isEnabled && !isPredefined
+    return !isPredefined
   })
   
-  // Log with full detail: which connections are active vs inactive
-  if (filtered.length > 0) {
-    const activeIds = filtered.map((c: any) => c.id).join(", ")
-    console.log(`[v0] [DB] [ActiveConnections] ${filtered.length}/${all.length} active (user-created, enabled_dashboard=true): [${activeIds}]`)
-  } else {
-    const userCreated = all.filter((c: any) => {
-      const isPredefined = c.is_predefined === true || c.is_predefined === "1" || c.is_predefined === "true"
-      return !isPredefined
-    })
-    const baseIds = all.filter((c: any) => {
-      const isBase = ["bybit", "bingx", "pionex", "orangex", "binance", "okx"].includes((c.exchange || "").toLowerCase())
-      return isBase
-    }).map((c: any) => c.id).join(", ")
-    console.log(`[v0] [DB] [ActiveConnections] 0 active out of ${all.length} total (${userCreated.length} user-created, ${all.length - userCreated.length} predefined/templates) | Available templates: [${baseIds}]`)
-  }
+  const activeInserted = filtered.filter((c: any) => c.is_active_inserted === true || c.is_active_inserted === "1")
+  const ids = filtered.map((c: any) => c.id).join(", ")
+  console.log(`[v0] [DB] [ActiveConnections] ${filtered.length} user-created connections (${activeInserted.length} in Active panel): [${ids}]`)
   
   return filtered
 }
