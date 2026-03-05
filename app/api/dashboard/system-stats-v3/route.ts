@@ -53,12 +53,12 @@ export async function GET() {
     const baseConnections = userCreatedConnections.filter(isBaseExchange)
     console.log(`[v0] [SystemStats] User-created base exchanges: ${baseConnections.length} connections (${baseConnections.map(c => c.exchange).join(", ")})`)
     
-    // "Enabled" = connections with is_enabled="1" (enabled for trading by user)
+    // "Enabled" = connections with real credentials inserted (is_inserted="1")
     const enabledBase = baseConnections.filter((c: any) => {
-      const e = c.is_enabled
-      return e === true || e === "1" || e === "true"
+      const i = c.is_inserted
+      return i === true || i === "1" || i === "true"
     })
-    console.log(`[v0] [SystemStats] Enabled user-created base: ${enabledBase.length}`)
+    console.log(`[v0] [SystemStats] Credentials-inserted user-created base: ${enabledBase.length}`)
     
     // "Working" = connections where API test succeeded
     const workingBase = baseConnections.filter((c: any) => {
