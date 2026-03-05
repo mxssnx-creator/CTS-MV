@@ -10,6 +10,7 @@ import { StrategyProcessor } from "./strategy-processor"
 import { PseudoPositionManager } from "./pseudo-position-manager"
 import { RealtimeProcessor } from "./realtime-processor"
 import { logProgressionEvent } from "@/lib/engine-progression-logs"
+import { loadMarketDataForEngine } from "@/lib/market-data-loader"
 
 export interface EngineConfig {
   connectionId: string
@@ -78,6 +79,12 @@ export class TradeEngineManager {
       await logProgressionEvent(this.connectionId, "initializing", "info", "Engine initialization started")
       await this.updateEngineState("running")
       await this.setRunningFlag(true)
+
+      // Phase 1.5: Load market data for all symbols
+      await this.updateProgressionPhase("market_data", 8, "Loading market data for all symbols...")
+      const symbols = await this.getSymbols()
+      const loaded = await loadMarketDataForEngine(symbols)
+      console.log(`[v0] [Engine] Market data loaded for ${loaded} symbols`)
 
       // Phase 2: Load prehistoric data (historical data retrieval + calculation)
       await this.updateProgressionPhase("prehistoric_data", 10, "Loading historical market data...")

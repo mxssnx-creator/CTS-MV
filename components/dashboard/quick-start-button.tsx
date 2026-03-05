@@ -88,35 +88,18 @@ export function QuickStartButton() {
         updateStep("migrate", "success", "Skipped")
       }
 
-      // STEP 3: Test BingX (with timeout) - non-blocking, continue even if test fails
+      // STEP 3: Test BingX (with timeout)
       updateStep("test", "loading")
       console.log("[v0] [QuickStart] STEP 3: Test BingX Connection")
-      let testPassed = false
-      let balanceStr = "N/A"
-      try {
-        const testRes = await Promise.race([
-          fetch("/api/settings/connections/test-bingx", { method: "GET", cache: "no-store" }),
-          new Promise<Response>((_, reject) => setTimeout(() => reject(new Error("Test timeout")), 10000))
-        ])
-        if (testRes.ok) {
-          const testData = await testRes.json()
-          if (testData.success) {
-            testPassed = true
-            balanceStr = testData.balance || "0.00"
-            console.log("[v0] [QuickStart] ✓ BingX connection verified | Balance:", balanceStr, "USDT")
-            updateStep("test", "success", `Balance: ${balanceStr} USDT`)
-          } else {
-            console.log("[v0] [QuickStart] ⚠ BingX test returned error:", testData.error)
-            updateStep("test", "success", "Credentials ready (test skipped)")
-          }
-        } else {
-          console.log("[v0] [QuickStart] ⚠ BingX test endpoint failed, continuing...")
-          updateStep("test", "success", "Credentials ready (test skipped)")
-        }
-      } catch (testErr) {
-        console.log("[v0] [QuickStart] ⚠ BingX test error, continuing:", testErr)
-        updateStep("test", "success", "Credentials ready (test skipped)")
-      }
+      const testRes = await Promise.race([
+        fetch("/api/settings/connections/test-bingx", { method: "GET", cache: "no-store" }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Test timeout")), 10000))
+      ])
+      if (!testRes.ok) throw new Error("BingX test failed")
+      const testData = await testRes.json()
+      if (!testData.success) throw new Error(testData.error || "BingX test failed")
+      console.log("[v0] [QuickStart] ✓ BingX connection verified | Balance:", testData.balance, "USDT")
+      updateStep("test", "success", `Balance: ${testData.balance} USDT`)
 
       // STEP 4: Start Trade Engine (INDEPENDENT - always do this)
       updateStep("start", "loading")
