@@ -1,12 +1,12 @@
 /**
  * Strategy Processor
- * Processes independent strategy sets for each type (Base, Main, Real, Live)
- * Each type evaluates with its own risk profile and maintains 250-entry pool
+ * Coordinates progressive strategy flow: BASE → MAIN → REAL → LIVE
+ * Each stage evaluates strategies with stricter thresholds
  */
 
 import { initRedis, getSettings } from "@/lib/redis-db"
 import { ProgressionStateManager } from "@/lib/progression-state-manager"
-import { StrategySetsProcessor } from "@/lib/strategy-sets-processor"
+import { StrategyCoordinator } from "@/lib/strategy-coordinator"
 import { logProgressionEvent } from "@/lib/engine-progression-logs"
 
 export class StrategyProcessor {
@@ -19,8 +19,8 @@ export class StrategyProcessor {
   }
 
   /**
-   * Process strategy - delegates to independent sets processor
-   * NOTE: During prehistoric phase, only evaluate strategies, don't create real positions
+   * Process strategy - executes complete coordinated flow
+   * BASE → Evaluate BASE → MAIN → REAL → LIVE
    */
   async processStrategy(symbol: string, isPrehistoric: boolean = false): Promise<void> {
     try {
@@ -31,43 +31,30 @@ export class StrategyProcessor {
         return
       }
 
-      // Use independent strategy sets processor for all 4 types
-      const setsProcessor = new StrategySetsProcessor(this.connectionId)
-      await setsProcessor.processAllStrategySets(symbol, indications, isPrehistoric)
+      // Execute complete strategy coordination flow
+      const coordinator = new StrategyCoordinator(this.connectionId)
+      const results = await coordinator.executeStrategyFlow(symbol, indications, isPrehistoric)
 
-      // Track progression
-      const baseStats = await setsProcessor.getSetStats(symbol, "base")
-      const mainStats = await setsProcessor.getSetStats(symbol, "main")
-      const realStats = await setsProcessor.getSetStats(symbol, "real")
-      const liveStats = await setsProcessor.getSetStats(symbol, "live")
+      // Get final stats for logging
+      const liveResult = results.find(r => r.type === "live")
+      const totalLiveStrategies = liveResult?.passedEvaluation || 0
 
-      const totalQualified =
-        (baseStats?.currentEntries || 0) +
-        (mainStats?.currentEntries || 0) +
-        (realStats?.currentEntries || 0) +
-        (liveStats?.currentEntries || 0)
-
-      if (totalQualified > 0) {
+      if (totalLiveStrategies > 0 || results.some(r => r.passedEvaluation > 0)) {
         if (isPrehistoric) {
-          // Track prehistoric cycles separately, don't execute trades
           await ProgressionStateManager.incrementPrehistoricCycle(this.connectionId, symbol)
           console.log(
-            `[v0] [PrehistoricStrategy] ${symbol}: Evaluated ${totalQualified} strategies (no trade execution) | Base=${baseStats?.currentEntries}/${baseStats?.maxEntries} Main=${mainStats?.currentEntries}/${mainStats?.maxEntries} Real=${realStats?.currentEntries}/${realStats?.maxEntries} Live=${liveStats?.currentEntries}/${liveStats?.maxEntries}`
+            `[v0] [PrehistoricStrategy] ${symbol}: Flow complete | Total LIVE ready: ${totalLiveStrategies} (evaluation only, no trades)`
           )
         } else {
-          // Realtime: track normal cycle with potential trade execution
-          await ProgressionStateManager.incrementCycle(this.connectionId, true, totalQualified)
+          await ProgressionStateManager.incrementCycle(this.connectionId, true, totalLiveStrategies)
           console.log(
-            `[v0] [RealtimeStrategy] ${symbol}: Created ${totalQualified} strategies | Base=${baseStats?.currentEntries}/${baseStats?.maxEntries} Main=${mainStats?.currentEntries}/${mainStats?.maxEntries} Real=${realStats?.currentEntries}/${realStats?.maxEntries} Live=${liveStats?.currentEntries}/${liveStats?.maxEntries}`
+            `[v0] [RealtimeStrategy] ${symbol}: Flow complete | Total LIVE ready: ${totalLiveStrategies} (executable)`
           )
         }
 
-        await logProgressionEvent(this.connectionId, `strategies_${isPrehistoric ? "prehistoric" : "realtime"}`, "info", `Strategy sets evaluated for ${symbol}`, {
-          base: baseStats,
-          main: mainStats,
-          real: realStats,
-          live: liveStats,
-          totalQualified,
+        await logProgressionEvent(this.connectionId, `strategies_${isPrehistoric ? "prehistoric" : "realtime"}`, "info", `Strategy flow completed for ${symbol}`, {
+          results,
+          liveReady: totalLiveStrategies,
           phase: isPrehistoric ? "prehistoric" : "realtime",
         })
       }
@@ -81,8 +68,8 @@ export class StrategyProcessor {
   }
 
   /**
-   * Process historical strategies for prehistoric data (evaluation only, no real trades)
-   * Uses same sets processor as realtime for consistency
+   * Process historical strategies for prehistoric data
+   * Evaluates strategies through complete flow without execution
    */
   async processHistoricalStrategies(symbol: string, start: Date, end: Date): Promise<void> {
     try {
@@ -98,37 +85,20 @@ export class StrategyProcessor {
         return
       }
 
-      // Use same sets processor as realtime for consistency
-      const setsProcessor = new StrategySetsProcessor(this.connectionId)
-      
-      // Process through independent strategy sets (isPrehistoric=true prevents real trades)
-      await setsProcessor.processAllStrategySets(symbol, indications, true)
-
-      // Get set statistics
-      const baseStats = await setsProcessor.getSetStats(symbol, "base")
-      const mainStats = await setsProcessor.getSetStats(symbol, "main")
-      const realStats = await setsProcessor.getSetStats(symbol, "real")
-      const liveStats = await setsProcessor.getSetStats(symbol, "live")
-
-      const totalEvaluated =
-        (baseStats?.currentEntries || 0) +
-        (mainStats?.currentEntries || 0) +
-        (realStats?.currentEntries || 0) +
-        (liveStats?.currentEntries || 0)
+      // Execute complete strategy coordination flow (prehistoric mode)
+      const coordinator = new StrategyCoordinator(this.connectionId)
+      const results = await coordinator.executeStrategyFlow(symbol, indications, true)
 
       // Track prehistoric progress
       await ProgressionStateManager.incrementPrehistoricCycle(this.connectionId, symbol)
       
+      const liveResult = results.find(r => r.type === "live")
       console.log(
-        `[v0] [PrehistoricStrategy] ${symbol}: Evaluated ${indications.length} indications → ${totalEvaluated} strategies (no trades) | Base=${baseStats?.currentEntries}/${baseStats?.maxEntries} Main=${mainStats?.currentEntries}/${mainStats?.maxEntries} Real=${realStats?.currentEntries}/${realStats?.maxEntries} Live=${liveStats?.currentEntries}/${liveStats?.maxEntries}`
+        `[v0] [PrehistoricStrategy] ${symbol}: Processed ${indications.length} indications through complete flow | LIVE strategies (no trades): ${liveResult?.passedEvaluation || 0}`
       )
 
-      await logProgressionEvent(this.connectionId, "strategies_prehistoric", "info", `Historical strategies evaluated for ${symbol}`, {
-        base: baseStats,
-        main: mainStats,
-        real: realStats,
-        live: liveStats,
-        totalEvaluated,
+      await logProgressionEvent(this.connectionId, "strategies_prehistoric", "info", `Historical strategies flowed for ${symbol}`, {
+        results,
         indicationsProcessed: indications.length,
         phase: "prehistoric",
         tradeExecutionEnabled: false,
