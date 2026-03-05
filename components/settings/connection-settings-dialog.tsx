@@ -6,6 +6,10 @@ import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Loader2, Save } from "lucide-react"
 import { toast } from "@/lib/simple-toast"
 
@@ -32,6 +36,14 @@ interface StrategySettings {
   max_positions?: number
 }
 
+interface ConnectionSettings {
+  symbols: string[]
+  order_type: "main" | "retrieving"
+  volume_ratio: number
+  volume_ratio_min: number
+  volume_ratio_max: number
+}
+
 export function ConnectionSettingsDialog({
   open,
   onOpenChange,
@@ -40,8 +52,17 @@ export function ConnectionSettingsDialog({
 }: ConnectionSettingsDialogProps) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [activeTab, setActiveTab] = useState("symbols")
   const [indications, setIndications] = useState<IndicationSettings[]>([])
   const [strategies, setStrategies] = useState<StrategySettings[]>([])
+  const [settings, setSettings] = useState<ConnectionSettings>({
+    symbols: ["BTCUSDT", "ETHUSDT", "BNBUSDT"],
+    order_type: "main",
+    volume_ratio: 1.0,
+    volume_ratio_min: 0.5,
+    volume_ratio_max: 2.0,
+  })
+  const [symbolInput, setSymbolInput] = useState("")
 
   useEffect(() => {
     if (open) {
@@ -72,6 +93,13 @@ export function ConnectionSettingsDialog({
             { strategy_type: "preset", is_enabled: false, min_profit_factor: 1.1, max_positions: 250 },
           ],
         )
+        
+        // Load connection-specific settings
+        if (settingsData.symbols) setSettings(prev => ({ ...prev, symbols: settingsData.symbols }))
+        if (settingsData.order_type) setSettings(prev => ({ ...prev, order_type: settingsData.order_type }))
+        if (settingsData.volume_ratio) setSettings(prev => ({ ...prev, volume_ratio: settingsData.volume_ratio }))
+        if (settingsData.volume_ratio_min) setSettings(prev => ({ ...prev, volume_ratio_min: settingsData.volume_ratio_min }))
+        if (settingsData.volume_ratio_max) setSettings(prev => ({ ...prev, volume_ratio_max: settingsData.volume_ratio_max }))
       }
     } catch (error) {
       console.error("[v0] Failed to load connection settings:", error)
@@ -91,6 +119,18 @@ export function ConnectionSettingsDialog({
     setStrategies((prev) => prev.map((strat, i) => (i === index ? { ...strat, is_enabled: enabled } : strat)))
   }
 
+  const addSymbol = () => {
+    const sym = symbolInput.toUpperCase().trim()
+    if (sym && !settings.symbols.includes(sym)) {
+      setSettings(prev => ({ ...prev, symbols: [...prev.symbols, sym] }))
+      setSymbolInput("")
+    }
+  }
+
+  const removeSymbol = (symbol: string) => {
+    setSettings(prev => ({ ...prev, symbols: prev.symbols.filter(s => s !== symbol) }))
+  }
+
   const handleSave = async () => {
     try {
       setSaving(true)
@@ -106,7 +146,14 @@ export function ConnectionSettingsDialog({
       await fetch(`/api/settings/connections/${connectionId}/settings`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ strategies }),
+        body: JSON.stringify({ 
+          strategies,
+          symbols: settings.symbols,
+          order_type: settings.order_type,
+          volume_ratio: settings.volume_ratio,
+          volume_ratio_min: settings.volume_ratio_min,
+          volume_ratio_max: settings.volume_ratio_max,
+        }),
       })
 
       toast.success("Settings saved", {
@@ -126,10 +173,10 @@ export function ConnectionSettingsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Connection Settings - {connectionName}</DialogTitle>
-          <DialogDescription>Configure strategies and indications for this connection</DialogDescription>
+          <DialogDescription>Configure symbols, volume ratios, order type, strategies and indications</DialogDescription>
         </DialogHeader>
 
         {loading ? (
@@ -137,85 +184,202 @@ export function ConnectionSettingsDialog({
             <Loader2 className="h-8 w-8 animate-spin" />
           </div>
         ) : (
-          <div className="space-y-6">
-            {/* Strategies Section */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold">Strategies</h3>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-5">
+              <TabsTrigger value="symbols">Symbols</TabsTrigger>
+              <TabsTrigger value="volume">Volume Ratios</TabsTrigger>
+              <TabsTrigger value="order">Order Type</TabsTrigger>
+              <TabsTrigger value="indications">Indications</TabsTrigger>
+              <TabsTrigger value="strategies">Strategies</TabsTrigger>
+            </TabsList>
+
+            {/* Symbols Tab */}
+            <TabsContent value="symbols" className="space-y-4 mt-4">
               <div className="space-y-3">
-                {strategies.map((strategy, index) => (
-                  <div key={strategy.strategy_type} className="flex items-center justify-between p-3 border rounded-lg">
-                    <div className="flex items-center gap-3 flex-1">
-                      <Badge variant="outline" className="capitalize">
-                        {strategy.strategy_type}
+                <Label className="text-base font-semibold">Exchange Symbols</Label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Enter symbol (e.g., BTCUSDT)"
+                    value={symbolInput}
+                    onChange={(e) => setSymbolInput(e.target.value)}
+                    onKeyPress={(e) => {
+                      if (e.key === "Enter") {
+                        addSymbol()
+                      }
+                    }}
+                    className="flex-1"
+                  />
+                  <Button onClick={addSymbol} variant="outline">
+                    Add Symbol
+                  </Button>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm">Active Symbols ({settings.symbols.length})</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {settings.symbols.map((symbol) => (
+                      <Badge key={symbol} variant="secondary" className="cursor-pointer hover:bg-destructive hover:text-destructive-foreground" onClick={() => removeSymbol(symbol)}>
+                        {symbol}
+                        <span className="ml-1 text-xs">×</span>
                       </Badge>
-                      <div className="text-sm text-muted-foreground">
-                        Min PF: {strategy.min_profit_factor} | Max: {strategy.max_positions}
-                      </div>
-                    </div>
-                    <Switch
-                      checked={strategy.is_enabled}
-                      onCheckedChange={(checked) => toggleStrategy(index, checked)}
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* Volume Ratios Tab */}
+            <TabsContent value="volume" className="space-y-4 mt-4">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="volume-ratio" className="text-base font-semibold">
+                    Base Volume Ratio: {settings.volume_ratio.toFixed(2)}x
+                  </Label>
+                  <Input
+                    id="volume-ratio"
+                    type="number"
+                    step="0.1"
+                    min="0.1"
+                    max="5"
+                    value={settings.volume_ratio}
+                    onChange={(e) => setSettings(prev => ({ ...prev, volume_ratio: parseFloat(e.target.value) }))}
+                  />
+                  <p className="text-xs text-muted-foreground">Multiplier for trading volume</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="volume-min" className="text-sm font-semibold">
+                      Minimum Ratio: {settings.volume_ratio_min.toFixed(2)}x
+                    </Label>
+                    <Input
+                      id="volume-min"
+                      type="number"
+                      step="0.1"
+                      min="0.1"
+                      value={settings.volume_ratio_min}
+                      onChange={(e) => setSettings(prev => ({ ...prev, volume_ratio_min: parseFloat(e.target.value) }))}
                     />
                   </div>
-                ))}
+                  <div className="space-y-2">
+                    <Label htmlFor="volume-max" className="text-sm font-semibold">
+                      Maximum Ratio: {settings.volume_ratio_max.toFixed(2)}x
+                    </Label>
+                    <Input
+                      id="volume-max"
+                      type="number"
+                      step="0.1"
+                      min="0.1"
+                      value={settings.volume_ratio_max}
+                      onChange={(e) => setSettings(prev => ({ ...prev, volume_ratio_max: parseFloat(e.target.value) }))}
+                    />
+                  </div>
+                </div>
               </div>
-            </div>
+            </TabsContent>
 
-            <Separator />
+            {/* Order Type Tab */}
+            <TabsContent value="order" className="space-y-4 mt-4">
+              <div className="space-y-3">
+                <Label className="text-base font-semibold">Order Type Configuration</Label>
+                <Select value={settings.order_type} onValueChange={(value: any) => setSettings(prev => ({ ...prev, order_type: value }))}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="main">Main Order</SelectItem>
+                    <SelectItem value="retrieving">Retrieving Order</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-sm text-muted-foreground mt-2">
+                  {settings.order_type === "main" 
+                    ? "Main orders execute immediately when signal is triggered"
+                    : "Retrieving orders wait for better prices before execution"
+                  }
+                </p>
+              </div>
+            </TabsContent>
 
-            {/* Indications Section */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold">Indications</h3>
-              {indications.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No indications configured</p>
-              ) : (
+            {/* Indications Tab */}
+            <TabsContent value="indications" className="space-y-4 mt-4">
+              <div className="space-y-4">
+                <h3 className="text-base font-semibold">Active Indications</h3>
+                {indications.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No indications configured</p>
+                ) : (
+                  <div className="space-y-3">
+                    {indications.map((indication, index) => (
+                      <div
+                        key={`${indication.indication_type}-${indication.indication_name}`}
+                        className="flex items-center justify-between p-3 border rounded-lg"
+                      >
+                        <div className="flex items-center gap-3 flex-1">
+                          <Badge variant="outline" className="capitalize">
+                            {indication.indication_type}
+                          </Badge>
+                          <div className="text-sm">
+                            <div className="font-medium">{indication.indication_name}</div>
+                            <div className="text-muted-foreground text-xs">
+                              Range: {indication.range || "N/A"} | Timeout: {indication.timeout || "N/A"}ms
+                            </div>
+                          </div>
+                        </div>
+                        <Switch
+                          checked={indication.is_enabled}
+                          onCheckedChange={(checked) => toggleIndication(index, checked)}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+
+            {/* Strategies Tab */}
+            <TabsContent value="strategies" className="space-y-4 mt-4">
+              <div className="space-y-4">
+                <h3 className="text-base font-semibold">Strategy Configuration</h3>
                 <div className="space-y-3">
-                  {indications.map((indication, index) => (
-                    <div
-                      key={`${indication.indication_type}-${indication.indication_name}`}
-                      className="flex items-center justify-between p-3 border rounded-lg"
-                    >
+                  {strategies.map((strategy, index) => (
+                    <div key={strategy.strategy_type} className="flex items-center justify-between p-3 border rounded-lg">
                       <div className="flex items-center gap-3 flex-1">
                         <Badge variant="outline" className="capitalize">
-                          {indication.indication_type}
+                          {strategy.strategy_type}
                         </Badge>
-                        <div className="text-sm">
-                          <div className="font-medium">{indication.indication_name}</div>
-                          <div className="text-muted-foreground text-xs">
-                            Range: {indication.range || "N/A"} | Timeout: {indication.timeout || "N/A"}ms
-                          </div>
+                        <div className="text-sm text-muted-foreground">
+                          Min PF: {strategy.min_profit_factor} | Max: {strategy.max_positions}
                         </div>
                       </div>
                       <Switch
-                        checked={indication.is_enabled}
-                        onCheckedChange={(checked) => toggleIndication(index, checked)}
+                        checked={strategy.is_enabled}
+                        onCheckedChange={(checked) => toggleStrategy(index, checked)}
                       />
                     </div>
                   ))}
                 </div>
-              )}
-            </div>
-
-            <div className="flex justify-end gap-2 pt-4">
-              <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
-                Cancel
-              </Button>
-              <Button onClick={handleSave} disabled={saving}>
-                {saving ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-4 w-4 mr-2" />
-                    Save Changes
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
+              </div>
+            </TabsContent>
+          </Tabs>
         )}
+
+        <div className="flex justify-end gap-2 pt-4">
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+            Cancel
+          </Button>
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4 mr-2" />
+                Save Changes
+              </>
+            )}
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   )

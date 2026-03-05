@@ -10,15 +10,16 @@ const API_VERSION = API_VERSIONS.tradeEngine
 /**
  * POST /api/trade-engine/quick-start
  * Quick-start endpoint: enables BingX connection (or bybit as fallback) on dashboard
- * Useful for testing when no connections are actively enabled
+ * Accepts optional symbols parameter to limit to specific symbols (default: 3)
  * BingX is preferred as it has proven API key validation in production
  */
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}))
     const action = body.action || "enable"
+    const symbols = body.symbols || ["BTCUSDT", "ETHUSDT", "BNBUSDT"] // Default: 3 symbols
     
-    console.log(`[v0] [QuickStart] ${API_VERSION}: Action=${action}`)
+    console.log(`[v0] [QuickStart] ${API_VERSION}: Action=${action}, Symbols=${symbols.length} (${symbols.join(", ")})`)
     
     await initRedis()
     const allConnections = await getAllConnections()
@@ -73,16 +74,17 @@ export async function POST(request: Request) {
         version: API_VERSION,
       })
     } else {
-      // ENABLE: Set both dashboard fields (default action)
-      console.log(`[v0] [QuickStart] ${API_VERSION}: Enabling ${connection.name}...`)
+      // ENABLE: Set both dashboard fields + store active symbols
+      console.log(`[v0] [QuickStart] ${API_VERSION}: Enabling ${connection.name} with ${symbols.length} symbols...`)
       const enabled = {
         ...connection,
         is_dashboard_inserted: "1",
         is_enabled_dashboard: "1",
+        active_symbols: JSON.stringify(symbols), // Store the 3 symbols for processing
         updated_at: new Date().toISOString(),
       }
       await updateConnection(connection.id, enabled)
-      console.log(`[v0] [QuickStart] ${API_VERSION}: ✓ Enabled ${connection.name}`)
+      console.log(`[v0] [QuickStart] ${API_VERSION}: ✓ Enabled ${connection.name} with symbols: ${symbols.join(", ")}`)
       return NextResponse.json({
         success: true,
         action: "enable",
@@ -91,6 +93,7 @@ export async function POST(request: Request) {
           name: connection.name,
           exchange: connection.exchange,
           is_enabled_dashboard: "1",
+          active_symbols: symbols,
         },
         version: API_VERSION,
       })
