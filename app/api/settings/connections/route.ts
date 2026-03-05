@@ -33,17 +33,27 @@ export async function GET(request: NextRequest) {
     // CRITICAL MIGRATION: Enforce ONLY bybit and bingx on dashboard
     // This must run on EVERY request to ensure consistency
     console.log(`[v0] [API] [Connections] ${API_VERSION}: Checking ${connections.length} connections for migration...`)
+    
+    // Only update connections if dashboard_inserted flags are incorrect
+    // Don't update on every request - that causes performance issues and potential duplicates
     let migratedCount = 0
+    const connectionsNeedingUpdate: any[] = []
+    
     for (const c of connections) {
       const exch = (c.exchange || "").toLowerCase().trim()
       const shouldBeOnDashboard = DASHBOARD_AUTO_INSERTED.includes(exch)
-      
-      // Check actual values (not just string "1", but also true or empty/undefined = not set)
       const dashboardInserted = c.is_dashboard_inserted === "1" || c.is_dashboard_inserted === true
       const needsDashboardSet = shouldBeOnDashboard && !dashboardInserted
       const needsDashboardReset = !shouldBeOnDashboard && dashboardInserted
       
       if (needsDashboardSet || needsDashboardReset) {
+        connectionsNeedingUpdate.push({ connection: c, shouldBeOnDashboard })
+      }
+    }
+    
+    // Only perform updates if there are actual changes needed
+    if (connectionsNeedingUpdate.length > 0) {
+      for (const { connection: c, shouldBeOnDashboard } of connectionsNeedingUpdate) {
         const newValue = shouldBeOnDashboard ? "1" : "0"
         await updateConnection(c.id, {
           ...c,
@@ -51,13 +61,13 @@ export async function GET(request: NextRequest) {
           updated_at: new Date().toISOString(),
         })
         migratedCount++
-        console.log(`[v0] [API] [Connections] ${API_VERSION}: ${c.exchange}: dashboard_inserted=${needsDashboardSet ? "SET to 1" : "RESET to 0"}`)
+        console.log(`[v0] [API] [Connections] ${API_VERSION}: ${c.exchange}: dashboard_inserted=${shouldBeOnDashboard ? "SET to 1" : "RESET to 0"}`)
       }
-    }
-    if (migratedCount > 0) {
       console.log(`[v0] [API] [Connections] ${API_VERSION}: Updated ${migratedCount} connections`)
       // Reload after updates
       connections = await getAllConnections()
+    } else {
+      console.log(`[v0] [API] [Connections] ${API_VERSION}: All dashboard flags correct, no updates needed`)
     }
 
     // Auto-initialize ONLY user-created connections (not predefined templates)
