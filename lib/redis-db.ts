@@ -193,8 +193,13 @@ export function isRedisConnected(): boolean {
 // ========== Helpers ==========
 
 function convertToString(value: any): string {
-  if (value === true || value === "true" || value === 1 || value === "1") return "1"
-  return "0"
+  // Handle booleans specially
+  if (value === true) return "1"
+  if (value === false) return "0"
+  // Handle null/undefined
+  if (value === null || value === undefined) return ""
+  // Convert everything else to string
+  return String(value)
 }
 
 function flattenForHmset(obj: Record<string, string>): string[] {
