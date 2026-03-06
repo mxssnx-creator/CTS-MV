@@ -2,6 +2,11 @@
  * Market Data Loader
  * Populates Redis with OHLCV data for trading engine
  * Generates synthetic data based on realistic patterns or loads from sources
+ *
+ * KEY ARCHITECTURE:
+ *   market_data:{symbol}:1m       → JSON string, full MarketData object with 250 candles (used by engine loader)
+ *   market_data:{symbol}:candles  → JSON string, raw candles array (used by indication processor for history)
+ *   market_data:{symbol}          → Redis hash, single latest candle (used by getMarketData() in redis-db)
  */
 
 import { getClient, initRedis } from "@/lib/redis-db"
@@ -118,13 +123,42 @@ export async function loadMarketDataForEngine(symbols: string[] = []): Promise<n
         await client.set(key, JSON.stringify(marketData))
         await client.expire(key, 86400) // 24 hour TTL
 
-        // Also store raw candles for quick access
+        // Store raw candles array for indication processor historical access
         const candlesKey = `market_data:${symbol}:candles`
         await client.set(candlesKey, JSON.stringify(candles))
         await client.expire(candlesKey, 86400)
 
+        // CRITICAL: Also write latest candle to hash format so getMarketData() works
+        // redis-db.getMarketData reads from market_data:{symbol} hash
+        const latestCandle = candles[candles.length - 1]
+        if (latestCandle) {
+          const hashKey = `market_data:${symbol}`
+          const flatHash: Record<string, string> = {
+            symbol,
+            exchange: "market_loader",
+            interval: "1m",
+            price: String(latestCandle.close),
+            open: String(latestCandle.open),
+            high: String(latestCandle.high),
+            low: String(latestCandle.low),
+            close: String(latestCandle.close),
+            volume: String(latestCandle.volume),
+            timestamp: new Date(latestCandle.timestamp).toISOString(),
+            candles_count: String(candles.length),
+          }
+          // Write all fields to the hash
+          const flatArgs: string[] = []
+          for (const [k, v] of Object.entries(flatHash)) {
+            flatArgs.push(k, v)
+          }
+          await client.hmset(hashKey, ...flatArgs)
+          await client.expire(hashKey, 86400)
+          console.log(`[v0] [MarketData] ✓ Hash written for ${symbol} (latest close=$${latestCandle.close.toFixed(2)})`)
+        }
+
         loaded++
-        console.log(`[v0] [MarketData] ✓ Loaded ${symbol}: ${candles.length} candles (base price: $${basePrice})`)
+        const priceStr = candles[candles.length - 1]?.close.toFixed(2) ?? String(basePrice)
+        console.log(`[v0] [MarketData] ✓ Loaded ${symbol}: ${candles.length} candles, latest price=$${priceStr}`)
       } catch (error) {
         console.error(`[v0] [MarketData] Failed to load ${symbol}:`, error)
       }

@@ -14,10 +14,22 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { is_active_inserted, is_enabled_dashboard } = body
 
     await initRedis()
-    const connection = await getConnection(connectionId)
+    let connection = await getConnection(connectionId)
+    let resolvedId = connectionId
+
+    // Fallback: try with conn- prefix if not found (handles predefined IDs like bybit-x03 → conn-bybit-x03)
+    if (!connection && !connectionId.startsWith("conn-")) {
+      const prefixedId = `conn-${connectionId}`
+      console.log(`[v0] [Toggle] Not found with id=${connectionId}, trying conn- prefix: ${prefixedId}`)
+      connection = await getConnection(prefixedId)
+      if (connection) {
+        resolvedId = prefixedId
+        console.log(`[v0] [Toggle] Resolved to: ${resolvedId}`)
+      }
+    }
 
     if (!connection) {
-      console.log(`[v0] [Toggle] ✗ Connection not found: ${connectionId}`)
+      console.log(`[v0] [Toggle] ✗ Connection not found: ${connectionId} (also tried conn-${connectionId})`)
       return NextResponse.json({ error: "Connection not found" }, { status: 404 })
     }
 
@@ -41,14 +53,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     console.log(`[v0] [Toggle]   After: is_active_inserted=${updatedConnection.is_active_inserted}, is_enabled_dashboard=${updatedConnection.is_enabled_dashboard}`)
 
-    await updateConnection(connectionId, updatedConnection)
+    await updateConnection(resolvedId, updatedConnection)
     
-    console.log(`[v0] [Toggle] ✓ Updated ${connection.name}`)
+    console.log(`[v0] [Toggle] ✓ Updated ${connection.name} (resolved id: ${resolvedId})`)
 
     return NextResponse.json({
       success: true,
       connection: {
-        id: connectionId,
+        id: resolvedId,
         name: connection.name,
         is_active_inserted: updatedConnection.is_active_inserted,
         is_enabled_dashboard: updatedConnection.is_enabled_dashboard,

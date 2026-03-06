@@ -90,22 +90,17 @@ export async function POST(request: Request) {
         version: API_VERSION,
       })
     } else {
-      // ENABLE: Set all required fields so engine can find + start this connection
-      console.log(`[v0] [QuickStart] ${API_VERSION}: Enabling ${connection.name} with ${symbols.length} symbols: ${symbols.join(", ")}`)
+      // ENABLE: Set both dashboard fields + store active symbols
+      console.log(`[v0] [QuickStart] ${API_VERSION}: Enabling ${connection.name} with ${symbols.length} symbols...`)
       const enabled = {
         ...connection,
-        is_enabled: "1",           // Engine active-connection filter checks this
-        is_enabled_dashboard: "1", // Dashboard panel visibility
         is_dashboard_inserted: "1",
-        is_active_inserted: "1",   // Active panel "inserted" flag
-        is_active: "1",
-        active_symbols: JSON.stringify(symbols), // Limit to 3 symbols for quick-start
+        is_enabled_dashboard: "1",
+        active_symbols: JSON.stringify(symbols), // Store the 3 symbols for processing
         updated_at: new Date().toISOString(),
       }
       await updateConnection(connection.id, enabled)
-      console.log(`[v0] [QuickStart] ${API_VERSION}: ✓ Enabled ${connection.name}`)
-      console.log(`[v0] [QuickStart] ${API_VERSION}: Fields set: is_enabled=1, is_enabled_dashboard=1, is_active_inserted=1, is_active=1`)
-      console.log(`[v0] [QuickStart] ${API_VERSION}: Symbols: ${symbols.join(", ")}`)
+      console.log(`[v0] [QuickStart] ${API_VERSION}: ✓ Enabled ${connection.name} with symbols: ${symbols.join(", ")}`)
       return NextResponse.json({
         success: true,
         action: "enable",
@@ -113,7 +108,6 @@ export async function POST(request: Request) {
           id: connection.id,
           name: connection.name,
           exchange: connection.exchange,
-          is_enabled: "1",
           is_enabled_dashboard: "1",
           active_symbols: symbols,
         },

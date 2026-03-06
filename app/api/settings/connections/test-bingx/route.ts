@@ -12,52 +12,72 @@ export const dynamic = "force-dynamic"
  */
 export async function GET() {
   try {
-    console.log("[v0] [TestBingX] Verifying BingX connection credentials...")
+    console.log("[v0] [TestBingX] Testing BingX connection...")
     
     await initRedis()
     const allConnections = await getAllConnections()
     
-    console.log(`[v0] [TestBingX] Scanning ${allConnections.length} connections for BingX...`)
-    
-    // Find ANY BingX connection — prefer user-created (is_predefined="0"), fallback to predefined template
+    // Find BingX connection
     const bingx = allConnections.find((c: any) => {
       const exch = (c.exchange || "").toLowerCase()
-      const isPredefined = c.is_predefined === "1" || c.is_predefined === true
-      return exch === "bingx" && !isPredefined
-    }) || allConnections.find((c: any) => {
-      return (c.exchange || "").toLowerCase() === "bingx"
+      return exch === "bingx" && (c.is_enabled || c.is_enabled === "1")
     })
     
     if (!bingx) {
-      console.log("[v0] [TestBingX] No BingX connection found at all")
-      console.log("[v0] [TestBingX] Available connections:", allConnections.map((c: any) => `${c.name}(${c.exchange})`).join(", "))
+      console.log("[v0] [TestBingX] BingX connection not found or not enabled in Settings")
       return NextResponse.json(
         { 
           success: false,
-          error: "BingX connection not found",
-          message: "No BingX connection exists in the system",
-          availableCount: allConnections.length,
+          error: "BingX connection not found or not enabled",
+          message: "Enable BingX in Settings first"
         },
         { status: 404 }
       )
     }
     
-    const isPredefined = bingx.is_predefined === "1" || bingx.is_predefined === true
-    console.log(`[v0] [TestBingX] Found BingX: ${bingx.name} (${bingx.id}) predefined=${isPredefined}`)
+    console.log(`[v0] [TestBingX] Found BingX connection: ${bingx.name}`)
     
-    // Return success — credentials are present (no live API call to avoid timeouts)
+    // Actually test the connection and get real balance
+    let balance = 0
+    let status = "untested"
+    
+    try {
+      const connector = new BingXConnector({
+        apiKey: bingx.api_key || "",
+        apiSecret: bingx.api_secret || "",
+        apiType: bingx.api_type || "perpetual_futures",
+        isTestnet: bingx.is_testnet === true || bingx.is_testnet === "1",
+      }, "bingx")
+      
+      const result = await connector.testConnection()
+      console.log(`[v0] [TestBingX] Connection result:`, result.success, result.balance)
+      
+      if (result.success) {
+        balance = result.balance || 0
+        status = "connected"
+      } else {
+        status = "failed"
+        console.log(`[v0] [TestBingX] Connection failed:`, result.error)
+      }
+    } catch (connError) {
+      console.error(`[v0] [TestBingX] Connector error:`, connError)
+      status = "error"
+    }
+    
+    // Return connection status and real balance
     return NextResponse.json({
-      success: true,
+      success: status === "connected",
       connection: {
         id: bingx.id,
         name: bingx.name,
         exchange: bingx.exchange,
-        isPredefined,
       },
-      status: "credentials_ready",
-      balance: "0.00",
+      status,
+      balance: balance.toFixed(2),
       lastTest: new Date().toISOString(),
-      message: `BingX credentials ready (${bingx.name})`,
+      message: status === "connected" 
+        ? `BingX connected with ${balance.toFixed(2)} USDT available`
+        : `BingX connection ${status}`,
     })
   } catch (error) {
     console.error("[v0] [TestBingX] Error:", error)

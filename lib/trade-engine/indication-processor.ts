@@ -35,6 +35,54 @@ export class IndicationProcessor {
   }
 
   /**
+   * Get all candles for a symbol - tries multiple Redis keys in priority order:
+   * 1. market_data:{symbol}:candles  → JSON array of 250 candles (from loadMarketDataForEngine)
+   * 2. market_data:{symbol}:1m       → JSON object with .candles array
+   * 3. market_data:{symbol}          → single hash entry (fallback, 1 data point)
+   */
+  private async getHistoricalCandles(symbol: string): Promise<any[]> {
+    try {
+      const { getRedisClient: getRC, initRedis: ir } = await import("@/lib/redis-db")
+      await ir()
+      const client = getRC()
+
+      // Priority 1: raw candles array (250 candles from market-data-loader)
+      const candlesRaw = await client.get(`market_data:${symbol}:candles`)
+      if (candlesRaw) {
+        const candles = JSON.parse(typeof candlesRaw === "string" ? candlesRaw : JSON.stringify(candlesRaw))
+        if (Array.isArray(candles) && candles.length > 0) {
+          console.log(`[v0] [PrehistoricIndication] Using candles array for ${symbol}: ${candles.length} candles`)
+          return candles
+        }
+      }
+
+      // Priority 2: full MarketData JSON with nested candles
+      const marketDataRaw = await client.get(`market_data:${symbol}:1m`)
+      if (marketDataRaw) {
+        const marketDataObj = JSON.parse(typeof marketDataRaw === "string" ? marketDataRaw : JSON.stringify(marketDataRaw))
+        if (marketDataObj?.candles && Array.isArray(marketDataObj.candles) && marketDataObj.candles.length > 0) {
+          console.log(`[v0] [PrehistoricIndication] Using market_data:1m candles for ${symbol}: ${marketDataObj.candles.length} candles`)
+          return marketDataObj.candles
+        }
+      }
+
+      // Priority 3: hash (single latest data point from redis-db.saveMarketData / getMarketData)
+      const redis = await getRedisHelpers()
+      const rawData = await redis.getMarketData(symbol)
+      if (rawData) {
+        const arr = Array.isArray(rawData) ? rawData : [rawData]
+        console.log(`[v0] [PrehistoricIndication] Using hash fallback for ${symbol}: ${arr.length} data point(s)`)
+        return arr
+      }
+
+      return []
+    } catch (error) {
+      console.error(`[v0] [PrehistoricIndication] Failed to get candles for ${symbol}:`, error)
+      return []
+    }
+  }
+
+  /**
    * Process historical indications - builds up all 4 independent type sets
    * Prehistoric phase only: evaluation, no trade execution
    */
@@ -47,13 +95,9 @@ export class IndicationProcessor {
 
       const redis = await getRedisHelpers()
       await redis.initRedis()
-      const rawData = await redis.getMarketData(symbol)
 
-      const historicalData: any[] = Array.isArray(rawData)
-        ? rawData
-        : rawData
-          ? [rawData]
-          : []
+      // Use enhanced candle loader (tries candles array first, then hash fallback)
+      const historicalData = await this.getHistoricalCandles(symbol)
 
       if (historicalData.length === 0) {
         console.log(`[v0] [PrehistoricIndication] NO DATA: No market data available for ${symbol}`)
@@ -64,7 +108,7 @@ export class IndicationProcessor {
         return
       }
 
-      console.log(`[v0] [PrehistoricIndication] DATA RETRIEVED: ${historicalData.length} records for ${symbol}`)
+      console.log(`[v0] [PrehistoricIndication] DATA RETRIEVED: ${historicalData.length} records for ${symbol} (startDate: ${startDate.toISOString()})`)
 
       const setsProcessor = new IndicationSetsProcessor(this.connectionId)
 
