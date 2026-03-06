@@ -321,123 +321,8 @@ export class IndicationProcessor {
   }
 
   /**
-   * Calculate indication - evaluates all 4 types and returns strongest
+   * Get latest market data with caching to avoid repeated Redis calls
    */
-  async calculateIndication(symbol: string, marketData: any, _settings: any): Promise<any> {
-    const price = marketData.price || marketData.close || 0
-    const volume = marketData.volume || 0
-
-    const historicalPrices = await this.getRecentPrices(symbol, 30)
-
-    if (historicalPrices.length < 10) {
-      return null
-    }
-
-    const [directionIndication, moveIndication, activeIndication] = await Promise.all([
-      Promise.resolve(this.calculateDirectionIndication(historicalPrices, price)),
-      Promise.resolve(this.calculateMoveIndication(historicalPrices, price)),
-      Promise.resolve(this.calculateActiveIndication(historicalPrices, volume)),
-    ])
-
-    const optimalIndication = this.calculateOptimalIndication(directionIndication, moveIndication, activeIndication)
-
-    const indications = [directionIndication, moveIndication, activeIndication, optimalIndication]
-      .filter((i) => i !== null)
-      .sort((a, b) => b.profit_factor - a.profit_factor)
-
-    return indications[0] || null
-  }
-
-  private calculateDirectionIndication(prices: number[], currentPrice: number): any {
-    if (prices.length < 10) return null
-
-    const recent = prices.slice(-10)
-    const avg = recent.reduce((a, b) => a + b, 0) / recent.length
-    const trend = currentPrice > avg ? "long" : "short"
-    const strength = Math.abs((currentPrice - avg) / avg)
-
-    return {
-      type: "direction",
-      timeframe: "1h",
-      value: trend === "long" ? 1 : -1,
-      profit_factor: 1 + strength,
-      confidence: Math.min(0.9, 0.5 + strength),
-      metadata: { direction: trend, strength, avgPrice: avg },
-    }
-  }
-
-  private calculateMoveIndication(prices: number[], currentPrice: number): any {
-    if (prices.length < 5) return null
-
-    const recent = prices.slice(-5)
-    const volatility = Math.max(...recent) - Math.min(...recent)
-    const relativeVolatility = volatility / currentPrice
-
-    return {
-      type: "move",
-      timeframe: "1h",
-      value: relativeVolatility * 100,
-      profit_factor: 1 + relativeVolatility * 2,
-      confidence: Math.min(0.85, 0.4 + relativeVolatility),
-      metadata: { volatility, relativeVolatility },
-    }
-  }
-
-  private calculateActiveIndication(prices: number[], volume: number): any {
-    if (prices.length < 3) return null
-
-    const avgPrice = prices.reduce((a, b) => a + b, 0) / prices.length
-    const activity = volume / (avgPrice || 1)
-
-    return {
-      type: "active",
-      timeframe: "1h",
-      value: activity,
-      profit_factor: 1 + Math.min(activity / 1000, 0.5),
-      confidence: Math.min(0.8, 0.3 + activity / 2000),
-      metadata: { volume, activity },
-    }
-  }
-
-  private calculateOptimalIndication(direction: any, move: any, active: any): any {
-    const components = [direction, move, active].filter((i) => i !== null)
-    if (components.length === 0) return null
-
-    const avgProfitFactor = components.reduce((sum, i) => sum + i.profit_factor, 0) / components.length
-    const avgConfidence = components.reduce((sum, i) => sum + i.confidence, 0) / components.length
-
-    return {
-      type: "optimal",
-      timeframe: "1h",
-      value: avgProfitFactor * 100,
-      profit_factor: avgProfitFactor,
-      confidence: avgConfidence,
-      metadata: {
-        direction: direction?.metadata.direction || "neutral",
-        components: { direction, move, active },
-        timestamp: new Date().toISOString(),
-      },
-    }
-  }
-
-  private async getRecentPrices(symbol: string, _count: number): Promise<number[]> {
-    try {
-      const redis = await getRedisHelpers()
-      await redis.initRedis()
-      const rawData = await redis.getMarketData(symbol)
-
-      const dataList: any[] = Array.isArray(rawData)
-        ? rawData
-        : rawData
-          ? [rawData]
-          : []
-
-      return dataList.map((d: any) => d.close || d.price || 0).reverse()
-    } catch {
-      return []
-    }
-  }
-
   private async getLatestMarketDataCached(symbol: string): Promise<any> {
     const now = Date.now()
     const cached = this.marketDataCache.get(symbol)
@@ -468,6 +353,9 @@ export class IndicationProcessor {
     }
   }
 
+  /**
+   * Get indication settings with caching
+   */
   private async getIndicationSettingsCached(): Promise<any> {
     const now = Date.now()
 
