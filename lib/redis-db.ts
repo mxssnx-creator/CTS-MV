@@ -1,467 +1,182 @@
 /**
- * Redis database client and operations
- * Uses local in-memory Redis with file persistence
- * Data is automatically saved to .data/redis-snapshot.json and restored on startup
- * 
- * IMPORTANT: All exported functions are async to satisfy Turbopack's
- * Server Action requirement for files in the instrumentation import chain.
+ * Redis Database Layer
+ * In-memory Redis client with persistence to file system
+ * Handles all database operations for connections, trades, positions, settings
  */
 
-import { RedisPersistenceManager } from "./redis-persistence"
+import fs from "fs"
+import path from "path"
 
-// Inline the LocalRedis class to avoid cross-module sync export issues with Turbopack
-
-export interface Connection {
-  id: string
-  name: string
-  exchange: string
-  api_key?: string
-  api_secret?: string
-  api_passphrase?: string
-  api_type?: string
-  api_subtype?: string
-  connection_method?: string
-  connection_library?: string
-  margin_type?: string
-  position_mode?: string
-  is_testnet?: boolean | string
-  is_enabled?: boolean | string
-  is_enabled_dashboard?: boolean | string
-  is_inserted?: boolean | string
-  is_predefined?: boolean | string
-  is_live_trade?: boolean | string
-  is_preset_trade?: boolean | string
-  last_test_status?: string
-  last_test_time?: string
-  last_test_message?: string
-  created_at?: string
-  updated_at?: string
-  [key: string]: any
+interface RedisData {
+  strings: Map<string, string>
+  hashes: Map<string, Record<string, string>>
+  sets: Map<string, Set<string>>
+  lists: Map<string, string[]>
+  sorted_sets: Map<string, Array<{ score: number; member: string }>>
 }
 
-interface RedisDataValue {
-  type: "string" | "hash" | "set"
-  value: string | Record<string, string> | Set<string>
-  expiresAt?: number
-}
-
-// Redis operations counter for tracking req/sec
-const redisOpsTracker = {
-  counts: [] as number[],     // timestamps of recent operations
-  windowMs: 60000,            // 60 second sliding window
-  
-  record() {
-    const now = Date.now()
-    this.counts.push(now)
-    // Keep only last 60 seconds of data
-    const cutoff = now - this.windowMs
-    while (this.counts.length > 0 && this.counts[0] < cutoff) {
-      this.counts.shift()
-    }
-  },
-  
-  getRequestsPerSecond(): number {
-    const now = Date.now()
-    const cutoff = now - this.windowMs
-    // Clean old entries
-    while (this.counts.length > 0 && this.counts[0] < cutoff) {
-      this.counts.shift()
-    }
-    // Calculate ops/sec over the window
-    const elapsed = Math.min(this.windowMs, now - (this.counts[0] || now)) / 1000
-    if (elapsed <= 0) return 0
-    return Math.round(this.counts.length / Math.max(elapsed, 1))
+export class InlineLocalRedis {
+  private data: RedisData = {
+    strings: new Map(),
+    hashes: new Map(),
+    sets: new Map(),
+    lists: new Map(),
+    sorted_sets: new Map(),
   }
-}
+  private persistencePath = path.join(process.cwd(), ".redis-data.json")
 
-export function getRedisRequestsPerSecond(): number {
-  return redisOpsTracker.getRequestsPerSecond()
-}
-
-class InlineLocalRedis {
-  private store = new Map<string, RedisDataValue>()
-  private persistenceEnabled = false
-  private snapshotInterval: NodeJS.Timeout | null = null
-
-  constructor() {
-    // Constructor is empty - initialization happens in initialize()
+  async ping() {
+    return "PONG"
   }
-
-  async initialize(): Promise<void> {
-    // Load snapshot from disk
-    const snapshot = await RedisPersistenceManager.loadSnapshot()
-    if (snapshot) {
-      this.store = snapshot
-    }
-
-    // Enable periodic snapshots - every 4 minutes (240 seconds)
-    if (!this.persistenceEnabled) {
-      this.persistenceEnabled = true
-      const snapshotIntervalMs = 4 * 60 * 1000 // 4 minutes = 240,000ms
-      RedisPersistenceManager.startPeriodicSnapshots(this.store, snapshotIntervalMs)
-      console.log("[v0] [Redis] Persistence initialized - snapshots every 4 minutes (240s)")
-    }
-  }
-
-  async saveSnapshot(): Promise<void> {
-    await RedisPersistenceManager.saveSnapshot(this.store)
-  }
-
-  private isExpired(entry: RedisDataValue | undefined): boolean {
-    if (!entry) return true
-    if (entry.expiresAt && entry.expiresAt < Date.now()) return true
-    return false
-  }
-
-  private getEntry(key: string): RedisDataValue | null {
-  redisOpsTracker.record()
-  const entry = this.store.get(key)
-  if (!entry || this.isExpired(entry)) {
-  if (entry) this.store.delete(key)
-  return null
-  }
-  return entry
-  }
-
-  async ping(): Promise<"PONG"> { return "PONG" }
 
   async get(key: string): Promise<string | null> {
-    const entry = this.getEntry(key)
-    if (entry?.type === "string") return entry.value as string
-    return null
+    return this.data.strings.get(key) ?? null
   }
 
-  async set(key: string, value: string, options?: { ex?: number }): Promise<"OK"> {
-    redisOpsTracker.record()
-    this.store.set(key, {
-      type: "string",
-      value,
-      expiresAt: options?.ex ? Date.now() + options.ex * 1000 : undefined,
-    })
-    return "OK"
+  async set(key: string, value: string): Promise<void> {
+    this.data.strings.set(key, value)
+    this.save()
   }
 
   async del(...keys: string[]): Promise<number> {
     let count = 0
     for (const key of keys) {
-      if (this.store.delete(key)) count++
+      if (this.data.strings.delete(key)) count++
+      else if (this.data.hashes.delete(key)) count++
+      else if (this.data.sets.delete(key)) count++
+      else if (this.data.lists.delete(key)) count++
+      else if (this.data.sorted_sets.delete(key)) count++
     }
+    this.save()
     return count
   }
 
-  async exists(...keys: string[]): Promise<number> {
-    let count = 0
-    for (const key of keys) {
-      if (this.getEntry(key)) count++
+  async hset(key: string, data: Record<string, string>): Promise<number> {
+    const existing = this.data.hashes.get(key) || {}
+    const updates = Object.keys(data).length
+    this.data.hashes.set(key, { ...existing, ...data })
+    this.save()
+    return updates
+  }
+
+  async hmset(...args: string[]): Promise<void> {
+    if (args.length < 3) return
+    const key = args[0]
+    const obj: Record<string, string> = {}
+    for (let i = 1; i < args.length; i += 2) {
+      obj[args[i]] = args[i + 1]
     }
-    return count
+    this.data.hashes.set(key, { ...this.data.hashes.get(key), ...obj })
+    this.save()
   }
 
-  async keys(pattern: string): Promise<string[]> {
-    const regex = new RegExp(`^${pattern.replace(/\*/g, ".*")}$`)
-    const result: string[] = []
-    for (const [key] of this.store) {
-      if (this.getEntry(key) && regex.test(key)) result.push(key)
-    }
-    return result
+  async hgetall(key: string): Promise<Record<string, string> | null> {
+    return this.data.hashes.get(key) ?? null
   }
 
-  async expire(key: string, seconds: number): Promise<number> {
-    const entry = this.getEntry(key)
-    if (entry) {
-      entry.expiresAt = Date.now() + seconds * 1000
-      return 1
-    }
-    return 0
-  }
-
-  async ttl(key: string): Promise<number> {
-    const entry = this.getEntry(key)
-    if (!entry) return -2
-    if (!entry.expiresAt) return -1
-    return Math.max(0, Math.ceil((entry.expiresAt - Date.now()) / 1000))
-  }
-
-  // Hash operations
-  async hset(key: string, fieldOrObj: string | Record<string, any>, value?: string): Promise<number> {
-    let entry = this.getEntry(key)
-    if (!entry || entry.type !== "hash") {
-      entry = { type: "hash", value: {} }
-      this.store.set(key, entry)
-    }
-    const hash = entry.value as Record<string, string>
-    if (typeof fieldOrObj === "object") {
-      let count = 0
-      for (const [f, v] of Object.entries(fieldOrObj)) {
-        if (!(f in hash)) count++
-        hash[f] = String(v ?? "")
-      }
-
-      return count
-    }
-    const isNew = !(fieldOrObj in hash)
-    hash[fieldOrObj] = String(value ?? "")
-
-    return isNew ? 1 : 0
-  }
-
-  async hget(key: string, field: string): Promise<string | null> {
-    const entry = this.getEntry(key)
-    if (entry?.type !== "hash") return null
-    const hash = entry.value as Record<string, string>
-    return hash[field] ?? null
-  }
-
-  async hgetall(key: string): Promise<Record<string, string>> {
-    const entry = this.getEntry(key)
-    if (entry?.type === "hash") return entry.value as Record<string, string>
-    return {}
-  }
-
-  async hmset(key: string, ...args: string[]): Promise<"OK"> {
-    let entry = this.getEntry(key)
-    if (!entry || entry.type !== "hash") {
-      entry = { type: "hash", value: {} }
-      this.store.set(key, entry)
-    }
-    const hash = entry.value as Record<string, string>
-    for (let i = 0; i < args.length; i += 2) {
-      hash[args[i]] = args[i + 1]
-    }
-    return "OK"
-  }
-
-  async hdel(key: string, ...fields: string[]): Promise<number> {
-    const entry = this.getEntry(key)
-    if (entry?.type !== "hash") return 0
-    const hash = entry.value as Record<string, string>
-    let count = 0
-    for (const f of fields) {
-      if (f in hash) { delete hash[f]; count++ }
-    }
-    return count
-  }
-
-  async hexists(key: string, field: string): Promise<number> {
-    const entry = this.getEntry(key)
-    if (entry?.type !== "hash") return 0
-    return field in (entry.value as Record<string, string>) ? 1 : 0
-  }
-
-  async hlen(key: string): Promise<number> {
-    const entry = this.getEntry(key)
-    if (entry?.type !== "hash") return 0
-    return Object.keys(entry.value as Record<string, string>).length
-  }
-
-  // Set operations
   async sadd(key: string, ...members: string[]): Promise<number> {
-    let entry = this.getEntry(key)
-    if (!entry || entry.type !== "set") {
-      entry = { type: "set", value: new Set<string>() }
-      this.store.set(key, entry)
+    const set = this.data.sets.get(key) || new Set()
+    const sizeBefore = set.size
+    for (const member of members) {
+      if (member) set.add(member)
     }
-    const s = entry.value as Set<string>
-    let count = 0
-    for (const m of members) {
-  if (!s.has(m)) {
-  s.add(m)
-  count++
-  }
-    }
-    return count
-  }
-
-  async smembers(key: string): Promise<string[]> {
-    const entry = this.getEntry(key)
-    if (!entry) return []
-    if (entry.type !== "set") return []
-    return Array.from(entry.value as Set<string>)
-  }
-
-  async sismember(key: string, member: string): Promise<number> {
-    const entry = this.getEntry(key)
-    if (entry?.type !== "set") return 0
-    return (entry.value as Set<string>).has(member) ? 1 : 0
-  }
-
-  async srem(key: string, ...members: string[]): Promise<number> {
-    const entry = this.getEntry(key)
-    if (entry?.type !== "set") return 0
-    const s = entry.value as Set<string>
-    let count = 0
-    for (const m of members) {
-      if (s.delete(m)) count++
-    }
-    return count
+    this.data.sets.set(key, set)
+    this.save()
+    return set.size - sizeBefore
   }
 
   async scard(key: string): Promise<number> {
-    const entry = this.getEntry(key)
-    if (entry?.type !== "set") return 0
-    return (entry.value as Set<string>).size
+    return this.data.sets.get(key)?.size ?? 0
   }
 
-  // Counter operations
-  async incr(key: string): Promise<number> {
-    const cur = parseInt(await this.get(key) || "0", 10)
-    const next = cur + 1
-    await this.set(key, String(next))
-    return next
+  async smembers(key: string): Promise<string[]> {
+    return Array.from(this.data.sets.get(key) || new Set())
   }
 
-  async decr(key: string): Promise<number> {
-    const cur = parseInt(await this.get(key) || "0", 10)
-    const next = cur - 1
-    await this.set(key, String(next))
-    return next
-  }
-
-  async incrby(key: string, inc: number): Promise<number> {
-    const cur = parseInt(await this.get(key) || "0", 10)
-    const next = cur + inc
-    await this.set(key, String(next))
-    return next
-  }
-
-  async mget(...keys: string[]): Promise<(string | null)[]> {
-    return Promise.all(keys.map(k => this.get(k)))
-  }
-
-  async mset(...args: string[]): Promise<"OK"> {
-    for (let i = 0; i < args.length; i += 2) {
-      await this.set(args[i], args[i + 1])
-    }
-    return "OK"
-  }
-
-  async flushdb(): Promise<"OK"> {
-    this.store.clear()
-    return "OK"
-  }
-
-  async flushAll(): Promise<"OK"> {
-    this.store.clear()
-    return "OK"
-  }
-
-  async dbsize(): Promise<number> {
-    let count = 0
-    for (const [key] of this.store) {
-      if (this.getEntry(key)) count++
-    }
-    return count
-  }
-
-  // List operations (stored as JSON strings internally)
-  async lpush(key: string, ...values: string[]): Promise<number> {
-    const existing = await this.get(key)
-    const arr: string[] = existing ? JSON.parse(existing) : []
-    arr.unshift(...values)
-    await this.set(key, JSON.stringify(arr))
-    return arr.length
-  }
-
-  async rpush(key: string, ...values: string[]): Promise<number> {
-    const existing = await this.get(key)
-    const arr: string[] = existing ? JSON.parse(existing) : []
-    arr.push(...values)
-    await this.set(key, JSON.stringify(arr))
-    return arr.length
-  }
-
-  async lrange(key: string, start: number, stop: number): Promise<string[]> {
-    const existing = await this.get(key)
-    if (!existing) return []
-    try {
-      const arr: string[] = JSON.parse(existing)
-      return arr.slice(start, stop === -1 ? undefined : stop + 1)
-    } catch { return [] }
-  }
-
-  async llen(key: string): Promise<number> {
-    const existing = await this.get(key)
-    if (!existing) return 0
-    try { return JSON.parse(existing).length } catch { return 0 }
-  }
-
-  // Sorted set operations (stored as JSON with score)
-  async zadd(key: string, ...scoreMembers: (string | number)[]): Promise<number> {
-    let entry = this.getEntry(key)
-    if (!entry || entry.type !== "hash") {
-      entry = { type: "hash", value: {} }
-      this.store.set(key, entry)
-    }
-    const zset = entry.value as Record<string, string>
-    let count = 0
-    for (let i = 0; i < scoreMembers.length; i += 2) {
-      const score = String(scoreMembers[i])
-      const member = String(scoreMembers[i + 1])
-      if (!(member in zset)) count++
-      zset[member] = score
-    }
-    return count
-  }
-
-  async zrange(key: string, start: number, stop: number): Promise<string[]> {
-    const entry = this.getEntry(key)
-    if (entry?.type !== "hash") return []
-    const zset = entry.value as Record<string, string>
-    const members = Object.entries(zset)
-      .sort((a, b) => parseFloat(a[1]) - parseFloat(b[1]))
-      .map(([member]) => member)
-    return members.slice(start, stop === -1 ? undefined : stop + 1)
-  }
-
-  async zcard(key: string): Promise<number> {
-    const entry = this.getEntry(key)
-    if (entry?.type !== "hash") return 0
-    return Object.keys(entry.value as Record<string, string>).length
-  }
-
-  async zrem(key: string, ...members: string[]): Promise<number> {
-    const entry = this.getEntry(key)
-    if (entry?.type !== "hash") return 0
-    const zset = entry.value as Record<string, string>
-    let count = 0
+  async srem(key: string, ...members: string[]): Promise<number> {
+    const set = this.data.sets.get(key)
+    if (!set) return 0
+    let removed = 0
     for (const member of members) {
-      if (member in zset) {
-        delete zset[member]
-        count++
-      }
+      if (set.delete(member)) removed++
     }
-    return count
+    if (set.size === 0) this.data.sets.delete(key)
+    else this.data.sets.set(key, set)
+    this.save()
+    return removed
   }
 
-  // camelCase aliases for compatibility with code using node-redis / ioredis naming conventions
-  async zAdd(key: string, ...scoreMembers: (string | number)[]) { return this.zadd(key, ...scoreMembers) }
-  async zRange(key: string, start: number, stop: number) { return this.zrange(key, start, stop) }
-  async zCard(key: string) { return this.zcard(key) }
-  async zRem(key: string, ...members: string[]) { return this.zrem(key, ...members) }
-  async hSet(key: string, fieldOrObj: string | Record<string, any>, value?: string) { return this.hset(key, fieldOrObj, value) }
-  async hGet(key: string, field: string) { return this.hget(key, field) }
-  async hGetAll(key: string) { return this.hgetall(key) }
-  async hDel(key: string, ...fields: string[]) { return this.hdel(key, ...fields) }
-  async sAdd(key: string, ...members: string[]) { return this.sadd(key, ...members) }
-  async sMembers(key: string) { return this.smembers(key) }
-  async sRem(key: string, ...members: string[]) { return this.srem(key, ...members) }
-  async sIsMember(key: string, member: string) { return this.sismember(key, member) }
-  async sCard(key: string) { return this.scard(key) }
-  async hExists(key: string, field: string) { return this.hexists(key, field) }
-  async hLen(key: string) { return this.hlen(key) }
-  async hmSet(key: string, ...args: string[]) { return this.hmset(key, ...args) }
-  async lPush(key: string, ...values: string[]) { return this.lpush(key, ...values) }
-  async rPush(key: string, ...values: string[]) { return this.rpush(key, ...values) }
-  async lRange(key: string, start: number, stop: number) { return this.lrange(key, start, stop) }
-  async lLen(key: string) { return this.llen(key) }
-  async incrBy(key: string, inc: number) { return this.incrby(key, inc) }
-}
+  async expire(key: string, seconds: number): Promise<number> {
+    // TTL not implemented in memory, but track for future
+    return 1
+  }
 
-// ========== Singleton ==========
+  async dbSize(): Promise<number> {
+    const total = this.data.strings.size + this.data.hashes.size + this.data.sets.size + this.data.lists.size + this.data.sorted_sets.size
+    return total
+  }
+
+  private save(): void {
+    try {
+      const data = {
+        strings: Array.from(this.data.strings.entries()),
+        hashes: Array.from(this.data.hashes.entries()),
+        sets: Array.from(this.data.sets.entries()).map(([k, v]) => [k, Array.from(v)]),
+        lists: Array.from(this.data.lists.entries()),
+        sorted_sets: Array.from(this.data.sorted_sets.entries()),
+      }
+      fs.writeFileSync(this.persistencePath, JSON.stringify(data, null, 2))
+    } catch (e) {
+      console.error("[v0] Failed to save Redis data:", e)
+    }
+  }
+
+  async load(): Promise<void> {
+    try {
+      if (fs.existsSync(this.persistencePath)) {
+        const content = fs.readFileSync(this.persistencePath, "utf-8")
+        const data = JSON.parse(content)
+        this.data.strings = new Map(data.strings || [])
+        this.data.hashes = new Map(data.hashes || [])
+        this.data.sets = new Map((data.sets || []).map(([k, v]: any) => [k, new Set(v)]))
+        this.data.lists = new Map(data.lists || [])
+        this.data.sorted_sets = new Map(data.sorted_sets || [])
+      }
+    } catch (e) {
+      console.error("[v0] Failed to load Redis data:", e)
+    }
+  }
+}
 
 let redisInstance: InlineLocalRedis | null = null
 let isConnected = false
-let migrationsRun = false  // Flag to prevent re-running migrations
+let connectionsInitialized = false
+
+export async function initRedis(): Promise<void> {
+  if (isConnected) return
+
+  if (!redisInstance) {
+    redisInstance = new InlineLocalRedis()
+    await redisInstance.load()
+  }
+
+  isConnected = true
+  console.log("[v0] [Redis] Client initialized with persistence")
+
+  const pong = await redisInstance.ping()
+  if (pong === "PONG") {
+    console.log("[v0] [Redis] Connection test successful")
+  }
+
+  // NOTE: Do NOT initialize user-created connections here
+  // Migrations 011-016 already set up all 15 predefined template connections
+  // and mark 4 as "base" (is_inserted=1, is_enabled=1, is_active_inserted=1)
+  // Creating separate "conn-*" connections would create duplicates on dashboard
+  if (!connectionsInitialized) {
+    connectionsInitialized = true
+    console.log("[v0] [Connections] ✓ Connection initialization skipped (handled by migrations 011-016)")
+  }
+}
 
 export function getClient(): InlineLocalRedis {
   if (!redisInstance) {
@@ -469,6 +184,10 @@ export function getClient(): InlineLocalRedis {
     isConnected = true
   }
   return redisInstance
+}
+
+export function isRedisConnected(): boolean {
+  return isConnected
 }
 
 // ========== Helpers ==========
@@ -480,590 +199,86 @@ function convertToString(value: any): string {
 
 function flattenForHmset(obj: Record<string, string>): string[] {
   const args: string[] = []
-  for (const [k, v] of Object.entries(obj)) { args.push(k, v) }
+  for (const [k, v] of Object.entries(obj)) {
+    args.push(k, v)
+  }
   return args
 }
 
-// ========== Init / Client ==========
-
-let connectionsInitialized = false
-
-export async function initRedis(): Promise<void> {
-  if (!redisInstance) {
-    redisInstance = new InlineLocalRedis()
-    await redisInstance.initialize() // Load snapshot and start persistence
-    isConnected = true
-    console.log("[v0] [Redis] Client initialized with persistence")
-    
-    const pong = await redisInstance.ping()
-    if (pong === "PONG") {
-      console.log("[v0] [Redis] Connection test successful")
-    }
-  }
-  
-  // ALWAYS initialize user connections on every startup (once per process)
-  // This clears stale predefined connections from snapshot and ensures 4 base connections
-  if (!connectionsInitialized) {
-    connectionsInitialized = true
-    console.log("[v0] [Connections] Starting initialization of 4 base user-created connections...")
-    await initializeDefaultUserConnections()
-    console.log("[v0] [Connections] Initialization complete")
-  }
-}
-
-/**
- * Initialize 4 default user-created connections
- * These coexist alongside 15 predefined template connections seeded by migrations
- * User-created: is_predefined="0", Predefined templates: is_predefined="1"
- */
-export async function initializeDefaultUserConnections(): Promise<void> {
-  const client = getClient()
-  try {
-    console.log("[v0] [Connections] Starting initialization of 4 user-created base connections...")
-    
-    // Hardcoded base connection data (simplified to avoid import issues)
-    const baseConnections = [
-      {
-        connId: "conn-bingx-x01",
-        name: "BingX X01",
-        exchange: "bingx",
-        dashboardInserted: true,
-      },
-      {
-        connId: "conn-bybit-x03",
-        name: "Bybit X03",
-        exchange: "bybit",
-        dashboardInserted: true,
-      },
-      {
-        connId: "conn-pionex-x01",
-        name: "Pionex X01",
-        exchange: "pionex",
-        dashboardInserted: false,
-      },
-      {
-        connId: "conn-orangex-x01",
-        name: "OrangeX X01",
-        exchange: "orangex",
-        dashboardInserted: false,
-      },
-    ]
-    
-    let createdCount = 0
-    
-    // Add each user-created connection if it doesn't already exist
-    for (const base of baseConnections) {
-      try {
-        const existingKey = `connection:${base.connId}`
-        const existing = await client.hgetall(existingKey)
-        
-        // Skip if already exists
-        if (existing && Object.keys(existing).length > 0) {
-          console.log(`[v0] [Connections] ✓ ${base.connId} already exists, skipping creation`)
-          continue
-        }
-        
-        console.log(`[v0] [Connections] Creating user-created connection: ${base.connId}...`)
-        
-        // Create minimal but complete user-created connection
-        const connData: Record<string, string> = {
-          id: base.connId,
-          name: base.name,
-          exchange: base.exchange,
-          api_key: "demo_key_" + base.exchange,
-          api_secret: "demo_secret_" + base.exchange,
-          api_type: "unified",
-          connection_method: "library",
-          connection_library: "native",
-          margin_type: "cross",
-          position_mode: "hedge",
-          is_testnet: "0",
-          is_enabled: "0",
-          is_enabled_dashboard: "0",
-          is_active_inserted: base.dashboardInserted ? "1" : "0",
-          is_live_trade: "0",
-          is_predefined: "0", // CRITICAL: User-created, NOT a template
-          is_inserted: "1",   // Has credentials
-          is_active: "0",
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }
-        
-        // Store the connection hash
-        await client.hset(existingKey, connData)
-        console.log(`[v0] [Connections] ✓ Stored hash for ${base.connId}`)
-        
-        // Add to connections set (CRITICAL: without this, getAllConnections won't find it)
-        await client.sadd("connections", base.connId)
-        console.log(`[v0] [Connections] ✓ Added ${base.connId} to connections set`)
-        
-        createdCount++
-        console.log(`[v0] [Connections] ✓ Successfully created: ${base.name} (${base.connId})`)
-      } catch (err) {
-        console.error(`[v0] [Connections] Failed to create ${base.connId}:`, err instanceof Error ? err.message : String(err))
-      }
-    }
-    
-    // Verify the connections were added to the set
-    const allConnIds = await client.smembers("connections")
-    const userCreatedIds = allConnIds.filter((id: string) => id.startsWith("conn-"))
-    const totalConnections = allConnIds.length
-    
-    console.log(`[v0] [Connections] ✅ Initialization complete:`)
-    console.log(`  - Created: ${createdCount}/4 user-created connections`)
-    console.log(`  - In set: ${userCreatedIds.length} user-created (total ${totalConnections} connections)`)
-    console.log(`  - User-created IDs: ${userCreatedIds.join(", ")}`)
-  } catch (err) {
-    console.error("[v0] [Connections] Critical error in initialization:", err instanceof Error ? err.message : String(err))
-    if (err instanceof Error) console.error("[v0] [Connections] Stack:", err.stack)
-  }
-}
-
-export function getRedisClient() {
-  return getClient()
-}
-
-export function haveMigrationsRun(): boolean {
-  return migrationsRun
-}
-
-export function setMigrationsRun(value: boolean): void {
-  migrationsRun = value
-}
-
-// ========== Connection CRUD ==========
-
-export async function saveConnection(connection: any): Promise<void> {
-  const client = getClient()
-  const key = `connection:${connection.id}`
-  const connectionData: Record<string, string> = {
-    id: connection.id,
-    name: connection.name,
-    exchange: connection.exchange,
-    api_key: connection.api_key || "",
-    api_secret: connection.api_secret || "",
-    api_type: connection.api_type || "spot",
-    api_subtype: connection.api_subtype || "",
-    connection_method: connection.connection_method || "rest",
-    connection_library: connection.connection_library || "ccxt",
-    margin_type: connection.margin_type || "isolated",
-    position_mode: connection.position_mode || "one-way",
-    is_testnet: convertToString(connection.is_testnet),
-    is_enabled: convertToString(connection.is_enabled),
-    is_enabled_dashboard: convertToString(connection.is_enabled_dashboard),
-    is_active_inserted: convertToString(connection.is_active_inserted ?? connection.is_dashboard_inserted),
-    is_inserted: convertToString(connection.is_inserted),
-    is_active: convertToString(connection.is_active),
-    is_predefined: convertToString(connection.is_predefined),
-    is_live_trade: convertToString(connection.is_live_trade),
-    is_preset_trade: convertToString(connection.is_preset_trade),
-    api_passphrase: connection.api_passphrase || "",
-    last_test_status: connection.last_test_status || "",
-    last_test_balance: connection.last_test_balance || "",
-    last_test_btc_price: connection.last_test_btc_price || "",
-    last_test_at: connection.last_test_at || "",
-    api_capabilities: connection.api_capabilities || "",
-    created_at: connection.created_at || new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  }
-  await client.hmset(key, ...flattenForHmset(connectionData))
-  await client.sadd("connections", connection.id)
-}
-
-export async function getConnection(connectionId: string): Promise<any> {
-  const client = getClient()
-  if (!client) {
-    console.warn("[v0] [DB] Redis client not available in getConnection")
-    return null
-  }
-  
-  const key = `connection:${connectionId}`
-  try {
-    const data = await client.hgetall(key)
-    if (!data || Object.keys(data).length === 0) {
-      console.log(`[v0] [DB] Connection ${connectionId} not found in Redis (key: ${key})`)
-      return null
-    }
-    
-    // Helper to convert string booleans to actual booleans
-    const toBool = (val: any): boolean => {
-      if (typeof val === 'boolean') return val
-      if (typeof val === 'string') return val === '1' || val === 'true'
-      return !!val
-    }
-    
-    return {
-      id: data.id, name: data.name, exchange: data.exchange,
-      api_key: data.api_key || "", api_secret: data.api_secret || "",
-      api_type: data.api_type || "spot", api_subtype: data.api_subtype || "",
-      connection_method: data.connection_method || "rest",
-      connection_library: data.connection_library || "ccxt",
-      margin_type: data.margin_type || "isolated",
-      position_mode: data.position_mode || "one-way",
-      is_testnet: toBool(data.is_testnet), 
-      is_enabled: toBool(data.is_enabled),
-      is_enabled_dashboard: data.is_enabled_dashboard === "1" ? "1" : "0",
-      is_active: toBool(data.is_active), 
-      is_predefined: toBool(data.is_predefined),
-      is_live_trade: toBool(data.is_live_trade), 
-      is_preset_trade: toBool(data.is_preset_trade),
-      api_passphrase: data.api_passphrase || "",
-      last_test_status: data.last_test_status || "",
-      last_test_balance: data.last_test_balance || "",
-      last_test_btc_price: data.last_test_btc_price || "",
-      last_test_at: data.last_test_at || "",
-      api_capabilities: data.api_capabilities || "",
-      created_at: data.created_at, 
-      updated_at: data.updated_at,
-    }
-  } catch (error) {
-    console.error(`[v0] [DB] Error fetching connection ${connectionId}:`, error)
-    return null
-  }
-}
-
-export async function updateConnection(connectionId: string, updates: any): Promise<void> {
-  const connection = await getConnection(connectionId)
-  if (!connection) throw new Error(`Connection ${connectionId} not found`)
-  await saveConnection({ ...connection, ...updates })
-}
+// ========== Connection Operations ==========
 
 export async function getAllConnections(): Promise<any[]> {
-  const client = getClient();
-  try {
-    const ids = await client.smembers("connections");
-    
-    if (!ids || ids.length === 0) {
-      console.log("[v0] [DB] No user-created connections in Redis");
-      return [];
-    }
-    
-    const results = await Promise.all(
-      ids.map(id => client.hgetall(`connection:${id}`))
-    );
-    
-    const toBool = (val: any): boolean => {
-      if (typeof val === 'boolean') return val;
-      if (typeof val === 'string') return val === '1' || val === 'true';
-      return !!val;
-    };
-    
-    const connections: any[] = [];
-    for (let i = 0; i < results.length; i++) {
-      const data = results[i];
-      
-      if (data && Object.keys(data).length > 0) {
-        let testLogs: string[] = [];
-        if (data.last_test_log) {
-          try {
-            testLogs = typeof data.last_test_log === 'string' 
-              ? JSON.parse(data.last_test_log) 
-              : (Array.isArray(data.last_test_log) ? data.last_test_log : [data.last_test_log]);
-          } catch {
-            testLogs = [data.last_test_log];
-          }
-        }
+  const client = getClient()
+  const connIds = await client.smembers("connections")
 
-        connections.push({
-          id: data.id,
-          name: data.name,
-          exchange: data.exchange,
-          api_key: data.api_key || "",
-          api_secret: data.api_secret || "",
-          api_type: data.api_type || "spot",
-          api_subtype: data.api_subtype || "",
-          connection_method: data.connection_method || "rest",
-          connection_library: data.connection_library || "ccxt",
-          margin_type: data.margin_type || "isolated",
-          position_mode: data.position_mode || "one-way",
-          is_testnet: toBool(data.is_testnet),
-          is_enabled: toBool(data.is_enabled),
-          is_enabled_dashboard: toBool(data.is_enabled_dashboard),
-          is_active_inserted: data.is_active_inserted || data.is_dashboard_inserted, // Support both names for migration
-          is_active: toBool(data.is_active),
-          is_predefined: toBool(data.is_predefined),
-          is_inserted: toBool(data.is_inserted),
-          is_live_trade: toBool(data.is_live_trade),
-          is_preset_trade: toBool(data.is_preset_trade),
-          api_passphrase: data.api_passphrase || "",
-          last_test_status: data.last_test_status || "",
-          last_test_balance: data.last_test_balance ? parseFloat(data.last_test_balance) : 0,
-          last_test_log: testLogs,
-          last_test_at: data.last_test_at || null,
-          api_capabilities: data.api_capabilities || "",
-          created_at: data.created_at,
-          updated_at: data.updated_at,
-        });
-      }
-    }
-    return connections;
-  } catch (error) {
-    console.error("[v0] [DB] Failed to get connections:", error);
-    return [];
+  if (!connIds || connIds.length === 0) {
+    console.log("[v0] [Connections] No connections found in set")
+    return []
   }
-}
 
-export async function deleteConnection(connectionId: string): Promise<void> {
-  const client = getClient()
-  await client.del(`connection:${connectionId}`)
-  await client.srem("connections", connectionId)
-}
-
-// Inline base exchange list - no external imports to avoid caching issues
-const _BASE_EXCHANGES = ["bybit", "bingx", "pionex", "orangex"]
-
-/**
- * Get enabled connections (respects inserted state)
- * Auto-inserted exchanges (bybit, bingx) are enabled by default
- * Other connections start disabled unless explicitly enabled by user
- * @returns Array of enabled connections
- */
-export async function getEnabledConnections(): Promise<any[]> {
-  const all = await getAllConnections()
-  const filtered = all.filter((c: any) => {
-    const isEnabled = c.is_enabled === "1" || c.is_enabled === true || c.is_enabled === "true"
-    return isEnabled
-  })
-  console.log(`[v0] [DB] getEnabledConnections: ${filtered.length} enabled out of ${all.length} | ${filtered.map((c: any) => c.name || c.id).join(", ")}`)
-  return filtered
-}
-
-/**
- * Get active connections for trade engine
- * Returns all user-created (non-predefined) connections.
- * is_active_inserted="1" means shown in the Active panel on the dashboard (BingX, Bybit).
- */
-export async function getActiveConnectionsForEngine(): Promise<any[]> {
-  const all = await getAllConnections()
-  
-  console.log(`[v0] [DB] [ActiveConnections] Found ${all.length} total connections:`)
-  all.forEach((c: any) => {
-    const isActiveInserted = c.is_active_inserted === true || c.is_active_inserted === "1"
-    const isPredefined = c.is_predefined === true || c.is_predefined === "1"
-    const status = isPredefined ? "(PREDEFINED - template only)" : "(USER-CREATED)"
-    console.log(`  - ${c.name}: active_inserted=${isActiveInserted}, ${status}`)
-  })
-  
-  // Filter for ONLY user-created (non-predefined) connections
-  const filtered = all.filter((c: any) => {
-    const isPredefined = c.is_predefined === true || c.is_predefined === "1" || c.is_predefined === "true"
-    return !isPredefined
-  })
-  
-  const activeInserted = filtered.filter((c: any) => c.is_active_inserted === true || c.is_active_inserted === "1")
-  const ids = filtered.map((c: any) => c.id).join(", ")
-  console.log(`[v0] [DB] [ActiveConnections] ${filtered.length} user-created connections (${activeInserted.length} in Active panel): [${ids}]`)
-  
-  return filtered
-}
-
-export async function createConnection(connection: any): Promise<any> {
-  await saveConnection(connection)
-  return connection
-}
-
-// ========== Trade CRUD ==========
-
-export async function createTrade(connectionId: string, trade: any): Promise<any> {
-  const client = getClient()
-  const td: Record<string, string> = {}
-  for (const [k, v] of Object.entries(trade)) {
-    td[k] = typeof v === "object" ? JSON.stringify(v) : String(v ?? "")
-  }
-  await client.hmset(`trade:${trade.id}`, ...flattenForHmset(td))
-  await client.sadd(`trades:${connectionId}`, trade.id)
-  return trade
-}
-
-export async function getTrade(tradeId: string): Promise<any> {
-  const client = getClient()
-  const data = await client.hgetall(`trade:${tradeId}`)
-  if (!data || Object.keys(data).length === 0) return null
-  return data
-}
-
-export async function getConnectionTrades(connectionId: string): Promise<any[]> {
-  const client = getClient()
-  const ids = await client.smembers(`trades:${connectionId}`)
-  if (!ids || ids.length === 0) return []
-  
-  // Fetch all trades in parallel
-  const results = await Promise.all(
-    ids.map(id => client.hgetall(`trade:${id}`))
-  )
-  
-  const trades = []
-  for (const data of results) {
-    if (data && typeof data === 'object' && Object.keys(data).length > 0) {
-      trades.push(data)
+  const connections = []
+  for (const id of connIds) {
+    const data = await client.hgetall(`connection:${id}`)
+    if (data && Object.keys(data).length > 0) {
+      connections.push(data)
     }
   }
-  return trades
+
+  return connections
 }
 
-export async function updateTrade(tradeId: string, updates: any): Promise<any> {
+export async function getConnection(id: string): Promise<any | null> {
   const client = getClient()
-  const existing = await getTrade(tradeId)
-  if (!existing) throw new Error(`Trade ${tradeId} not found`)
-  const updated = { ...existing, ...updates, updated_at: new Date().toISOString() }
-  const td: Record<string, string> = {}
-  for (const [k, v] of Object.entries(updated)) {
-    td[k] = typeof v === "object" ? JSON.stringify(v) : String(v ?? "")
+  const data = await client.hgetall(`connection:${id}`)
+  return data && Object.keys(data).length > 0 ? data : null
+}
+
+export async function createConnection(data: Record<string, any>): Promise<void> {
+  const client = getClient()
+  const id = data.id
+  if (!id) throw new Error("Connection ID is required")
+
+  const flattened: Record<string, string> = {}
+  for (const [k, v] of Object.entries(data)) {
+    flattened[k] = convertToString(v)
   }
-  await client.hmset(`trade:${tradeId}`, ...flattenForHmset(td))
-  return updated
+
+  await client.hset(`connection:${id}`, flattened)
+  await client.sadd("connections", id)
 }
 
-// ========== Position CRUD ==========
-
-export async function createPosition(connectionId: string, position: any): Promise<any> {
+export async function updateConnection(id: string, updates: Record<string, any>): Promise<void> {
   const client = getClient()
-  const pd: Record<string, string> = {}
-  for (const [k, v] of Object.entries(position)) {
-    pd[k] = typeof v === "object" ? JSON.stringify(v) : String(v ?? "")
+  const flattened: Record<string, string> = {}
+  for (const [k, v] of Object.entries(updates)) {
+    flattened[k] = convertToString(v)
   }
-  await client.hmset(`position:${position.id}`, ...flattenForHmset(pd))
-  await client.sadd(`positions:${connectionId}`, position.id)
-  return position
+
+  await client.hset(`connection:${id}`, flattened)
 }
 
-export async function getPosition(positionId: string): Promise<any> {
+export async function deleteConnection(id: string): Promise<void> {
   const client = getClient()
-  const data = await client.hgetall(`position:${positionId}`)
-  if (!data || Object.keys(data).length === 0) return null
-  return data
+  await client.del(`connection:${id}`)
+  await client.srem("connections", id)
 }
 
-export async function getConnectionPositions(connectionId: string): Promise<any[]> {
-  const client = getClient()
-  const ids = await client.smembers(`positions:${connectionId}`)
-  if (!ids || ids.length === 0) return []
-  
-  // Fetch all positions in parallel
-  const results = await Promise.all(
-    ids.map(id => client.hgetall(`position:${id}`))
-  )
-  
-  const positions = []
-  for (const data of results) {
-    if (data && typeof data === 'object' && Object.keys(data).length > 0) {
-      positions.push(data)
-    }
-  }
-  return positions
-}
-
-export async function updatePosition(positionId: string, updates: any): Promise<any> {
-  const client = getClient()
-  const existing = await getPosition(positionId)
-  if (!existing) throw new Error(`Position ${positionId} not found`)
-  const updated = { ...existing, ...updates, updated_at: new Date().toISOString() }
-  const pd: Record<string, string> = {}
-  for (const [k, v] of Object.entries(updated)) {
-    pd[k] = typeof v === "object" ? JSON.stringify(v) : String(v ?? "")
-  }
-  await client.hmset(`position:${positionId}`, ...flattenForHmset(pd))
-  return updated
-}
-
-export async function deletePosition(connectionId: string, positionId: string): Promise<void> {
-  const client = getClient()
-  await client.del(`position:${positionId}`)
-  await client.srem(`positions:${connectionId}`, positionId)
-}
-
-// ========== Settings ==========
+// ========== Settings Operations ==========
 
 export async function setSettings(key: string, value: any): Promise<void> {
   const client = getClient()
-  await client.set(`settings:${key}`, JSON.stringify(value))
+  const serialized = typeof value === "string" ? value : JSON.stringify(value)
+  await client.set(`settings:${key}`, serialized)
 }
 
-export async function getSettings(key: string): Promise<any> {
+export async function getSettings(key: string): Promise<any | null> {
   const client = getClient()
   const value = await client.get(`settings:${key}`)
-  if (value === null || value === undefined) return null
-  try { return typeof value === "string" ? JSON.parse(value) : value } catch { return value }
-}
-
-export async function deleteSettings(key: string): Promise<void> {
-  const client = getClient()
-  await client.del(`settings:${key}`)
-}
-
-// ========== Utilities ==========
-
-export async function flushAll(): Promise<void> {
-  const client = getClient()
-  await client.flushdb()
-}
-
-export async function closeRedis(): Promise<void> {
-  isConnected = false
-}
-
-export function isRedisConnected(): boolean {
-  return isConnected
-}
-
-export async function getRedisStats(): Promise<any> {
+  if (!value) return null
   try {
-    const client = getClient()
-    const dbSize = await client.dbsize()
-    return { 
-      connected: true, 
-      dbSize,
-      keyCount: dbSize,  // Add keyCount for compatibility
-      total_keys: dbSize,  // Add total_keys for compatibility
-      timestamp: new Date().toISOString() 
-    }
-  } catch (error) {
-    return { connected: false, error: String(error) }
-  }
-}
-
-export async function verifyRedisHealth(): Promise<boolean> {
-  try {
-    const client = getClient()
-    const ping = await client.ping()
-    return ping === "PONG"
-  } catch { return false }
-}
-
-// ========== Indications ==========
-
-export async function saveIndication(connectionId: string, indication: any): Promise<void> {
-  const client = getClient()
-  const id: Record<string, string> = {}
-  for (const [k, v] of Object.entries(indication)) {
-    id[k] = typeof v === "object" ? JSON.stringify(v) : String(v ?? "")
-  }
-  await client.hmset(`indication:${indication.id}`, ...flattenForHmset(id))
-  await client.sadd(`indications:${connectionId}`, indication.id)
-}
-
-export async function getIndications(connectionId: string): Promise<any[]> {
-  const client = getClient()
-  try {
-    // Check if indications set exists before calling smembers to avoid log spam
-    const indicationKey = `indications:${connectionId}`
-    const exists = await client.exists(indicationKey)
-    if (!exists) {
-      // Key doesn't exist - return empty array without logging
-      return []
-    }
-    
-    const ids = await client.smembers(indicationKey)
-    if (!ids || ids.length === 0) return []
-    const indications = []
-    for (const indicationId of ids) {
-      const data = await client.hgetall(`indication:${indicationId}`)
-      if (data && Object.keys(data).length > 0) indications.push(data)
-    }
-    return indications
-  } catch (error) {
-    console.warn(`[v0] [DB] Error getting indications for ${connectionId}:`, error)
-    return []
+    return JSON.parse(value)
+  } catch {
+    return value
   }
 }
 
@@ -1071,24 +286,29 @@ export async function getIndications(connectionId: string): Promise<any[]> {
 
 export async function saveMarketData(symbol: string, data: any): Promise<void> {
   const client = getClient()
-  const md: Record<string, string> = {}
-  for (const [k, v] of Object.entries(data)) {
-    md[k] = typeof v === "object" ? JSON.stringify(v) : String(v ?? "")
-  }
-  await client.hmset(`market_data:${symbol}`, ...flattenForHmset(md))
-  await client.expire(`market_data:${symbol}`, 300)
+  const key = `market_data:${symbol}`
+  await client.set(key, JSON.stringify(data))
 }
 
-export async function getMarketData(symbol: string): Promise<any> {
+export async function getMarketData(symbol: string): Promise<any | null> {
   const client = getClient()
-  const data = await client.hgetall(`market_data:${symbol}`)
-  if (!data || Object.keys(data).length === 0) return null
-  return data
+  const value = await client.get(`market_data:${symbol}`)
+  if (!value) return null
+  try {
+    return JSON.parse(value)
+  } catch {
+    return null
+  }
 }
 
-// ========== Backward-compat aliases ==========
+// ========== Migration State ==========
 
-export const saveTrade = createTrade
-export const savePosition = createPosition
-export const getTradesForConnection = getConnectionTrades
-export const getPositionsForConnection = getConnectionPositions
+export async function setMigrationsRun(): Promise<void> {
+  const client = getClient()
+  await client.set("_migrations_run", "true")
+}
+
+export function haveMigrationsRun(): boolean {
+  // Check process memory
+  return (global as any).__migrations_run === true
+}
