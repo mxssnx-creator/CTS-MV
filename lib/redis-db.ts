@@ -1,11 +1,9 @@
 /**
  * Redis Database Layer
- * In-memory Redis client with persistence to file system
+ * In-memory Redis client for Next.js runtime
  * Handles all database operations for connections, trades, positions, settings
+ * NOTE: No fs dependency - fully in-memory for webpack/browser compatibility
  */
-
-import fs from "fs"
-import path from "path"
 
 interface RedisData {
   strings: Map<string, string>
@@ -15,15 +13,25 @@ interface RedisData {
   sorted_sets: Map<string, Array<{ score: number; member: string }>>
 }
 
+// Global storage for persistence across hot reloads
+const globalForRedis = globalThis as unknown as { __redis_data?: RedisData }
+
 export class InlineLocalRedis {
-  private data: RedisData = {
-    strings: new Map(),
-    hashes: new Map(),
-    sets: new Map(),
-    lists: new Map(),
-    sorted_sets: new Map(),
+  private data: RedisData
+
+  constructor() {
+    // Use global storage for persistence across hot reloads
+    if (!globalForRedis.__redis_data) {
+      globalForRedis.__redis_data = {
+        strings: new Map(),
+        hashes: new Map(),
+        sets: new Map(),
+        lists: new Map(),
+        sorted_sets: new Map(),
+      }
+    }
+    this.data = globalForRedis.__redis_data
   }
-  private persistencePath = path.join(process.cwd(), ".redis-data.json")
 
   async ping() {
     return "PONG"
@@ -35,7 +43,6 @@ export class InlineLocalRedis {
 
   async set(key: string, value: string): Promise<void> {
     this.data.strings.set(key, value)
-    this.save()
   }
 
   async del(...keys: string[]): Promise<number> {
@@ -47,7 +54,6 @@ export class InlineLocalRedis {
       else if (this.data.lists.delete(key)) count++
       else if (this.data.sorted_sets.delete(key)) count++
     }
-    this.save()
     return count
   }
 
@@ -55,7 +61,6 @@ export class InlineLocalRedis {
     const existing = this.data.hashes.get(key) || {}
     const updates = Object.keys(data).length
     this.data.hashes.set(key, { ...existing, ...data })
-    this.save()
     return updates
   }
 
@@ -67,7 +72,6 @@ export class InlineLocalRedis {
       obj[args[i]] = args[i + 1]
     }
     this.data.hashes.set(key, { ...this.data.hashes.get(key), ...obj })
-    this.save()
   }
 
   async hgetall(key: string): Promise<Record<string, string> | null> {
@@ -81,7 +85,6 @@ export class InlineLocalRedis {
       if (member) set.add(member)
     }
     this.data.sets.set(key, set)
-    this.save()
     return set.size - sizeBefore
   }
 
@@ -102,49 +105,20 @@ export class InlineLocalRedis {
     }
     if (set.size === 0) this.data.sets.delete(key)
     else this.data.sets.set(key, set)
-    this.save()
     return removed
   }
 
   async expire(key: string, seconds: number): Promise<number> {
-    // TTL not implemented in memory, but track for future
+    // TTL not implemented in memory
     return 1
   }
 
   async dbSize(): Promise<number> {
-    const total = this.data.strings.size + this.data.hashes.size + this.data.sets.size + this.data.lists.size + this.data.sorted_sets.size
-    return total
-  }
-
-  private save(): void {
-    try {
-      const data = {
-        strings: Array.from(this.data.strings.entries()),
-        hashes: Array.from(this.data.hashes.entries()),
-        sets: Array.from(this.data.sets.entries()).map(([k, v]) => [k, Array.from(v)]),
-        lists: Array.from(this.data.lists.entries()),
-        sorted_sets: Array.from(this.data.sorted_sets.entries()),
-      }
-      fs.writeFileSync(this.persistencePath, JSON.stringify(data, null, 2))
-    } catch (e) {
-      console.error("[v0] Failed to save Redis data:", e)
-    }
+    return this.data.strings.size + this.data.hashes.size + this.data.sets.size + this.data.lists.size + this.data.sorted_sets.size
   }
 
   async load(): Promise<void> {
-    try {
-      if (fs.existsSync(this.persistencePath)) {
-        const content = fs.readFileSync(this.persistencePath, "utf-8")
-        const data = JSON.parse(content)
-        this.data.strings = new Map(data.strings || [])
-        this.data.hashes = new Map(data.hashes || [])
-        this.data.sets = new Map((data.sets || []).map(([k, v]: any) => [k, new Set(v)]))
-        this.data.lists = new Map(data.lists || [])
-        this.data.sorted_sets = new Map(data.sorted_sets || [])
-      }
-    } catch (e) {
-      console.error("[v0] Failed to load Redis data:", e)
-    }
+    // No-op: data is already in global memory
   }
 }
 
@@ -386,4 +360,127 @@ export async function verifyRedisHealth(): Promise<{ healthy: boolean; message: 
   } catch (e) {
     return { healthy: false, message: e instanceof Error ? e.message : "Unknown error" }
   }
+}
+
+// ========== Connection Queries ==========
+
+export async function getActiveConnectionsForEngine(): Promise<any[]> {
+  const allConnections = await getAllConnections()
+  // Filter for user-created connections (is_predefined !== "1") that are active
+  return allConnections.filter((c: any) => {
+    const isPredefined = c.is_predefined === "1" || c.is_predefined === true
+    const isEnabled = c.is_enabled === "1" || c.is_enabled === true
+    const isActiveInserted = c.is_active_inserted === "1" || c.is_active_inserted === true
+    return !isPredefined && (isEnabled || isActiveInserted)
+  })
+}
+
+export async function getEnabledConnections(): Promise<any[]> {
+  const allConnections = await getAllConnections()
+  return allConnections.filter((c: any) => c.is_enabled === "1" || c.is_enabled === true)
+}
+
+// Alias for getSettings
+export async function redisGetSettings(key: string): Promise<any | null> {
+  return getSettings(key)
+}
+
+// ========== Stats Operations ==========
+
+export function getRedisRequestsPerSecond(): number {
+  // Return a placeholder value - real implementation would track requests
+  return 0
+}
+
+export async function closeRedis(): Promise<void> {
+  // No-op for in-memory implementation
+  isConnected = false
+}
+
+// ========== Position Operations ==========
+
+export async function createPosition(data: Record<string, any>): Promise<void> {
+  const client = getClient()
+  const id = data.id || `pos_${Date.now()}`
+  const flattened: Record<string, string> = { id }
+  for (const [k, v] of Object.entries(data)) {
+    flattened[k] = convertToString(v)
+  }
+  await client.hset(`position:${id}`, flattened)
+  await client.sadd("positions", id)
+}
+
+export async function getPosition(id: string): Promise<any | null> {
+  const client = getClient()
+  const data = await client.hgetall(`position:${id}`)
+  return data && Object.keys(data).length > 0 ? data : null
+}
+
+export async function updatePosition(id: string, updates: Record<string, any>): Promise<void> {
+  const client = getClient()
+  const flattened: Record<string, string> = {}
+  for (const [k, v] of Object.entries(updates)) {
+    flattened[k] = convertToString(v)
+  }
+  await client.hset(`position:${id}`, flattened)
+}
+
+export async function deletePosition(id: string): Promise<void> {
+  const client = getClient()
+  await client.del(`position:${id}`)
+  await client.srem("positions", id)
+}
+
+export async function getConnectionPositions(connectionId: string): Promise<any[]> {
+  const client = getClient()
+  const positionIds = await client.smembers("positions")
+  const positions = []
+  for (const id of positionIds) {
+    const pos = await getPosition(id)
+    if (pos && pos.connection_id === connectionId) {
+      positions.push(pos)
+    }
+  }
+  return positions
+}
+
+// ========== Trade Operations ==========
+
+export async function createTrade(data: Record<string, any>): Promise<void> {
+  const client = getClient()
+  const id = data.id || `trade_${Date.now()}`
+  const flattened: Record<string, string> = { id }
+  for (const [k, v] of Object.entries(data)) {
+    flattened[k] = convertToString(v)
+  }
+  await client.hset(`trade:${id}`, flattened)
+  await client.sadd("trades", id)
+}
+
+export async function getTrade(id: string): Promise<any | null> {
+  const client = getClient()
+  const data = await client.hgetall(`trade:${id}`)
+  return data && Object.keys(data).length > 0 ? data : null
+}
+
+export async function updateTrade(id: string, updates: Record<string, any>): Promise<void> {
+  const client = getClient()
+  const flattened: Record<string, string> = {}
+  for (const [k, v] of Object.entries(updates)) {
+    flattened[k] = convertToString(v)
+  }
+  await client.hset(`trade:${id}`, flattened)
+}
+
+export async function getConnectionTrades(connectionId: string): Promise<any[]> {
+  const client = getClient()
+  const tradeIds = await client.smembers("trades")
+  const trades = []
+  for (const id of tradeIds) {
+    const trade = await getTrade(id)
+    if (trade && trade.connection_id === connectionId) {
+      trades.push(trade)
+    }
+  }
+  return trades
 }
