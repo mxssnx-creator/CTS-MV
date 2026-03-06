@@ -435,9 +435,17 @@ export async function getEnabledConnections(): Promise<any[]> {
   return allConnections.filter((c: any) => c.is_enabled === "1" || c.is_enabled === true)
 }
 
-// Alias for getSettings
-export async function redisGetSettings(key: string): Promise<any | null> {
-  return getSettings(key)
+export async function getInsertedAndEnabledConnections(): Promise<any[]> {
+  const allConnections = await getAllConnections()
+  // Return connections that are:
+  // 1. Inserted into Settings (is_inserted="1")
+  // 2. AND enabled (is_enabled="1")
+  // This is the filter used by the trade engine coordinator to find active connections
+  return allConnections.filter((c: any) => {
+    const isInserted = c.is_inserted === "1" || c.is_inserted === true
+    const isEnabled = c.is_enabled === "1" || c.is_enabled === true
+    return isInserted && isEnabled
+  })
 }
 
 // ========== Stats Operations ==========

@@ -145,6 +145,33 @@ export class IndicationProcessor {
         `[v0] [PrehistoricIndication] COMPLETE: ${symbol} | Records=${recordsProcessed} | Total Entries=${totalEntries} | Direction=${directionStats?.currentEntries || 0}/250 Move=${moveStats?.currentEntries || 0}/250 Active=${activeStats?.currentEntries || 0}/250 Optimal=${optimalStats?.currentEntries || 0}/250`
       )
 
+      // CRITICAL: Save prehistoric indications to Redis so realtime phase can access them
+      try {
+        const { initRedis, saveIndication } = await import("@/lib/redis-db")
+        await initRedis()
+        
+        const prehistoricIndications = []
+        if (directionStats && Object.keys(directionStats).length > 0) {
+          prehistoricIndications.push({ type: "direction", ...directionStats, phase: "prehistoric" })
+        }
+        if (moveStats && Object.keys(moveStats).length > 0) {
+          prehistoricIndications.push({ type: "move", ...moveStats, phase: "prehistoric" })
+        }
+        if (activeStats && Object.keys(activeStats).length > 0) {
+          prehistoricIndications.push({ type: "active", ...activeStats, phase: "prehistoric" })
+        }
+        if (optimalStats && Object.keys(optimalStats).length > 0) {
+          prehistoricIndications.push({ type: "optimal", ...optimalStats, phase: "prehistoric" })
+        }
+        
+        for (const ind of prehistoricIndications) {
+          await saveIndication(`${this.connectionId}:${symbol}:prehistoric`, ind)
+        }
+        console.log(`[v0] [PrehistoricIndication] ✓ Saved ${prehistoricIndications.length} indication types to Redis for ${symbol}`)
+      } catch (saveErr) {
+        console.error(`[v0] [PrehistoricIndication] Failed to save indications to Redis:`, saveErr)
+      }
+
       await logProgressionEvent(this.connectionId, "indications_prehistoric", "info", `Historical indications evaluated for ${symbol}`, {
         direction: directionStats,
         move: moveStats,
@@ -249,26 +276,22 @@ export class IndicationProcessor {
         })
       }
 
-      // Store indication result in Redis for progression tracking
+      // Store indication result in Redis for progression tracking and realtime processing
       try {
-        const redis = await getRedisHelpers()
-        await redis.initRedis() // Ensure Redis is initialized
-        const client = redis.getRedisClient()
-        if (client) {
-          const indicationId = `ind:${this.connectionId || "global"}:${symbol}:${Date.now()}`
-          // Add to set of indications for this connection (or global if no connection)
-          const connKey = this.connectionId || "global"
-          await client.sadd(`indications:${connKey}`, indicationId)
-          // Also add to global indications set for monitoring
-          await client.sadd("indications:global", indicationId)
-          // Update global indications state for monitoring
-          await client.hset("indications:global:state", {
-            cycleCount: Date.now().toString(),
-            lastSymbol: symbol,
-            lastUpdate: new Date().toISOString(),
-          })
+        const { initRedis, saveIndication } = await import("@/lib/redis-db")
+        await initRedis()
+        
+        // Save each indication type for this symbol
+        const connKey = `${this.connectionId}:${symbol}:realtime`
+        for (const ind of indications) {
+          await saveIndication(connKey, ind)
+        }
+        
+        if (indications.length > 0) {
+          console.log(`[v0] [RealtimeIndication] ✓ Saved ${indications.length} indications to Redis for ${symbol}`)
         }
       } catch (redisErr) {
+        console.error(`[v0] [RealtimeIndication] Failed to save to Redis:`, redisErr)
         // Redis error is not critical - indications still process correctly
       }
 
