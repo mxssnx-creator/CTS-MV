@@ -29,19 +29,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 })
     }
 
-    // Check if already in active list
-    if (baseConnection.is_enabled_dashboard === "1" || baseConnection.is_enabled_dashboard === true) {
+    // Check if already inserted in active list
+    if (baseConnection.is_active_inserted === "1" || baseConnection.is_active_inserted === true) {
       return NextResponse.json({
         success: false,
-        error: "Connection already in Active Connections",
+        error: "Connection already in Active panel",
       })
     }
 
-    // Add to active list: shown in dashboard, disabled by default
+    // Add to active list: inserted into Active panel, but NOT enabled by default
     const activeConnection = {
       ...baseConnection,
-      is_enabled_dashboard: "1", // Show in Active Connections
-      is_enabled: "0", // Disable the toggle by default - user must explicitly enable
+      is_active_inserted: "1",    // Visible in Active panel (inserted)
+      is_enabled_dashboard: "0",  // Toggle is OFF by default - user must enable
+      is_enabled: "0",            // NOT enabled - user must explicitly toggle
       is_live_trade: "0",
       is_preset_trade: "0",
       updated_at: new Date().toISOString(),
@@ -49,17 +50,17 @@ export async function POST(request: NextRequest) {
 
     await updateConnection(connectionId, activeConnection)
 
-    console.log(`[v0] [Add to Active] ${connectionId} added (enabled=${activeConnection.is_enabled}, visible=${activeConnection.is_enabled_dashboard})`)
+    console.log(`[v0] [Add to Active] ${connectionId} inserted into Active panel (enabled=0, toggle=OFF)`)
     await SystemLogger.logConnection(
-      `Added to Active Connections (disabled by default)`,
+      `Inserted into Active panel (disabled by default, user must toggle)`,
       connectionId,
       "info",
-      { is_enabled_dashboard: true, is_enabled: false },
+      { is_active_inserted: true, is_enabled_dashboard: false, is_enabled: false },
     )
 
     return NextResponse.json({
       success: true,
-      message: "Connection added to Active Connections (disabled by default)",
+      message: "Connection inserted into Active panel (disabled by default)",
       connection: activeConnection,
     })
   } catch (error) {

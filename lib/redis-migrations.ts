@@ -440,15 +440,16 @@ const migrations: Migration[] = [
         if (!connData || Object.keys(connData).length === 0) continue
         
         if (baseExchangeIds.includes(connId)) {
-          // Mark as INSERTED and ENABLED in Settings (base connection)
+          // Mark as INSERTED but NOT enabled by default (base connection)
+          // User must explicitly enable via toggle
           await client.hset(`connection:${connId}`, {
             is_inserted: "1",
-            is_enabled: "1",
+            is_enabled: "0",  // NOT enabled by default - user must toggle
             is_predefined: "1",
             updated_at: new Date().toISOString(),
           })
           updatedBase++
-          console.log(`[v0] Migration 015: ${connId} -> inserted=1, enabled=1 (base connection)`)
+          console.log(`[v0] Migration 015: ${connId} -> inserted=1, enabled=0 (base connection, user must enable)`)
         } else {
           // Non-base predefined connections: just informational templates
           // NOT inserted, NOT enabled - they are templates only
@@ -487,12 +488,12 @@ const migrations: Migration[] = [
         const connData = await client.hgetall(`connection:${connId}`)
         if (!connData || Object.keys(connData).length === 0) continue
         
-        // Only inserted+enabled base connections can be on dashboard
+        // Only inserted base connections can be on dashboard (enabled state is separate)
         const isInserted = connData.is_inserted === "1"
-        const isEnabled = connData.is_enabled === "1"
         
-        if (isInserted && isEnabled) {
-          // Set dashboard insertion state
+        if (isInserted) {
+          // Set dashboard insertion state (is_active_inserted = visible in Active panel)
+          // is_enabled_dashboard = OFF by default, user must toggle to enable
           const isDashboardInsertedByDefault = dashboardInsertedExchanges.includes(connId)
           
           await client.hset(`connection:${connId}`, {

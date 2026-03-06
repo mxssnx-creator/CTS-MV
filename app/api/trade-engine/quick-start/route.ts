@@ -90,33 +90,35 @@ export async function POST(request: Request) {
         version: API_VERSION,
       })
     } else {
-      // ENABLE: Set all required flags so live-trade prerequisite checks pass
-      console.log(`[v0] [QuickStart] ${API_VERSION}: Enabling ${connection.name} with ${symbols.length} symbols: ${symbols.join(", ")}`)
-      const enabled = {
+      // INSERT: Add to Active panel but do NOT enable by default
+      // User must explicitly enable via toggle on the Active card
+      console.log(`[v0] [QuickStart] ${API_VERSION}: Inserting ${connection.name} into Active panel with ${symbols.length} symbols: ${symbols.join(", ")}`)
+      const inserted = {
         ...connection,
-        is_enabled: "1",            // live-trade route checks this: "Connection must be enabled in Settings"
-        is_enabled_dashboard: "1",  // live-trade route checks this: "Connection must be added to Active Connections"
-        is_dashboard_inserted: "1", // legacy field used by some queries
-        is_active_inserted: "1",    // active panel flag
-        is_active: "1",             // general active flag
+        is_enabled: "0",            // NOT enabled by default - user must toggle
+        is_enabled_dashboard: "0",  // NOT enabled on dashboard by default
+        is_dashboard_inserted: "1", // legacy field - inserted into dashboard
+        is_active_inserted: "1",    // visible in Active panel
+        is_active: "0",             // not active until user enables
         active_symbols: JSON.stringify(symbols),
         updated_at: new Date().toISOString(),
       }
-      await updateConnection(connection.id, enabled)
-      console.log(`[v0] [QuickStart] ${API_VERSION}: ✓ Enabled ${connection.name}`)
-      console.log(`[v0] [QuickStart] ${API_VERSION}: is_enabled=1 is_enabled_dashboard=1 is_active_inserted=1 is_active=1`)
+      await updateConnection(connection.id, inserted)
+      console.log(`[v0] [QuickStart] ${API_VERSION}: ✓ Inserted ${connection.name} into Active panel`)
+      console.log(`[v0] [QuickStart] ${API_VERSION}: is_enabled=0 (user must toggle) is_active_inserted=1`)
       console.log(`[v0] [QuickStart] ${API_VERSION}: Symbols: ${symbols.join(", ")}`)
       return NextResponse.json({
         success: true,
-        action: "enable",
+        action: "insert",
         connection: {
           id: connection.id,
           name: connection.name,
           exchange: connection.exchange,
-          is_enabled: "1",
-          is_enabled_dashboard: "1",
+          is_enabled: "0",
+          is_active_inserted: "1",
           active_symbols: symbols,
         },
+        message: "Connection inserted into Active panel. Toggle to enable.",
         version: API_VERSION,
       })
     }
