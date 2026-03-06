@@ -281,14 +281,14 @@ export class IndicationProcessor {
         const { initRedis, saveIndication } = await import("@/lib/redis-db")
         await initRedis()
         
-        // Save each indication type for this symbol
-        const connKey = `${this.connectionId}:${symbol}:realtime`
+        // Use correct key format: ${connectionId}:${symbol} (matches strategy processor expectation)
+        const connKey = `${this.connectionId}:${symbol}`
         for (const ind of indications) {
           await saveIndication(connKey, ind)
         }
         
         if (indications.length > 0) {
-          console.log(`[v0] [RealtimeIndication] ✓ Saved ${indications.length} indications to Redis for ${symbol}`)
+          console.log(`[v0] [RealtimeIndication] ✓ Saved ${indications.length} indications to Redis key: ${connKey}`)
         }
       } catch (redisErr) {
         console.error(`[v0] [RealtimeIndication] Failed to save to Redis:`, redisErr)

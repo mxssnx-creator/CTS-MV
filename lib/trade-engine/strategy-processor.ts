@@ -241,33 +241,52 @@ export class StrategyProcessor {
 
   /**
    * Get active indications from Redis
+   * Indications are saved by the indication processor with key: indications:${connectionId}:${symbol}
    */
   private async getActiveIndications(symbol: string): Promise<any[]> {
     try {
       await initRedis()
-      const indicationsKey = `indications:${this.connectionId}:${symbol}`
-      const indications = await getSettings(indicationsKey)
+      const { getIndications } = await import("@/lib/redis-db")
+      
+      // Use the same key format as the indication processor saves to
+      const indicationsKey = `${this.connectionId}:${symbol}`
+      const indications = await getIndications(indicationsKey)
+      
       if (indications && Array.isArray(indications) && indications.length > 0) {
+        console.log(`[v0] [StrategyProcessor] Retrieved ${indications.length} indications for ${symbol} from Redis`)
         return indications
       }
-      // No indications yet - normal during startup, return silently
+      
+      // No indications yet - normal during startup
       return []
-    } catch {
+    } catch (error) {
+      console.error(`[v0] [StrategyProcessor] Error retrieving indications for ${symbol}:`, error)
       return []
     }
   }
 
   /**
    * Get historical indications from Redis
+   * Retrieved from the prehistoric processing phase that saved them
    */
   private async getHistoricalIndications(symbol: string, start: Date, end: Date): Promise<any[]> {
     try {
-      // For now, indications are not fully implemented in Redis
-      // Return empty array to prevent spam queries
-      console.log(`[v0] No historical indications for ${symbol}`)
+      await initRedis()
+      const { getIndications } = await import("@/lib/redis-db")
+      
+      // Retrieve indications saved during prehistoric phase
+      const prehistoricKey = `${this.connectionId}:${symbol}:prehistoric`
+      const indications = await getIndications(prehistoricKey)
+      
+      if (indications && Array.isArray(indications) && indications.length > 0) {
+        console.log(`[v0] [StrategyProcessor] Retrieved ${indications.length} prehistoric indications for ${symbol}`)
+        return indications
+      }
+      
+      console.log(`[v0] [StrategyProcessor] No prehistoric indications found for ${symbol}`)
       return []
     } catch (error) {
-      console.error(`[v0] Failed to get historical indications for ${symbol}:`, error)
+      console.error(`[v0] [StrategyProcessor] Failed to get historical indications for ${symbol}:`, error)
       return []
     }
   }

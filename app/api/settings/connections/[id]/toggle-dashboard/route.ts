@@ -36,7 +36,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     console.log(`[v0] [Toggle] Toggling ${connection.name} (${connectionId}):`)
     console.log(`[v0] [Toggle]   Before: is_active_inserted=${connection.is_active_inserted}, is_enabled_dashboard=${connection.is_enabled_dashboard}`)
 
-    // Build update object with only provided fields
+    // Build update object with all necessary fields
     const updatedConnection = {
       ...connection,
       updated_at: new Date().toISOString(),
@@ -48,10 +48,27 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
     if (is_enabled_dashboard !== undefined) {
       updatedConnection.is_enabled_dashboard = is_enabled_dashboard
-      console.log(`[v0] [Toggle]   Setting is_enabled_dashboard=${is_enabled_dashboard} (active state)`)
+      
+      // CRITICAL: When toggling on/off in dashboard, also manage is_enabled + is_inserted for engine filter
+      // getInsertedAndEnabledConnections() requires BOTH is_inserted="1" AND is_enabled="1"
+      if (is_enabled_dashboard) {
+        // Toggle ON: Set all flags so engine's coordinator finds this connection
+        updatedConnection.is_enabled = "1"        // Engine filter: is_enabled="1"
+        updatedConnection.is_inserted = "1"       // Engine filter: is_inserted="1"
+        updatedConnection.is_active = "1"
+        console.log(`[v0] [Toggle] ✓ ENABLING: is_enabled=1, is_inserted=1 (engine will find this connection)`)
+      } else {
+        // Toggle OFF: Clear flags so engine stops processing
+        updatedConnection.is_enabled = "0"
+        updatedConnection.is_inserted = "0"
+        updatedConnection.is_active = "0"
+        console.log(`[v0] [Toggle] ✗ DISABLING: is_enabled=0, is_inserted=0 (engine will stop processing)`)
+      }
+      
+      console.log(`[v0] [Toggle]   Setting is_enabled_dashboard=${is_enabled_dashboard}`)
     }
 
-    console.log(`[v0] [Toggle]   After: is_active_inserted=${updatedConnection.is_active_inserted}, is_enabled_dashboard=${updatedConnection.is_enabled_dashboard}`)
+    console.log(`[v0] [Toggle]   After: is_enabled=${updatedConnection.is_enabled}, is_enabled_dashboard=${updatedConnection.is_enabled_dashboard}`)
 
     await updateConnection(resolvedId, updatedConnection)
     

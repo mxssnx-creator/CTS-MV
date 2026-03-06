@@ -90,23 +90,23 @@ export async function POST(request: Request) {
         version: API_VERSION,
       })
     } else {
-      // INSERT: Add to Active panel but do NOT enable by default
-      // User must explicitly enable via toggle on the Active card
-      console.log(`[v0] [QuickStart] ${API_VERSION}: Inserting ${connection.name} into Active panel with ${symbols.length} symbols: ${symbols.join(", ")}`)
+      // INSERT + ENABLE: Add to Active panel and AUTO-ENABLE to start processing
+      // Once a connection is explicitly inserted into Active panel, it should be enabled
+      console.log(`[v0] [QuickStart] ${API_VERSION}: Inserting + Enabling ${connection.name} with ${symbols.length} symbols: ${symbols.join(", ")}`)
       const inserted = {
         ...connection,
-        is_enabled: "0",            // NOT enabled by default - user must toggle
-        is_enabled_dashboard: "0",  // NOT enabled on dashboard by default
-        is_dashboard_inserted: "1", // legacy field - inserted into dashboard
-        is_active_inserted: "1",    // visible in Active panel
-        is_active: "0",             // not active until user enables
+        is_enabled: "1",            // AUTO-ENABLE when inserted into Active
+        is_enabled_dashboard: "1",  // Enabled on dashboard
+        is_dashboard_inserted: "1", // Inserted into dashboard
+        is_active_inserted: "1",    // Visible in Active panel
+        is_active: "1",             // Actively processing
         active_symbols: JSON.stringify(symbols),
         updated_at: new Date().toISOString(),
       }
       await updateConnection(connection.id, inserted)
-      console.log(`[v0] [QuickStart] ${API_VERSION}: ✓ Inserted ${connection.name} into Active panel`)
-      console.log(`[v0] [QuickStart] ${API_VERSION}: is_enabled=0 (user must toggle) is_active_inserted=1`)
-      console.log(`[v0] [QuickStart] ${API_VERSION}: Symbols: ${symbols.join(", ")}`)
+      console.log(`[v0] [QuickStart] ${API_VERSION}: ✓ Inserted + Enabled ${connection.name}`)
+      console.log(`[v0] [QuickStart] ${API_VERSION}: is_enabled=1 (auto-enabled) is_active_inserted=1 is_active=1`)
+      console.log(`[v0] [QuickStart] ${API_VERSION}: Symbols: ${symbols.join(", ")} | Engine should now process this connection`)
       return NextResponse.json({
         success: true,
         action: "insert",
@@ -114,11 +114,12 @@ export async function POST(request: Request) {
           id: connection.id,
           name: connection.name,
           exchange: connection.exchange,
-          is_enabled: "0",
+          is_enabled: "1",
           is_active_inserted: "1",
+          is_active: "1",
           active_symbols: symbols,
         },
-        message: "Connection inserted into Active panel. Toggle to enable.",
+        message: "Connection inserted and auto-enabled. Engine processing started.",
         version: API_VERSION,
       })
     }

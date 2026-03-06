@@ -37,12 +37,14 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Add to active list: inserted into Active panel, but NOT enabled by default
+    // Add to active list: inserted into Active panel, AUTO-ENABLE for processing
     const activeConnection = {
       ...baseConnection,
       is_active_inserted: "1",    // Visible in Active panel (inserted)
-      is_enabled_dashboard: "0",  // Toggle is OFF by default - user must enable
-      is_enabled: "0",            // NOT enabled - user must explicitly toggle
+      is_enabled_dashboard: "1",  // Toggle is ON (auto-enabled)
+      is_enabled: "1",            // ENABLED - auto-enable when added to Active
+      is_active: "1",             // Active for processing
+      is_inserted: "1",           // Inserted (engine filter requirement)
       is_live_trade: "0",
       is_preset_trade: "0",
       updated_at: new Date().toISOString(),
@@ -50,17 +52,17 @@ export async function POST(request: NextRequest) {
 
     await updateConnection(connectionId, activeConnection)
 
-    console.log(`[v0] [Add to Active] ${connectionId} inserted into Active panel (enabled=0, toggle=OFF)`)
+    console.log(`[v0] [Add to Active] ${connectionId} inserted into Active panel (enabled=1, auto-enabled)`)
     await SystemLogger.logConnection(
-      `Inserted into Active panel (disabled by default, user must toggle)`,
+      `Inserted into Active panel and auto-enabled for processing`,
       connectionId,
       "info",
-      { is_active_inserted: true, is_enabled_dashboard: false, is_enabled: false },
+      { is_active_inserted: true, is_enabled_dashboard: true, is_enabled: true },
     )
 
     return NextResponse.json({
       success: true,
-      message: "Connection inserted into Active panel (disabled by default)",
+      message: "Connection inserted into Active panel and auto-enabled for processing",
       connection: activeConnection,
     })
   } catch (error) {

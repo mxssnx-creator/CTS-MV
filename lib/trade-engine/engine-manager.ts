@@ -71,7 +71,8 @@ export class TradeEngineManager {
       return
     }
 
-    console.log("[v0] Starting trade engine for connection:", this.connectionId)
+    console.log(`[v0] [EngineManager] Starting trade engine for connection: ${this.connectionId}`)
+    console.log(`[v0] [EngineManager] Config: indication=${config.indicationInterval}s, strategy=${config.strategyInterval}s, realtime=${config.realtimeInterval}s`)
 
     try {
       // Phase 1: Initializing
@@ -79,40 +80,62 @@ export class TradeEngineManager {
       await logProgressionEvent(this.connectionId, "initializing", "info", "Engine initialization started")
       await this.updateEngineState("running")
       await this.setRunningFlag(true)
+      console.log(`[v0] [EngineManager] Phase 1/6: Initialized`)
 
       // Phase 1.5: Load market data for all symbols
       await this.updateProgressionPhase("market_data", 8, "Loading market data for all symbols...")
       const symbols = await this.getSymbols()
+      console.log(`[v0] [EngineManager] Loaded ${symbols.length} symbols for connection`)
       const loaded = await loadMarketDataForEngine(symbols)
-      console.log(`[v0] [Engine] Market data loaded for ${loaded} symbols`)
+      console.log(`[v0] [EngineManager] Phase 1.5/6: Market data loaded for ${loaded} symbols`)
 
       // Phase 2: Load prehistoric data (historical data retrieval + calculation)
       await this.updateProgressionPhase("prehistoric_data", 10, "Loading historical market data...")
+      console.log(`[v0] [EngineManager] Phase 2/6: Starting prehistoric data loading...`)
       await this.loadPrehistoricData()
+      console.log(`[v0] [EngineManager] Phase 2/6: Prehistoric data complete`)
 
       // Phase 3: Start indication processor
       await this.updateProgressionPhase("indications", 60, "Starting indication processor...")
       this.startIndicationProcessor(config.indicationInterval)
+      console.log(`[v0] [EngineManager] Phase 3/6: Indication processor started (${symbols.length} symbols)`)
 
       // Phase 4: Start strategy processor
       await this.updateProgressionPhase("strategies", 75, "Starting strategy processor...")
       this.startStrategyProcessor(config.strategyInterval)
+      console.log(`[v0] [EngineManager] Phase 4/6: Strategy processor started`)
 
       // Phase 5: Start realtime processor
       await this.updateProgressionPhase("realtime", 85, "Starting real-time data processor...")
       this.startRealtimeProcessor(config.realtimeInterval)
       this.startHealthMonitoring()
+      console.log(`[v0] [EngineManager] Phase 5/6: Realtime processor started`)
       
       // Phase 6: Live trading ready
       this.startHeartbeat()
       this.isRunning = true
       await this.updateProgressionPhase("live_trading", 100, "Live trading active")
-      console.log("[v0] Trade engine started successfully")
+      console.log(`[v0] [EngineManager] ✓ Phase 6/6: Live trading ACTIVE for ${this.connectionId}`)
+      console.log(`[v0] [EngineManager] ✓ Engine fully initialized - monitoring ${symbols.length} symbols`)
+      
+      await logProgressionEvent(this.connectionId, "engine_started", "info", "Trade engine fully started", {
+        symbols: symbols.length,
+        phases: 6,
+        config,
+      })
     } catch (error) {
-      console.error("[v0] Failed to start trade engine:", error)
-      await this.updateProgressionPhase("error", 0, error instanceof Error ? error.message : "Unknown error")
-      await this.updateEngineState("error", error instanceof Error ? error.message : "Unknown error")
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      console.error(`[v0] [EngineManager] ✗ FAILED to start trade engine:`, errorMsg)
+      if (error instanceof Error) {
+        console.error(`[v0] [EngineManager] Stack:`, error.stack)
+      }
+      await this.updateProgressionPhase("error", 0, errorMsg)
+      await this.updateEngineState("error", errorMsg)
       await this.setRunningFlag(false)
+      await logProgressionEvent(this.connectionId, "engine_error", "error", "Engine failed to start", {
+        error: errorMsg,
+        stack: error instanceof Error ? error.stack : undefined,
+      })
       throw error
     }
   }
