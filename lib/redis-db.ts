@@ -80,6 +80,32 @@ export class InlineLocalRedis {
     return this.data.hashes.get(key) ?? null
   }
 
+  async hlen(key: string): Promise<number> {
+    const hash = this.data.hashes.get(key)
+    return hash ? Object.keys(hash).length : 0
+  }
+
+  async hget(key: string, field: string): Promise<string | null> {
+    const hash = this.data.hashes.get(key)
+    return hash?.[field] ?? null
+  }
+
+  async hdel(key: string, ...fields: string[]): Promise<number> {
+    const hash = this.data.hashes.get(key)
+    if (!hash) return 0
+    let deleted = 0
+    for (const field of fields) {
+      if (field in hash) {
+        delete hash[field]
+        deleted++
+      }
+    }
+    if (Object.keys(hash).length === 0) {
+      this.data.hashes.delete(key)
+    }
+    return deleted
+  }
+
   async sadd(key: string, ...members: string[]): Promise<number> {
     const set = this.data.sets.get(key) || new Set()
     const sizeBefore = set.size
