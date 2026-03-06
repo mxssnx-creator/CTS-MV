@@ -119,6 +119,33 @@ export class InlineLocalRedis {
     return this.data.strings.size + this.data.hashes.size + this.data.sets.size + this.data.lists.size + this.data.sorted_sets.size
   }
 
+  async keys(pattern: string): Promise<string[]> {
+    // Convert Redis glob pattern to regex
+    const regexPattern = pattern
+      .replace(/\*/g, ".*")
+      .replace(/\?/g, ".")
+    const regex = new RegExp(`^${regexPattern}$`)
+    
+    const allKeys: string[] = []
+    // Collect keys from all data structures
+    for (const key of this.data.strings.keys()) {
+      if (regex.test(key)) allKeys.push(key)
+    }
+    for (const key of this.data.hashes.keys()) {
+      if (regex.test(key)) allKeys.push(key)
+    }
+    for (const key of this.data.sets.keys()) {
+      if (regex.test(key)) allKeys.push(key)
+    }
+    for (const key of this.data.lists.keys()) {
+      if (regex.test(key)) allKeys.push(key)
+    }
+    for (const key of this.data.sorted_sets.keys()) {
+      if (regex.test(key)) allKeys.push(key)
+    }
+    return allKeys
+  }
+
   async load(): Promise<void> {
     // No-op: data is already in global memory
   }
