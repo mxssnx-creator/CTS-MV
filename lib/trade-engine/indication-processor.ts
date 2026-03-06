@@ -205,11 +205,34 @@ export class IndicationProcessor {
     try {
       const marketData = await this.getLatestMarketDataCached(symbol)
       if (!marketData) {
+        console.log(`[v0] [RealtimeIndication] ${symbol}: NO MARKET DATA AVAILABLE`)
         return []
       }
 
+      // Convert market data candles to prices for indication processor
+      let prices: number[] = []
+      if (marketData.candles && Array.isArray(marketData.candles)) {
+        prices = marketData.candles.map((c: any) => Number.parseFloat(c.close))
+      } else if (marketData.prices && Array.isArray(marketData.prices)) {
+        prices = marketData.prices.map((p: any) => Number.parseFloat(p))
+      }
+      
+      if (!prices || prices.length === 0) {
+        console.log(`[v0] [RealtimeIndication] ${symbol}: NO PRICES EXTRACTED from market data`)
+        console.log(`  marketData keys:`, Object.keys(marketData).join(", "))
+        console.log(`  has candles:`, !!marketData.candles, `(${marketData.candles?.length || 0})`)
+        console.log(`  has prices:`, !!marketData.prices, `(${marketData.prices?.length || 0})`)
+        return []
+      }
+
+      // Pass prices-enriched market data to processor
+      const enrichedMarketData = {
+        ...marketData,
+        prices: prices
+      }
+
       const setsProcessor = new IndicationSetsProcessor(this.connectionId)
-      await setsProcessor.processAllIndicationSets(symbol, marketData)
+      await setsProcessor.processAllIndicationSets(symbol, enrichedMarketData)
 
       // Retrieve the indication sets that were just calculated
       const directionSet = await setsProcessor.getSetStats(symbol, "direction")

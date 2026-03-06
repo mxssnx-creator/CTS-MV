@@ -440,16 +440,16 @@ const migrations: Migration[] = [
         if (!connData || Object.keys(connData).length === 0) continue
         
         if (baseExchangeIds.includes(connId)) {
-          // Mark as INSERTED but NOT enabled by default (base connection)
-          // User must explicitly enable via toggle
+          // Mark as INSERTED and ENABLED by default (base connection)
+          // Base connections are automatically enabled to start the engine
           await client.hset(`connection:${connId}`, {
             is_inserted: "1",
-            is_enabled: "0",  // NOT enabled by default - user must toggle
+            is_enabled: "1",  // ENABLED by default so engine finds it
             is_predefined: "1",
             updated_at: new Date().toISOString(),
           })
           updatedBase++
-          console.log(`[v0] Migration 015: ${connId} -> inserted=1, enabled=0 (base connection, user must enable)`)
+          console.log(`[v0] Migration 015: ${connId} -> inserted=1, enabled=1 (base connection, auto-enabled)`)
         } else {
           // Non-base predefined connections: just informational templates
           // NOT inserted, NOT enabled - they are templates only
@@ -498,11 +498,12 @@ const migrations: Migration[] = [
           
           await client.hset(`connection:${connId}`, {
             is_active_inserted: isDashboardInsertedByDefault ? "1" : "0",
-            is_enabled_dashboard: "0", // Always start with dashboard toggle OFF (must manually enable)
+            is_enabled_dashboard: isDashboardInsertedByDefault ? "1" : "0", // Enable dashboard if dashboard-inserted
+            is_active: isDashboardInsertedByDefault ? "1" : "0", // Also set is_active if dashboard-inserted
             updated_at: new Date().toISOString(),
           })
           updatedDashboard++
-          console.log(`[v0] Migration 016: ${connId} -> is_active_inserted=${isDashboardInsertedByDefault ? "1" : "0"}, dashboard_active=0`)
+          console.log(`[v0] Migration 016: ${connId} -> is_active_inserted=${isDashboardInsertedByDefault ? "1" : "0"}, dashboard_active=${isDashboardInsertedByDefault ? "1" : "0"}`)
         }
       }
       
