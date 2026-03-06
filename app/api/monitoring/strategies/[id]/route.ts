@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server"
 import { getSettings } from "@/lib/redis-db"
 
-export async function GET(request: Request, { params }: { params: Promise<{ connectionId: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { connectionId } = await params
+    const { id } = await params
 
-    if (!connectionId) {
+    if (!id) {
       return NextResponse.json({ success: false, error: "Connection ID required" }, { status: 400 })
     }
 
@@ -16,11 +16,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ conn
 
     // Direction strategy
     if (mainSettings.direction?.enabled) {
-      const positionsKey = `positions:${connectionId}:direction`
+      const positionsKey = `positions:${id}:direction`
       const positions = (await getSettings(positionsKey)) as any[] || []
       const activePositions = positions.filter((p: any) => p.status === "active").length
 
-      const indicationsKey = `indications:${connectionId}`
+      const indicationsKey = `indications:${id}`
       const indications = (await getSettings(indicationsKey)) as any[] || []
       const directionIndications = indications.filter((i: any) => i.type === "direction")
 
@@ -40,11 +40,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ conn
 
     // Move strategy
     if (mainSettings.move?.enabled) {
-      const positionsKey = `positions:${connectionId}:move`
+      const positionsKey = `positions:${id}:move`
       const positions = (await getSettings(positionsKey)) as any[] || []
       const activePositions = positions.filter((p: any) => p.status === "active").length
 
-      const indicationsKey = `indications:${connectionId}`
+      const indicationsKey = `indications:${id}`
       const indications = (await getSettings(indicationsKey)) as any[] || []
       const moveIndications = indications.filter((i: any) => i.type === "move")
 
@@ -64,11 +64,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ conn
 
     // Active strategy
     if (mainSettings.active?.enabled) {
-      const positionsKey = `positions:${connectionId}:active`
+      const positionsKey = `positions:${id}:active`
       const positions = (await getSettings(positionsKey)) as any[] || []
       const activePositions = positions.filter((p: any) => p.status === "active").length
 
-      const indicationsKey = `indications:${connectionId}`
+      const indicationsKey = `indications:${id}`
       const indications = (await getSettings(indicationsKey)) as any[] || []
       const activeIndications = indications.filter((i: any) => i.type === "active")
 
@@ -88,11 +88,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ conn
 
     // Optimal strategy
     if (mainSettings.optimal?.enabled) {
-      const positionsKey = `positions_optimal:${connectionId}`
+      const positionsKey = `positions_optimal:${id}`
       const positions = (await getSettings(positionsKey)) as any[] || []
       const activePositions = positions.filter((p: any) => p.status === "active").length
 
-      const indicationsKey = `indications:${connectionId}`
+      const indicationsKey = `indications:${id}`
       const indications = (await getSettings(indicationsKey)) as any[] || []
       const optimalIndications = indications.filter((i: any) => i.type === "optimal")
 

@@ -1,15 +1,15 @@
 import { NextResponse } from "next/server"
 import { globalIntervalManager } from "@/lib/interval-progression-manager"
 
-export async function GET(request: Request, { params }: { params: Promise<{ connectionId: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { connectionId } = await params
+    const { id } = await params
 
-    if (!connectionId) {
+    if (!id) {
       return NextResponse.json({ success: false, error: "Connection ID required" }, { status: 400 })
     }
 
-    const intervals = await globalIntervalManager.getIntervalHealth(connectionId)
+    const intervals = await globalIntervalManager.getIntervalHealth(id)
 
     return NextResponse.json({
       success: true,
