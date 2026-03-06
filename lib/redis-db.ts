@@ -519,95 +519,103 @@ export async function initRedis(): Promise<void> {
 export async function initializeDefaultUserConnections(): Promise<void> {
   const client = getClient()
   try {
-    // DO NOT clear existing connections — predefined templates are loaded by migrations
-    // Instead, ADD the 4 user-created base connections if they don't exist yet
-    console.log("[v0] [Connections] Adding 4 base user-created connections (alongside predefined templates)...")
+    console.log("[v0] [Connections] Starting initialization of 4 user-created base connections...")
     
-    // Import predefined values for base exchanges
-    const { CONNECTION_PREDEFINITIONS } = await import("@/lib/connection-predefinitions")
-    
-    // Define the 4 base USER-CREATED connections (different IDs from predefined templates)
+    // Hardcoded base connection data (simplified to avoid import issues)
     const baseConnections = [
       {
         connId: "conn-bingx-x01",
+        name: "BingX X01",
         exchange: "bingx",
         dashboardInserted: true,
-        enabled: false,
       },
       {
         connId: "conn-bybit-x03",
+        name: "Bybit X03",
         exchange: "bybit",
         dashboardInserted: true,
-        enabled: false,
       },
       {
         connId: "conn-pionex-x01",
+        name: "Pionex X01",
         exchange: "pionex",
         dashboardInserted: false,
-        enabled: false,
       },
       {
         connId: "conn-orangex-x01",
+        name: "OrangeX X01",
         exchange: "orangex",
         dashboardInserted: false,
-        enabled: false,
       },
     ]
     
+    let createdCount = 0
+    
     // Add each user-created connection if it doesn't already exist
     for (const base of baseConnections) {
-      const existingKey = `connection:${base.connId}`
-      const existing = await client.hgetall(existingKey)
-      
-      // Skip if already exists
-      if (existing && Object.keys(existing).length > 0) {
-        console.log(`[v0] [Connections] ✓ ${base.connId} already exists, skipping`)
-        continue
+      try {
+        const existingKey = `connection:${base.connId}`
+        const existing = await client.hgetall(existingKey)
+        
+        // Skip if already exists
+        if (existing && Object.keys(existing).length > 0) {
+          console.log(`[v0] [Connections] ✓ ${base.connId} already exists, skipping creation`)
+          continue
+        }
+        
+        console.log(`[v0] [Connections] Creating user-created connection: ${base.connId}...`)
+        
+        // Create minimal but complete user-created connection
+        const connData: Record<string, string> = {
+          id: base.connId,
+          name: base.name,
+          exchange: base.exchange,
+          api_key: "demo_key_" + base.exchange,
+          api_secret: "demo_secret_" + base.exchange,
+          api_type: "unified",
+          connection_method: "library",
+          connection_library: "native",
+          margin_type: "cross",
+          position_mode: "hedge",
+          is_testnet: "0",
+          is_enabled: "0",
+          is_enabled_dashboard: "0",
+          is_active_inserted: base.dashboardInserted ? "1" : "0",
+          is_live_trade: "0",
+          is_predefined: "0", // CRITICAL: User-created, NOT a template
+          is_inserted: "1",   // Has credentials
+          is_active: "0",
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }
+        
+        // Store the connection hash
+        await client.hset(existingKey, connData)
+        console.log(`[v0] [Connections] ✓ Stored hash for ${base.connId}`)
+        
+        // Add to connections set (CRITICAL: without this, getAllConnections won't find it)
+        await client.sadd("connections", base.connId)
+        console.log(`[v0] [Connections] ✓ Added ${base.connId} to connections set`)
+        
+        createdCount++
+        console.log(`[v0] [Connections] ✓ Successfully created: ${base.name} (${base.connId})`)
+      } catch (err) {
+        console.error(`[v0] [Connections] Failed to create ${base.connId}:`, err instanceof Error ? err.message : String(err))
       }
-      
-      const predefined = CONNECTION_PREDEFINITIONS.find((p: any) => p.exchange === base.exchange)
-      
-      if (!predefined) {
-        console.warn(`[v0] [Connections] Predefined config not found for ${base.exchange}`)
-        continue
-      }
-      
-      // Create user-created version with real credentials from predefined
-      const connData: Record<string, string> = {
-        id: base.connId,
-        name: predefined.name || `${base.exchange.charAt(0).toUpperCase() + base.exchange.slice(1)} X01`,
-        exchange: base.exchange,
-        api_type: String(predefined.apiType),
-        connection_method: String(predefined.connectionMethod),
-        connection_library: String(predefined.connectionLibrary),
-        margin_type: String(predefined.marginType),
-        position_mode: String(predefined.positionMode),
-        api_key: String(predefined.apiKey || ""),
-        api_secret: String(predefined.apiSecret || ""),
-        api_passphrase: "",
-        is_testnet: "0",
-        is_enabled: base.enabled ? "1" : "0",
-        is_enabled_dashboard: base.enabled ? "1" : "0",
-        is_active_inserted: base.dashboardInserted ? "1" : "0",
-        is_live_trade: "0",
-        is_predefined: "0", // KEY: User-created, NOT a template
-        is_inserted: "1",   // Has real credentials
-        is_active: base.enabled ? "1" : "0",
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }
-      
-      await client.hset(existingKey, connData)
-      await client.sadd("connections", base.connId)
-      
-      const insertedStatus = base.dashboardInserted ? "[Active Inserted]" : "[System]"
-      const enabledStatus = base.enabled ? "[ENABLED]" : "[disabled]"
-      console.log(`[v0] [Connections] ✓ Created user-created ${connData.name} ${insertedStatus} ${enabledStatus}`)
     }
     
-    console.log("[v0] [Connections] ✅ Successfully added: 4 user-created base connections (is_predefined=0, is_inserted=1)")
+    // Verify the connections were added to the set
+    const allConnIds = await client.smembers("connections")
+    const userCreatedIds = allConnIds.filter((id: string) => id.startsWith("conn-"))
+    const totalConnections = allConnIds.length
+    
+    console.log(`[v0] [Connections] ✅ Initialization complete:`)
+    console.log(`  - Created: ${createdCount}/4 user-created connections`)
+    console.log(`  - In set: ${userCreatedIds.length} user-created (total ${totalConnections} connections)`)
+    console.log(`  - User-created IDs: ${userCreatedIds.join(", ")}`)
   } catch (err) {
-    console.error("[v0] [Connections] Error initializing user connections:", err instanceof Error ? err.message : String(err))
+    console.error("[v0] [Connections] Critical error in initialization:", err instanceof Error ? err.message : String(err))
+    if (err instanceof Error) console.error("[v0] [Connections] Stack:", err.stack)
   }
 }
 

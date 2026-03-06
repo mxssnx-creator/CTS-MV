@@ -25,32 +25,48 @@ export async function POST(request: Request) {
     const allConnections = await getAllConnections()
     
     console.log(`[v0] [QuickStart] ${API_VERSION}: Checking ${allConnections.length} connections`)
+    for (const c of allConnections) {
+      const isPredefined = c.is_predefined === true || c.is_predefined === "1" || c.is_predefined === "true"
+      console.log(`  - ${c.name} (${c.id}): predefined=${isPredefined}, exchange=${c.exchange}`)
+    }
     
-    // Find ANY BingX connection first (regardless of dashboard status), fallback to bybit
-    const connection = allConnections.find((c: any) => {
+    // Find user-created BingX/Bybit FIRST (preferred), fallback to predefined
+    let connection = allConnections.find((c: any) => {
       const exch = (c.exchange || "").toLowerCase()
-      return exch === "bingx"
+      const isPredefined = c.is_predefined === true || c.is_predefined === "1" || c.is_predefined === "true"
+      return exch === "bingx" && !isPredefined  // User-created BingX
     }) || allConnections.find((c: any) => {
       const exch = (c.exchange || "").toLowerCase()
-      return exch === "bybit"
+      const isPredefined = c.is_predefined === true || c.is_predefined === "1" || c.is_predefined === "true"
+      return exch === "bybit" && !isPredefined  // User-created Bybit
+    }) || allConnections.find((c: any) => {
+      const exch = (c.exchange || "").toLowerCase()
+      return exch === "bingx"  // Any BingX (including predefined template)
+    }) || allConnections.find((c: any) => {
+      const exch = (c.exchange || "").toLowerCase()
+      return exch === "bybit"  // Any Bybit (including predefined template)
     })
     
     if (!connection) {
-      console.log(`[v0] [QuickStart] ${API_VERSION}: ✗ No BingX/Bybit connections found`)
+      console.log(`[v0] [QuickStart] ${API_VERSION}: ✗ No BingX/Bybit connections found at all`)
       return NextResponse.json(
         { 
           success: false,
           error: "No BingX/Bybit connections found",
           availableConnections: allConnections.map((c: any) => ({ 
-            name: c.name, 
-            exchange: c.exchange
+            name: c.name,
+            id: c.id,
+            exchange: c.exchange,
+            isPredefined: c.is_predefined
           }))
         },
         { status: 404 }
       )
     }
     
-    console.log(`[v0] [QuickStart] ${API_VERSION}: Found ${connection.name} (${connection.exchange})`)
+    const isPredefinedConnection = connection.is_predefined === true || connection.is_predefined === "1" || connection.is_predefined === "true"
+    const connType = isPredefinedConnection ? "[PREDEFINED TEMPLATE]" : "[USER-CREATED]"
+    console.log(`[v0] [QuickStart] ${API_VERSION}: Found ${connection.name} (${connection.id}) ${connType}`)
     
     if (action === "disable") {
       // DISABLE: Clear both dashboard fields
