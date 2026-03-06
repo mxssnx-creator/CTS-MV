@@ -90,17 +90,22 @@ export async function POST(request: Request) {
         version: API_VERSION,
       })
     } else {
-      // ENABLE: Set both dashboard fields + store active symbols
-      console.log(`[v0] [QuickStart] ${API_VERSION}: Enabling ${connection.name} with ${symbols.length} symbols...`)
+      // ENABLE: Set all required flags so live-trade prerequisite checks pass
+      console.log(`[v0] [QuickStart] ${API_VERSION}: Enabling ${connection.name} with ${symbols.length} symbols: ${symbols.join(", ")}`)
       const enabled = {
         ...connection,
-        is_dashboard_inserted: "1",
-        is_enabled_dashboard: "1",
-        active_symbols: JSON.stringify(symbols), // Store the 3 symbols for processing
+        is_enabled: "1",            // live-trade route checks this: "Connection must be enabled in Settings"
+        is_enabled_dashboard: "1",  // live-trade route checks this: "Connection must be added to Active Connections"
+        is_dashboard_inserted: "1", // legacy field used by some queries
+        is_active_inserted: "1",    // active panel flag
+        is_active: "1",             // general active flag
+        active_symbols: JSON.stringify(symbols),
         updated_at: new Date().toISOString(),
       }
       await updateConnection(connection.id, enabled)
-      console.log(`[v0] [QuickStart] ${API_VERSION}: ✓ Enabled ${connection.name} with symbols: ${symbols.join(", ")}`)
+      console.log(`[v0] [QuickStart] ${API_VERSION}: ✓ Enabled ${connection.name}`)
+      console.log(`[v0] [QuickStart] ${API_VERSION}: is_enabled=1 is_enabled_dashboard=1 is_active_inserted=1 is_active=1`)
+      console.log(`[v0] [QuickStart] ${API_VERSION}: Symbols: ${symbols.join(", ")}`)
       return NextResponse.json({
         success: true,
         action: "enable",
@@ -108,6 +113,7 @@ export async function POST(request: Request) {
           id: connection.id,
           name: connection.name,
           exchange: connection.exchange,
+          is_enabled: "1",
           is_enabled_dashboard: "1",
           active_symbols: symbols,
         },
