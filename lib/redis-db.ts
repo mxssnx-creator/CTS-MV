@@ -312,3 +312,73 @@ export function haveMigrationsRun(): boolean {
   // Check process memory
   return (global as any).__migrations_run === true
 }
+
+// ========== Aliases for backward compatibility ==========
+
+// Alias: getRedisClient -> getClient (used by many modules)
+export function getRedisClient(): InlineLocalRedis {
+  return getClient()
+}
+
+// Alias: saveConnection -> createConnection (used by some modules)
+export async function saveConnection(data: Record<string, any>): Promise<void> {
+  return createConnection(data)
+}
+
+// ========== Additional operations for compatibility ==========
+
+export async function deleteSettings(key: string): Promise<void> {
+  const client = getClient()
+  await client.del(`settings:${key}`)
+}
+
+export async function flushAll(): Promise<void> {
+  // Clear all data - dangerous operation
+  const client = getClient()
+  const keys = await client.smembers("connections")
+  for (const k of keys) {
+    await client.del(`connection:${k}`)
+  }
+  // Note: This is a simplified flush - in production would iterate all keys
+  console.log("[v0] [Redis] flushAll called - cleared connections")
+}
+
+export async function getIndications(connectionId: string): Promise<any[]> {
+  const client = getClient()
+  const value = await client.get(`indications:${connectionId}`)
+  if (!value) return []
+  try {
+    return JSON.parse(value)
+  } catch {
+    return []
+  }
+}
+
+export async function saveIndication(connectionId: string, indication: any): Promise<void> {
+  const client = getClient()
+  const existing = await getIndications(connectionId)
+  existing.push(indication)
+  // Keep last 1000 indications
+  const trimmed = existing.slice(-1000)
+  await client.set(`indications:${connectionId}`, JSON.stringify(trimmed))
+}
+
+export async function getRedisStats(): Promise<any> {
+  const client = getClient()
+  const size = await client.dbSize()
+  return {
+    connected: isConnected,
+    dbSize: size,
+    uptimeSeconds: process.uptime(),
+  }
+}
+
+export async function verifyRedisHealth(): Promise<{ healthy: boolean; message: string }> {
+  try {
+    const client = getClient()
+    const pong = await client.ping()
+    return { healthy: pong === "PONG", message: "Redis is healthy" }
+  } catch (e) {
+    return { healthy: false, message: e instanceof Error ? e.message : "Unknown error" }
+  }
+}
