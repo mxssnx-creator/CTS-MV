@@ -463,7 +463,7 @@ let redisInstance: InlineLocalRedis | null = null
 let isConnected = false
 let migrationsRun = false  // Flag to prevent re-running migrations
 
-function getClient(): InlineLocalRedis {
+export function getClient(): InlineLocalRedis {
   if (!redisInstance) {
     redisInstance = new InlineLocalRedis()
     isConnected = true
