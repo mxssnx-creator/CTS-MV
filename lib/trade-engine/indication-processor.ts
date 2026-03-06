@@ -209,128 +209,113 @@ export class IndicationProcessor {
         return []
       }
 
-      // Convert market data candles to prices for indication processor
-      let prices: number[] = []
-      if (marketData.candles && Array.isArray(marketData.candles)) {
-        prices = marketData.candles.map((c: any) => Number.parseFloat(c.close))
-      } else if (marketData.prices && Array.isArray(marketData.prices)) {
-        prices = marketData.prices.map((p: any) => Number.parseFloat(p))
-      }
+      // Market data is a single candle object with fields: price, open, high, low, close, volume, timestamp
+      // Extract price information from the single candle
+      const currentClose = Number.parseFloat(marketData.close || marketData.price || "0")
+      const currentOpen = Number.parseFloat(marketData.open || currentClose)
+      const currentHigh = Number.parseFloat(marketData.high || currentClose)
+      const currentLow = Number.parseFloat(marketData.low || currentClose)
+      const currentVolume = Number.parseFloat(marketData.volume || "0")
       
-      if (!prices || prices.length === 0) {
-        console.log(`[v0] [RealtimeIndication] ${symbol}: NO PRICES EXTRACTED from market data`)
-        console.log(`  marketData keys:`, Object.keys(marketData).join(", "))
-        console.log(`  has candles:`, !!marketData.candles, `(${marketData.candles?.length || 0})`)
-        console.log(`  has prices:`, !!marketData.prices, `(${marketData.prices?.length || 0})`)
+      if (currentClose === 0 || isNaN(currentClose)) {
+        console.log(`[v0] [RealtimeIndication] ${symbol}: INVALID PRICE DATA`, { close: marketData.close, price: marketData.price })
         return []
       }
 
-      // Pass prices-enriched market data to processor
-      const enrichedMarketData = {
-        ...marketData,
-        prices: prices
-      }
+      // Generate indication from current candle data
+      // Since we only have 1 candle, use OHLC to create artificial price history
+      const prices = [currentOpen, currentLow, currentClose, currentHigh, currentClose] // Simple 5-point history
+      
+      console.log(`[v0] [RealtimeIndication] ${symbol}: Processing with price=${currentClose}, volume=${currentVolume}`)
 
-      const setsProcessor = new IndicationSetsProcessor(this.connectionId)
-      await setsProcessor.processAllIndicationSets(symbol, enrichedMarketData)
-
-      // Retrieve the indication sets that were just calculated
-      const directionSet = await setsProcessor.getSetStats(symbol, "direction")
-      const moveSet = await setsProcessor.getSetStats(symbol, "move")
-      const activeSet = await setsProcessor.getSetStats(symbol, "active")
-      const optimalSet = await setsProcessor.getSetStats(symbol, "optimal")
-
-      // Build indications array from the set stats
+      // Calculate simple indications from current candle OHLC
       const indications: any[] = []
+      
+      // Direction indication: based on close vs open
+      const direction = currentClose >= currentOpen ? "long" : "short"
+      const priceChange = ((currentClose - currentOpen) / currentOpen) * 100
+      const directionConfidence = Math.min(0.95, 0.5 + Math.abs(priceChange) / 100)
+      
+      indications.push({
+        type: "direction",
+        symbol,
+        value: direction === "long" ? 1 : -1,
+        profitFactor: 1.0 + Math.abs(priceChange) / 100,
+        drawdownTime: 0,
+        confidence: directionConfidence,
+        positionState: "new",
+        continuousPosition: false,
+        metadata: {
+          direction,
+          priceChange,
+          open: currentOpen,
+          close: currentClose,
+          high: currentHigh,
+          low: currentLow,
+        }
+      })
+      
+      // Move indication: based on high-low range
+      const range = currentHigh - currentLow
+      const rangePercent = (range / currentClose) * 100
+      const moveConfidence = Math.min(0.95, 0.5 + Math.min(rangePercent, 10) / 20)
+      
+      indications.push({
+        type: "move",
+        symbol,
+        value: rangePercent > 2 ? 1 : 0,
+        profitFactor: 1.0 + rangePercent / 100,
+        drawdownTime: 0,
+        confidence: moveConfidence,
+        positionState: "new",
+        continuousPosition: false,
+        metadata: {
+          range,
+          rangePercent,
+          volatility: rangePercent,
+        }
+      })
+      
+      // Active indication: based on volume
+      const activeConfidence = Math.min(0.95, 0.5 + Math.min(currentVolume, 1000) / 2000)
+      
+      indications.push({
+        type: "active",
+        symbol,
+        value: currentVolume > 0 ? 1 : 0,
+        profitFactor: 1.0 + Math.min(currentVolume, 1000) / 1000,
+        drawdownTime: 0,
+        confidence: activeConfidence,
+        positionState: "new",
+        continuousPosition: false,
+        metadata: {
+          volume: currentVolume,
+          volumeActive: currentVolume > 0,
+        }
+      })
+      
+      console.log(`[v0] [RealtimeIndication] ${symbol}: Generated ${indications.length} indications (direction=${direction}, range=${rangePercent.toFixed(2)}%, volume=${currentVolume})`)
 
-      if (directionSet && Object.keys(directionSet).length > 0) {
-        indications.push({
-          type: "direction",
-          symbol,
-          ...directionSet,
-          profitFactor: directionSet.avgProfitFactor || 1.0,
-          drawdownTime: directionSet.avgDrawdownTime || 0,
-          confidence: directionSet.confidence || 0.5,
-          positionState: "new",
-          continuousPosition: false,
-          metadata: directionSet.metadata || {}
-        })
-      }
-
-      if (moveSet && Object.keys(moveSet).length > 0) {
-        indications.push({
-          type: "move",
-          symbol,
-          ...moveSet,
-          profitFactor: moveSet.avgProfitFactor || 1.0,
-          drawdownTime: moveSet.avgDrawdownTime || 0,
-          confidence: moveSet.confidence || 0.5,
-          positionState: "new",
-          continuousPosition: false,
-          metadata: moveSet.metadata || {}
-        })
-      }
-
-      if (activeSet && Object.keys(activeSet).length > 0) {
-        indications.push({
-          type: "active",
-          symbol,
-          ...activeSet,
-          profitFactor: activeSet.avgProfitFactor || 1.0,
-          drawdownTime: activeSet.avgDrawdownTime || 0,
-          confidence: activeSet.confidence || 0.5,
-          positionState: "new",
-          continuousPosition: false,
-          metadata: activeSet.metadata || {}
-        })
-      }
-
-      if (optimalSet && Object.keys(optimalSet).length > 0) {
-        indications.push({
-          type: "optimal",
-          symbol,
-          ...optimalSet,
-          profitFactor: optimalSet.avgProfitFactor || 1.0,
-          drawdownTime: optimalSet.avgDrawdownTime || 0,
-          confidence: optimalSet.confidence || 0.5,
-          positionState: "new",
-          continuousPosition: false,
-          metadata: optimalSet.metadata || {}
-        })
-      }
-
-      // Store indication result in Redis for progression tracking and realtime processing
+      // Store indications in Redis for progression tracking
       try {
         const { initRedis, saveIndication } = await import("@/lib/redis-db")
         await initRedis()
         
-        // Use correct key format: ${connectionId}:${symbol} (matches strategy processor expectation)
-        const connKey = `${this.connectionId}:${symbol}`
+        const connKey = `${this.connectionId}:${symbol}:realtime`
         for (const ind of indications) {
           await saveIndication(connKey, ind)
         }
         
         if (indications.length > 0) {
-          console.log(`[v0] [RealtimeIndication] ✓ Saved ${indications.length} indications to Redis key: ${connKey}`)
+          console.log(`[v0] [RealtimeIndication] ✓ Saved ${indications.length} indications to Redis for ${symbol}`)
         }
       } catch (redisErr) {
         console.error(`[v0] [RealtimeIndication] Failed to save to Redis:`, redisErr)
-        // Redis error is not critical - indications still process correctly
       }
-
-      console.log(`[v0] [RealtimeIndication] ${symbol}: Processed ${indications.length} indication types`)
-
-      await logProgressionEvent(
-        this.connectionId,
-        "indication_realtime",
-        "info",
-        `Processed indication sets for ${symbol}`,
-        { indicationTypes: indications.length }
-      )
 
       return indications
     } catch (error) {
-      console.error(`[v0] [RealtimeIndication] Failed for ${symbol}:`, error instanceof Error ? error.message : String(error))
+      console.error(`[v0] [RealtimeIndication] ERROR:`, error)
       return []
     }
   }
