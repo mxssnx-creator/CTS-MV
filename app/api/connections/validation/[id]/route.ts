@@ -85,7 +85,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     })
   } catch (error) {
     console.error(`[v0] [IndicationValidation] Error:`, error)
-    await SystemLogger.logError(error, "api", "GET /api/connections/[id]/indication-validation")
+    await SystemLogger.logError(error, "api", "GET /api/connections/validation/[id]")
     
     return NextResponse.json(
       {
