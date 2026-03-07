@@ -347,35 +347,40 @@ const migrations: Migration[] = [
     up: async (client: any) => {
       await client.set("_schema_version", "15")
       
-      // Base connections are inserted but NOT enabled by default (user must toggle to enable)
-      const baseExchangeIds = ["bybit-x03", "bingx-x01", "binance-x01", "okx-x01"]
+      // Base connections: 4 primary exchange templates (bybit-x03, bingx-x01, binance-x01, okx-x01)
+      // These are PREDEFINED TEMPLATES, not user-created connections
+      // They should remain disabled by default - users must create their own credentials
+      const baseTemplateIds = ["bybit-x03", "bingx-x01", "binance-x01", "okx-x01"]
       
       const connections = await client.smembers("connections") || []
       let updatedBase = 0
       let updatedOther = 0
       
-      console.log(`[v0] Migration 015: Initializing connections (NOT enabled by default)`)
+      console.log(`[v0] Migration 015: Initializing connections (base templates set to predefined=1, disabled)`)
       
       for (const connId of connections) {
         const connData = await client.hgetall(`connection:${connId}`)
         if (!connData || Object.keys(connData).length === 0) continue
         
-        if (baseExchangeIds.includes(connId)) {
-          // Base connections: inserted but DISABLED by default
+        if (baseTemplateIds.includes(connId)) {
+          // Base templates: marked as PREDEFINED, disabled, not inserted (templates only)
           await client.hset(`connection:${connId}`, {
-            is_inserted: "1",
-            is_enabled: "0",  // NOT enabled by default - user must toggle
-            is_predefined: "1",
+            is_inserted: "0",        // NOT inserted - templates only
+            is_enabled: "0",         // NOT enabled by default
+            is_predefined: "1",      // These are predefined templates
+            is_active_inserted: "0", // NOT in active panel
+            is_enabled_dashboard: "0",
             updated_at: new Date().toISOString(),
           })
           updatedBase++
-          console.log(`[v0] Migration 015: ✓ ${connId} -> inserted=1, enabled=0 (user must toggle)`)
+          console.log(`[v0] Migration 015: ✓ ${connId} -> predefined=1, inserted=0, enabled=0 (template)`)
         } else {
-          // Non-base predefined connections: templates only
+          // Other predefined connections: all templates
           await client.hset(`connection:${connId}`, {
             is_inserted: "0",
             is_enabled: "0",
             is_predefined: "1",
+            is_active_inserted: "0",
             is_enabled_dashboard: "0",
             updated_at: new Date().toISOString(),
           })
@@ -383,7 +388,7 @@ const migrations: Migration[] = [
         }
       }
       
-      console.log(`[v0] Migration 015: COMPLETE - ${updatedBase} base connections (not enabled), ${updatedOther} templates`)
+      console.log(`[v0] Migration 015: COMPLETE - ${updatedBase} base templates, ${updatedOther} other templates (all disabled)`)
     },
     down: async (client: any) => {
       await client.set("_schema_version", "11")
@@ -514,38 +519,52 @@ const migrations: Migration[] = [
     up: async (client: any) => {
       await client.set("_schema_version", "16")
       
-      // CRITICAL: Set dashboard insertion state for base connections
-      // Bybit and BingX should be visible in Active panel when inserted
-      const dashboardInsertedExchanges = ["bybit-x03", "bingx-x01"]
+      // Migration 016: Ensure all predefined templates have consistent state
+      // Base templates should remain as templates (predefined=1, inserted=0)
+      // Only USER-CREATED connections can be inserted into dashboard
+      const baseTemplateIds = ["bybit-x03", "bingx-x01", "binance-x01", "okx-x01"]
       
       const connections = await client.smembers("connections") || []
-      let updatedDashboard = 0
+      let updatedTemplates = 0
+      let updatedUserConnections = 0
       
-      console.log(`[v0] Migration 016: FORCE-UPDATING ${connections.length} connections for dashboard state`)
+      console.log(`[v0] Migration 016: Ensuring predefined templates state for ${connections.length} connections`)
       
       for (const connId of connections) {
         const connData = await client.hgetall(`connection:${connId}`)
         if (!connData || Object.keys(connData).length === 0) continue
         
-        // Check if this connection is inserted (can be on dashboard)
-        const isInserted = connData.is_inserted === "1" || connData.is_inserted === true
+        const isPredefined = connData.is_predefined === "1" || connData.is_predefined === true
+        const isBaseTemplate = baseTemplateIds.includes(connId)
         
-        if (isInserted) {
-          const isDashboardInserted = dashboardInsertedExchanges.includes(connId)
-          
-          // FORCE UPDATE dashboard state
+        if (isBaseTemplate && isPredefined) {
+          // Base templates: keep as pure templates
           await client.hset(`connection:${connId}`, {
-            is_active_inserted: isDashboardInserted ? "1" : "0",
-            is_enabled_dashboard: isDashboardInserted ? "1" : "0",  // Enable dashboard toggle if dashboard-inserted
-            is_active: isDashboardInserted ? "1" : "0",  // Set active state to match dashboard insertion
+            is_inserted: "0",        // NOT inserted
+            is_enabled: "0",         // NOT enabled
+            is_active_inserted: "0", // NOT in active panel
+            is_enabled_dashboard: "0",
+            is_active: "0",
             updated_at: new Date().toISOString(),
           })
-          updatedDashboard++
-          console.log(`[v0] Migration 016: ✓ UPDATED ${connId} -> is_active_inserted=${isDashboardInserted ? "1" : "0"}, is_active=${isDashboardInserted ? "1" : "0"}`)
+          updatedTemplates++
+          console.log(`[v0] Migration 016: ✓ ${connId} verified as pure template`)
+        } else if (!isPredefined) {
+          // User-created connections: reset dashboard state if not properly set
+          if (!connData.is_active_inserted || !connData.is_enabled_dashboard) {
+            await client.hset(`connection:${connId}`, {
+              is_active_inserted: "0",      // Default: NOT in active panel
+              is_enabled_dashboard: "0",    // Default: NOT enabled
+              is_enabled: connData.is_enabled || "0",  // Preserve existing enabled state
+              updated_at: new Date().toISOString(),
+            })
+            updatedUserConnections++
+            console.log(`[v0] Migration 016: ✓ ${connId} reset dashboard state to defaults`)
+          }
         }
       }
       
-      console.log(`[v0] Migration 016: COMPLETE - ${updatedDashboard} connections updated for dashboard state`)
+      console.log(`[v0] Migration 016: COMPLETE - ${updatedTemplates} templates verified, ${updatedUserConnections} user connections updated`)
     },
     down: async (client: any) => {
       await client.set("_schema_version", "15")
