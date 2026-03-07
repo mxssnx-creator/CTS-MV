@@ -10,12 +10,18 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    setMounted(true)
-    
-    // Call startup-complete endpoint to trigger connection testing
-    // This happens after the server is fully ready and all API routes are loaded
-    fetch("/api/health/startup-complete", { method: "POST" })
-      .catch(err => console.error("[v0] Failed to notify startup complete:", err))
+    try {
+      setMounted(true)
+      console.log("[v0] HomePage mounted successfully")
+      
+      // Call startup-complete endpoint to trigger connection testing
+      fetch("/api/health/startup-complete", { method: "POST" })
+        .then(() => console.log("[v0] Startup complete notification sent"))
+        .catch(err => console.warn("[v0] Failed to notify startup complete:", err instanceof Error ? err.message : String(err)))
+    } catch (err) {
+      console.error("[v0] Error in HomePage useEffect:", err)
+      setError(err instanceof Error ? err.message : "Unknown error")
+    }
   }, [])
 
   if (!mounted) {
@@ -35,14 +41,69 @@ export default function HomePage() {
         <PageHeader title="Overview" description="Dashboard overview and trading statistics" />
         <div className="flex-1 overflow-auto">
           {error ? (
-            <div className="p-4 text-red-500">
-              <p>Error loading dashboard: {error}</p>
+            <div className="p-6">
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <p className="text-sm text-red-700 font-medium">Error loading dashboard</p>
+                <p className="text-sm text-red-600 mt-1">{error}</p>
+              </div>
             </div>
           ) : (
-            <Dashboard />
+            <ErrorBoundaryWrapper>
+              <Dashboard />
+            </ErrorBoundaryWrapper>
           )}
         </div>
       </div>
     </AuthGuard>
   )
+}
+
+function ErrorBoundaryWrapper({ children }: { children: React.ReactNode }) {
+  const [hasError, setHasError] = useState(false)
+  const [error, setErrorMessage] = useState<string>("")
+
+  useEffect(() => {
+    const handleError = (event: ErrorEvent) => {
+      console.error("[v0] Global error caught:", event.error)
+      setHasError(true)
+      setErrorMessage(event.error?.message || "Unknown error")
+    }
+
+    const handleRejection = (event: PromiseRejectionEvent) => {
+      console.error("[v0] Unhandled rejection caught:", event.reason)
+      setHasError(true)
+      setErrorMessage(event.reason?.message || String(event.reason) || "Unknown error")
+    }
+
+    window.addEventListener("error", handleError)
+    window.addEventListener("unhandledrejection", handleRejection)
+
+    return () => {
+      window.removeEventListener("error", handleError)
+      window.removeEventListener("unhandledrejection", handleRejection)
+    }
+  }, [])
+
+  if (hasError) {
+    return (
+      <div className="p-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <p className="text-sm text-red-700 font-medium">Dashboard Error</p>
+          <p className="text-sm text-red-600 mt-1">{error}</p>
+          <button
+            onClick={() => {
+              setHasError(false)
+              setErrorMessage("")
+              window.location.reload()
+            }}
+            className="mt-4 px-4 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-700"
+          >
+            Reload Page
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return <>{children}</>
 }
