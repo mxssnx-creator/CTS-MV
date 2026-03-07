@@ -216,14 +216,26 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     testLog.push(`[${new Date().toISOString()}] Test failed: ${errorMessage}`)
 
     let userFriendlyError = errorMessage
+    let isCredentialError = false
+    
     if (errorMessage.includes("JSON")) {
       userFriendlyError = "API returned invalid response. Check your credentials or try again."
     } else if (errorMessage.includes("401") || errorMessage.includes("Unauthorized")) {
       userFriendlyError = "Invalid API credentials. Please verify your API key and secret."
+      isCredentialError = true
+    } else if (errorMessage.toLowerCase().includes("incorrect apikey") || errorMessage.toLowerCase().includes("invalid api")) {
+      userFriendlyError = "Invalid API key. Please verify your API key is correct and has the required permissions."
+      isCredentialError = true
+    } else if (errorMessage.includes("100413") || errorMessage.includes("apiKey")) {
+      userFriendlyError = "API key validation failed. Please check your API key in exchange settings."
+      isCredentialError = true
     } else if (errorMessage.includes("timeout")) {
       userFriendlyError = "Connection timeout. Check your network or if the API endpoint is available."
     } else if (errorMessage.includes("ENOTFOUND") || errorMessage.includes("ERR_MODULE_NOT_FOUND")) {
       userFriendlyError = "Network error. Check your internet connection."
+    } else if (errorMessage.includes("signature") || errorMessage.includes("Signature")) {
+      userFriendlyError = "Invalid API signature. Please verify your API secret is correct."
+      isCredentialError = true
     }
 
     console.error("[v0] Connection test failed:", error)
@@ -250,12 +262,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json(
       {
         success: false,
-        error: "Connection test failed",
+        error: isCredentialError ? "Invalid credentials" : "Connection test failed",
         details: userFriendlyError,
+        isCredentialError,
         log: testLog,
         duration,
       },
-      { status: 500 }
+      { status: isCredentialError ? 401 : 500 }
     )
   }
 }
