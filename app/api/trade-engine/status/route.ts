@@ -43,6 +43,26 @@ export async function GET() {
     console.log(`[v0] [Status] Found ${connections.length} active connections for engine`)
     
     if (connections.length === 0) {
+      // Get all connections to explain why none are active
+      const { getAllConnections } = await import("@/lib/redis-db")
+      const allConnections = await getAllConnections()
+      
+      // Analyze why no connections are active
+      const analysis = {
+        total: allConnections.length,
+        withCredentials: allConnections.filter((c: any) => 
+          !!(c.api_key) && c.api_key.length > 10 && !!(c.api_secret) && c.api_secret.length > 10
+        ).length,
+        inActivePanel: allConnections.filter((c: any) => 
+          c.is_active_inserted === "1" || c.is_active_inserted === true
+        ).length,
+        dashboardEnabled: allConnections.filter((c: any) => 
+          c.is_enabled_dashboard === "1" || c.is_enabled_dashboard === true
+        ).length,
+      }
+      
+      console.log(`[v0] [Status] No active connections. Analysis:`, analysis)
+      
       return NextResponse.json({
         success: true,
         running: effectivelyRunning,
@@ -52,6 +72,16 @@ export async function GET() {
         activeEngineCount: coordinator?.getActiveEngineCount() || 0,
         connections: [],
         summary: { total: 0, running: 0, stopped: 0, totalTrades: 0, totalPositions: 0, errors: 0 },
+        analysis,
+        requirements: {
+          message: "No connections eligible for processing",
+          needed: [
+            analysis.withCredentials === 0 ? "Add API credentials to a connection" : null,
+            analysis.inActivePanel === 0 ? "Add a connection to the Active panel" : null,
+            analysis.dashboardEnabled === 0 ? "Enable a connection via the dashboard toggle" : null,
+          ].filter(Boolean),
+          setupEndpoint: "POST /api/system/demo-setup with api_key, api_secret, exchange"
+        }
       })
     }
 

@@ -81,11 +81,12 @@ export async function GET() {
       if (conn.preset_trade_enabled === true || conn.preset_trade_enabled === "1" || conn.is_preset_trade === true || conn.is_preset_trade === "1") presetTradeCount++
     }
     
-    // Trade Engine Status from Redis
+    // Trade Engine Status from Redis (stored as hash, not string)
     let globalEngineState: any = {}
     try {
-      const globalStateStr = await client.get("trade_engine:global")
-      globalEngineState = globalStateStr ? JSON.parse(globalStateStr) : {}
+      // trade_engine:global is stored as a hash using hset, so use hgetall
+      const hashData = await client.hgetall("trade_engine:global")
+      globalEngineState = hashData && Object.keys(hashData).length > 0 ? hashData : {}
     } catch {
       globalEngineState = {}
     }
