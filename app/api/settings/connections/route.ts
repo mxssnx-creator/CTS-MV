@@ -185,12 +185,35 @@ export async function POST(request: Request) {
       exchange: body.exchange,
     })
 
+    // Auto-test the newly created connection (non-blocking)
+    let testResult = null
+    if (body.api_key && body.api_secret) {
+      try {
+        console.log("[v0] [API] Auto-testing newly created connection:", connectionId)
+        const testResponse = await fetch(
+          new URL(`/api/settings/connections/${connectionId}/test`, process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000").toString(),
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ source: "creation" }),
+          }
+        )
+        if (testResponse.ok) {
+          testResult = await testResponse.json()
+          console.log("[v0] [API] Auto-test result:", testResult.success ? "PASSED" : "FAILED")
+        }
+      } catch (testError) {
+        console.log("[v0] [API] Auto-test skipped (non-blocking error):", testError instanceof Error ? testError.message : "Unknown")
+      }
+    }
+
     return NextResponse.json(
       {
         success: true,
         message: "Connection created successfully",
         id: connectionId,
         connectionId: connectionId,
+        autoTest: testResult ? { ran: true, success: testResult.success } : { ran: false, reason: "No API credentials provided" },
       },
       { status: 201 }
     )

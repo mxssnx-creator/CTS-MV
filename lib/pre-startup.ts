@@ -187,9 +187,13 @@ export async function testAllExchangeConnections() {
 
 export function startPeriodicConnectionTesting() {
   // Test all connections every 5 minutes
+  console.log("[v0] [Periodic] Starting periodic connection testing (every 5 minutes)")
+  
   const intervalId = setInterval(async () => {
-    console.log("[v0] [Periodic] Running 5-minute connection tests...")
-    await testAllExchangeConnections()
+    const timestamp = new Date().toISOString()
+    console.log(`[v0] [Periodic] [${timestamp}] Running scheduled connection tests...`)
+    const result = await testAllExchangeConnections()
+    console.log(`[v0] [Periodic] [${timestamp}] Completed: ${result.tested} tested, ${result.passed} passed, ${result.failed} failed`)
   }, 5 * 60 * 1000) // 5 minutes
   
   // Store interval ID globally so it can be cleared if needed
