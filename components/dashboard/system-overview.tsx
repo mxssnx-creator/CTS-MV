@@ -258,7 +258,7 @@ export function SystemOverview() {
                 <span className="font-semibold">{stats.exchangeConnections.total}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground" title="Connections with API credentials stored">Credentials</span>
+                <span className="text-muted-foreground" title="Connections with enabled status">Enabled</span>
                 <span className={`font-semibold ${stats.exchangeConnections.enabled > 0 ? "text-green-600" : "text-muted-foreground"}`}>
                   {stats.exchangeConnections.enabled}
                 </span>
@@ -285,7 +285,7 @@ export function SystemOverview() {
             </div>
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground" title="Connections in the Active panel">In Panel</span>
+                <span className="text-muted-foreground" title="Connections established in the Active panel">Established</span>
                 <span className="font-semibold">{stats.activeConnections.total}</span>
               </div>
               <div className="flex items-center justify-between text-xs">

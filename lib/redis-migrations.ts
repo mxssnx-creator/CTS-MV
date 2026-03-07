@@ -347,32 +347,31 @@ const migrations: Migration[] = [
     up: async (client: any) => {
       await client.set("_schema_version", "15")
       
-      // CRITICAL: This migration MUST enable base connections so the engine can find them
-      // Previously connections were inserted but not enabled - this breaks the engine
+      // Base connections are inserted but NOT enabled by default (user must toggle to enable)
       const baseExchangeIds = ["bybit-x03", "bingx-x01", "binance-x01", "okx-x01"]
       
       const connections = await client.smembers("connections") || []
       let updatedBase = 0
       let updatedOther = 0
       
-      console.log(`[v0] Migration 015: FORCE-UPDATING ${connections.length} connections for enable state`)
+      console.log(`[v0] Migration 015: Initializing connections (NOT enabled by default)`)
       
       for (const connId of connections) {
         const connData = await client.hgetall(`connection:${connId}`)
         if (!connData || Object.keys(connData).length === 0) continue
         
         if (baseExchangeIds.includes(connId)) {
-          // FORCE UPDATE base connections: set BOTH inserted AND enabled
+          // Base connections: inserted but DISABLED by default
           await client.hset(`connection:${connId}`, {
             is_inserted: "1",
-            is_enabled: "1",  // CRITICAL: Must be enabled for engine to find it
+            is_enabled: "0",  // NOT enabled by default - user must toggle
             is_predefined: "1",
             updated_at: new Date().toISOString(),
           })
           updatedBase++
-          console.log(`[v0] Migration 015: ✓ UPDATED ${connId} -> is_inserted=1, is_enabled=1`)
+          console.log(`[v0] Migration 015: ✓ ${connId} -> inserted=1, enabled=0 (user must toggle)`)
         } else {
-          // Non-base predefined connections: keep as templates (not inserted)
+          // Non-base predefined connections: templates only
           await client.hset(`connection:${connId}`, {
             is_inserted: "0",
             is_enabled: "0",
@@ -384,7 +383,7 @@ const migrations: Migration[] = [
         }
       }
       
-      console.log(`[v0] Migration 015: COMPLETE - ${updatedBase} base connections ENABLED, ${updatedOther} templates disabled`)
+      console.log(`[v0] Migration 015: COMPLETE - ${updatedBase} base connections (not enabled), ${updatedOther} templates`)
     },
     down: async (client: any) => {
       await client.set("_schema_version", "11")
