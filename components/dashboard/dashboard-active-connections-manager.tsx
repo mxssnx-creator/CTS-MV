@@ -76,22 +76,22 @@ export function DashboardActiveConnectionsManager() {
       for (const conn of allConnections) {
         const exchange = (conn.exchange || "").toLowerCase().trim()
         const isBase = BASE_EXCHANGES.includes(exchange)
+        
+        // Skip predefined templates - they are informational only, not real connections
+        const isPredefined = conn.is_predefined === "1" || conn.is_predefined === true
+        if (isPredefined) continue
 
-        // is_active_inserted = "1" means this connection is inserted for dashboard management
-        // (BingX X01 and Bybit X03 are the two dashboard connections)
+        // is_active_inserted = "1" means this USER-CREATED connection is in Active panel
         const isActiveInserted =
           conn.is_active_inserted === "1" ||
           conn.is_active_inserted === true ||
-          // fallback: old field name in case of existing data
           conn.is_dashboard_inserted === "1" ||
           conn.is_dashboard_inserted === true
 
-        // isActive = connection has been enabled by the user via the Enable toggle
-        const isActive =
+        // isEnabledDashboard = connection's dashboard toggle is ON (processing enabled)
+        const isEnabledDashboard =
           conn.is_enabled_dashboard === true ||
-          conn.is_enabled_dashboard === "1" ||
-          conn.is_enabled === true ||
-          conn.is_enabled === "1"
+          conn.is_enabled_dashboard === "1"
 
         if (isBase && isActiveInserted) {
           if (seenIds.has(conn.id)) continue
@@ -100,12 +100,11 @@ export function DashboardActiveConnectionsManager() {
             id: `active-${conn.id}`,
             connectionId: conn.id,
             exchangeName: conn.exchange ? conn.exchange.charAt(0).toUpperCase() + conn.exchange.slice(1) : "Unknown",
-            isActive,
+            isActive: isEnabledDashboard, // Dashboard toggle state
             isBaseEnabled: true,
             addedAt: conn.created_at || new Date().toISOString(),
             details: conn,
           })
-          console.log(`[v0] [Manager] + Added to active panel: ${conn.name} (enabled=${isActive})`)
         }
       }
       

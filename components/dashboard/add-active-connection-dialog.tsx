@@ -56,20 +56,23 @@ export function AddActiveConnectionDialog({
         return
       }
 
-      // Filter to show only connections that are:
+      // Filter to show only USER-CREATED connections that are:
       // 1. Base exchange (bybit, bingx, pionex, orangex, binance, okx)
-      // 2. Enabled in Settings (is_enabled=1) - must have API keys configured
-      // 3. Created/Inserted (is_dashboard_inserted=0 but is_enabled=1 means created but not yet added to active)
+      // 2. Enabled in Settings (is_enabled=1) - must have API credentials
+      // 3. User-created (is_predefined=0) - NOT predefined templates
+      // 4. Not yet added to Active panel (is_active_inserted=0)
       const BASE_EXCHANGES = ["bybit", "bingx", "pionex", "orangex", "binance", "okx"]
       const availableForAdd = allConnections.filter((c: any) => {
         const exchange = (c.exchange || "").toLowerCase().trim()
         const isBase = BASE_EXCHANGES.includes(exchange)
         const isEnabled = c.is_enabled === true || c.is_enabled === "1" || c.is_enabled === "true"
-        const isCreated = c.is_inserted === true || c.is_inserted === "1" || c.is_inserted === "true"
-        const alreadyOnDashboard = c.is_dashboard_inserted === true || c.is_dashboard_inserted === "1"
-        console.log(`[v0] [AddDialog] ${c.name}: base=${isBase}, enabled=${isEnabled}, created=${isCreated}, onDashboard=${alreadyOnDashboard}`)
-        // Show base connections that are created+enabled in Settings but NOT yet on dashboard (Active Connections)
-        return isBase && isEnabled && isCreated && !alreadyOnDashboard
+        const isPredefined = c.is_predefined === true || c.is_predefined === "1" || c.is_predefined === "true"
+        const alreadyInActivePanel = c.is_active_inserted === true || c.is_active_inserted === "1" ||
+                                      c.is_dashboard_inserted === true || c.is_dashboard_inserted === "1"
+        
+        // Show only USER-CREATED base connections that are enabled but NOT yet in Active panel
+        // Predefined templates are just informational and should NOT appear here
+        return isBase && isEnabled && !isPredefined && !alreadyInActivePanel
       })
 
       setAvailableConnections(availableForAdd)

@@ -163,10 +163,13 @@ export async function POST(request: Request) {
       margin_type: body.margin_type || "cross",
       position_mode: body.position_mode || "hedge",
       is_testnet: body.is_testnet || false,
-      is_enabled: body.is_enabled === true, // Settings: trade engine (default false for new)
-      is_enabled_dashboard: false, // Dashboard: always default to false (disabled)
-      is_active: false, // New connections start inactive in dashboard
-      is_predefined: false,
+      is_enabled: body.is_enabled === true, // Settings: enabled by default for base connections
+      is_inserted: true, // User-created connection is "inserted" (available for use)
+      is_dashboard_inserted: false, // Not yet added to Active Connections dashboard
+      is_active_inserted: false, // Not yet in Active panel
+      is_enabled_dashboard: false, // Dashboard toggle OFF by default
+      is_active: false, // Not actively processing
+      is_predefined: false, // User-created, not predefined template
       is_live_trade: false,
       is_preset_trade: false,
       created_at: new Date().toISOString(),

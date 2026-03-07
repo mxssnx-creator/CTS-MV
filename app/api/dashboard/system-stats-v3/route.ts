@@ -38,46 +38,43 @@ export async function GET() {
     
     console.log(`[v0] [SystemStats] Analyzing ${allConnections.length} total connections`)
     
-    // Separate PREDEFINED (templates) from USER-CREATED (connections with credentials)
-    const predefinedConnections = allConnections.filter((c: any) => {
-      const p = c.is_predefined
-      return p === true || p === "1" || p === "true"
+    // BASE CONNECTIONS = Real connections (is_predefined=false) that can be used for trading
+    // These are created from predefined exchange info and are ENABLED by default in Settings
+    const baseConnections = allConnections.filter((c: any) => {
+      const isPredefined = c.is_predefined === true || c.is_predefined === "1" || c.is_predefined === "true"
+      return !isPredefined && isBaseExchange(c)
     })
-    const userCreatedConnections = allConnections.filter((c: any) => {
-      const p = c.is_predefined
-      return !(p === true || p === "1" || p === "true")
-    })
-    console.log(`[v0] [SystemStats] Connection breakdown: ${predefinedConnections.length} predefined, ${userCreatedConnections.length} user-created`)
     
-    // ACTIVE PANEL = ALL connections with is_active_inserted = "1" (includes predefined templates)
-    // This represents what's shown in the Active Connections panel
+    // ENABLED BASE = Base connections that are enabled in Settings
+    const enabledBase = baseConnections.filter((c: any) => {
+      const e = c.is_enabled
+      return e === true || e === "1" || e === "true"
+    })
+    console.log(`[v0] [SystemStats] Base connections: ${baseConnections.length}, enabled in Settings: ${enabledBase.length}`)
+    
+    // ACTIVE PANEL = USER-CREATED connections inserted into Active Connections panel
+    // Predefined templates should NEVER be in Active panel - they are informational only
     const activeInsertedAll = allConnections.filter((c: any) => {
+      const isPredefined = c.is_predefined === true || c.is_predefined === "1" || c.is_predefined === "true"
+      if (isPredefined) return false // Skip predefined templates
       const ai = c.is_active_inserted
       return ai === true || ai === "1" || ai === "true"
     })
-    console.log(`[v0] [SystemStats] Active-inserted (all): ${activeInsertedAll.length} (${activeInsertedAll.map((c: any) => c.name).join(", ")})`)
+    console.log(`[v0] [SystemStats] In Active panel (user-created only): ${activeInsertedAll.length}`)
     
-    // ENABLED = connections that are enabled on dashboard toggle
-    const enabledAll = allConnections.filter((c: any) => {
+    // ENABLED ON DASHBOARD = Active connections that user has toggled ON
+    const enabledDashboard = activeInsertedAll.filter((c: any) => {
       const e = c.is_enabled_dashboard
       return e === true || e === "1" || e === "true"
     })
-    console.log(`[v0] [SystemStats] Enabled on dashboard: ${enabledAll.length}`)
+    console.log(`[v0] [SystemStats] Enabled on dashboard: ${enabledDashboard.length}`)
     
-    // WORKING = connections where API test succeeded
+    // WORKING = Connections where API test succeeded
     const workingAll = allConnections.filter((c: any) => {
       const status = c.last_test_status || c.test_status || c.connection_status
       return status === "success" || status === "ok" || status === "connected"
     })
     console.log(`[v0] [SystemStats] Working/tested: ${workingAll.length}`)
-    
-    // BASE EXCHANGES in Settings = base exchange connections (predefined or user-created)
-    const baseExchangeConnections = allConnections.filter(isBaseExchange)
-    const enabledBase = baseExchangeConnections.filter((c: any) => {
-      const e = c.is_enabled
-      return e === true || e === "1" || e === "true"
-    })
-    console.log(`[v0] [SystemStats] Base exchanges: ${baseExchangeConnections.length}, enabled: ${enabledBase.length}`)
     
     // Live vs Preset counts from active-inserted connections
     let liveTradeCount = 0
@@ -99,11 +96,11 @@ export async function GET() {
     const mainStatus = globalStatus === "running" && liveTradeCount > 0 ? "running" : liveTradeCount > 0 ? "ready" : "stopped"
     const presetStatus = globalStatus === "running" && presetTradeCount > 0 ? "running" : presetTradeCount > 0 ? "ready" : "stopped"
     
-    // Exchange status based on active-inserted connections
+    // Exchange status based on base connections
     const exchangeStatus = 
-      activeInsertedAll.length === 0 ? "down" :
-      enabledAll.length === 0 ? "partial" :
-      enabledAll.length < activeInsertedAll.length ? "partial" : "healthy"
+      baseConnections.length === 0 ? "down" :
+      enabledBase.length === 0 ? "partial" :
+      enabledBase.length < baseConnections.length ? "partial" : "healthy"
     
     return NextResponse.json({
       success: true,
@@ -122,17 +119,24 @@ export async function GET() {
         requestsPerSecond: getRedisRequestsPerSecond(),
       },
       exchangeConnections: {
-        total: activeInsertedAll.length,
-        enabled: enabledAll.length,
+        // Base connections = available in Settings
+        total: baseConnections.length,
+        enabled: enabledBase.length,
         working: workingAll.length,
         status: exchangeStatus,
       },
       activeConnections: {
+        // Active panel connections
         total: activeInsertedAll.length,
-        active: enabledAll.length,
+        active: enabledDashboard.length,
         liveTrade: liveTradeCount,
         presetTrade: presetTradeCount,
       },
+      // Available connections = enabled base connections NOT yet in Active panel
+      availableConnections: enabledBase.filter((c: any) => {
+        const ai = c.is_active_inserted
+        return !(ai === true || ai === "1" || ai === "true")
+      }).length,
       liveTrades: {
         lastHour: 0,
         topConnections: [],
