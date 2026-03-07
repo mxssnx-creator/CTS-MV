@@ -76,12 +76,9 @@ export function DashboardActiveConnectionsManager() {
       for (const conn of allConnections) {
         const exchange = (conn.exchange || "").toLowerCase().trim()
         const isBase = BASE_EXCHANGES.includes(exchange)
-        
-        // Skip predefined templates - they are informational only, not real connections
-        const isPredefined = conn.is_predefined === "1" || conn.is_predefined === true
-        if (isPredefined) continue
 
-        // is_active_inserted = "1" means this USER-CREATED connection is in Active panel
+        // is_active_inserted = "1" means this connection is in Active panel
+        // This applies to BOTH predefined templates (when enabled) AND user-created connections
         const isActiveInserted =
           conn.is_active_inserted === "1" ||
           conn.is_active_inserted === true ||
