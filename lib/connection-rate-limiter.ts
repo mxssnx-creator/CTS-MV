@@ -206,5 +206,3 @@ export const generalLimiter = new ConnectionRateLimiter({
   timeoutMs: 30000,
   keyPrefix: "rate_limit:general:",
 })
-  keyPrefix: "rate_limit:general:",
-})
