@@ -46,19 +46,25 @@ export async function GET() {
     let indicationsEngineRunning = false
     let totalIndicationsResults = 0
     
-    // Check for indications state and results across all connections
+    // Check for indications state and results - indications are stored as individual keys
+    // Pattern: indication:{connectionId}:{symbol}:{type}
+    const indicationKeys = allKeys.filter((k: string) => k.startsWith("indication:"))
+    totalIndicationsResults = indicationKeys.length
+    
+    if (totalIndicationsResults > 0) {
+      indicationsEngineRunning = true
+    }
+    
+    // Also check for legacy indication sets
     for (const connId of activeConnections) {
-      // Indications are stored as a SET of indication IDs, so use scard() not hlen()
       const indicationCount = await client.scard(`indications:${connId}`).catch(() => 0)
       totalIndicationsResults += indicationCount
-      
-      // If any connection has indication results, engine is running
       if (indicationCount > 0) {
         indicationsEngineRunning = true
       }
     }
     
-    // Check global indications set (indications run without specific connection)
+    // Check global indications set (legacy format)
     const globalIndicationsCount = await client.scard("indications:global").catch(() => 0)
     totalIndicationsResults += globalIndicationsCount
     if (globalIndicationsCount > 0) {
@@ -90,7 +96,16 @@ export async function GET() {
     let strategiesEngineRunning = false
     let totalStrategiesResults = 0
     
-    // Check for strategies state and results across all connections
+    // Check for strategy keys - strategies are stored as individual keys
+    // Pattern: strategy:{connectionId}:{symbol}:{type}
+    const strategyKeys = allKeys.filter((k: string) => k.startsWith("strategy:"))
+    totalStrategiesResults = strategyKeys.length
+    
+    if (totalStrategiesResults > 0) {
+      strategiesEngineRunning = true
+    }
+    
+    // Also check legacy strategy results across all connections
     for (const connId of activeConnections) {
       const strategyResults = await client.hlen(`strategies:${connId}:results`).catch(() => 0)
       const strategySets = await client.hlen(`strategy_sets:${connId}`).catch(() => 0)

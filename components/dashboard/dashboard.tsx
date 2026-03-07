@@ -107,24 +107,36 @@ export function Dashboard() {
 
   const loadStats = async () => {
     try {
+      // Fetch both monitoring stats and system monitoring data
       const url = selectedExchange 
         ? `/api/monitoring/stats?exchange=${selectedExchange}`
         : "/api/monitoring/stats"
       
-      const response = await fetch(url)
-      if (response.ok) {
-        const data = await response.json()
-        setStats({
-          activeConnections: data.activeConnections || 0,
-          totalPositions: data.totalPositions || 0,
-          dailyPnL: data.dailyPnL || 0,
-          totalBalance: data.totalBalance || 0,
-          indicationsActive: data.indicationsActive || 0,
-          strategiesActive: data.strategiesActive || 0,
-          systemLoad: data.systemLoad || 45,
-          databaseSize: data.databaseSize || 128,
-        })
+      const [statsRes, sysMonRes] = await Promise.all([
+        fetch(url),
+        fetch("/api/system/monitoring"),
+      ])
+      
+      let data = { activeConnections: 0, totalPositions: 0, dailyPnL: 0, totalBalance: 0 }
+      let sysData = { cpu: 0, database: { keys: 0 }, engines: { indications: { resultsCount: 0 }, strategies: { resultsCount: 0 } } }
+      
+      if (statsRes.ok) {
+        data = await statsRes.json()
       }
+      if (sysMonRes.ok) {
+        sysData = await sysMonRes.json()
+      }
+      
+      setStats({
+        activeConnections: data.activeConnections || 0,
+        totalPositions: data.totalPositions || 0,
+        dailyPnL: data.dailyPnL || 0,
+        totalBalance: data.totalBalance || 0,
+        indicationsActive: sysData.engines?.indications?.resultsCount || 0,
+        strategiesActive: sysData.engines?.strategies?.resultsCount || 0,
+        systemLoad: sysData.cpu || 0,
+        databaseSize: sysData.database?.keys || 0,
+      })
     } catch (error) {
       console.error("Failed to load stats:", error)
     }

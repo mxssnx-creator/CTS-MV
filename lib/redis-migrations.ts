@@ -308,8 +308,8 @@ const migrations: Migration[] = [
               id: conn.id,
               name: conn.name,
               exchange: conn.exchange,
-              api_key: "00998877009988770099887700998877",
-              api_secret: "00998877009988770099887700998877",
+              api_key: "", // Empty - user must add real credentials
+              api_secret: "", // Empty - user must add real credentials
               api_type: conn.api_type,
               connection_method: "library",
               connection_library: "native",

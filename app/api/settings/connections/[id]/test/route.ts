@@ -85,18 +85,30 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     testLog.push(`[${new Date().toISOString()}] Connection found: ${connection.name} (${connection.exchange})`)
 
-    // Validate credentials - check for placeholder/test values
-    const apiKey = body.api_key || connection.api_key
+    // Validate credentials - check for placeholder/test/demo values
+    const apiKey = body.api_key || connection.api_key || ""
+    const apiSecret = body.api_secret || connection.api_secret || ""
+    const isPredefined = connection.is_predefined === "1" || connection.is_predefined === true
+    
+    // Check for various placeholder patterns
     const isPlaceholder = !apiKey || 
       apiKey === "" || 
       apiKey.includes("PLACEHOLDER") ||
       apiKey.includes("00998877") ||
+      apiKey.includes("demo") ||
+      apiKey.includes("test") ||
+      apiKey.includes("sample") ||
+      apiKey.includes("example") ||
       apiKey.startsWith("test") ||
-      apiKey.length < 20
+      apiKey.startsWith("demo") ||
+      apiKey.length < 20 ||
+      !apiSecret ||
+      apiSecret === "" ||
+      apiSecret.length < 20
 
     if (isPlaceholder) {
-      testLog.push(`[${new Date().toISOString()}] WARNING: API key is placeholder or test credentials`)
-      testLog.push(`[${new Date().toISOString()}] Please configure valid API credentials for this exchange before testing`)
+      testLog.push(`[${new Date().toISOString()}] WARNING: API credentials are missing or appear to be placeholder values`)
+      testLog.push(`[${new Date().toISOString()}] ${isPredefined ? "This is a predefined template - please add your real API credentials" : "Please configure valid API credentials for this exchange before testing"}`)
 
       await updateConnection(id, {
         ...connection,
