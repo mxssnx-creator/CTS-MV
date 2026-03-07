@@ -173,7 +173,7 @@ export const CONNECTION_PREDEFINITIONS: ConnectionPredefinition[] = [
     id: "bingx-x01",
     name: "BingX X01",
     displayName: "BingX X01 (Perpetual Futures)",
-    description: "BingX USDT Perpetual Futures with up to 150x leverage - Testing Connection",
+    description: "BingX USDT Perpetual Futures with up to 150x leverage - Mainnet Only",
     exchange: "bingx",
     apiTypes: ["perpetual_futures", "spot"],
     apiType: "perpetual_futures",
@@ -187,8 +187,8 @@ export const CONNECTION_PREDEFINITIONS: ConnectionPredefinition[] = [
     documentationUrl: "https://bingx-api.github.io/docs/#/en-us/swapV2/introduce",
     testnetSupported: false, // NO TESTNET - mainnet only
     ccxtSupported: true,
-    apiKey: "0HTardBdI36NCTGLu0EA6A91IjwdObw7gpxyvdKn8bgA3abe19X7ZKTN3sUy3rOHuKBSA2YQKdg9AuBONQ",
-    apiSecret: "XsuPgjzQtFY5YzZYuaPlAxFwt6Ljq6jf8PmFD76TVhSD6v82KtzdWszI3nFBm5pePufhSQGuHj23UM48ZqYKQ",
+    apiKey: "", // User must enter their own credentials
+    apiSecret: "",
   },
   {
     id: "binance-x01",
@@ -229,14 +229,14 @@ export const CONNECTION_PREDEFINITIONS: ConnectionPredefinition[] = [
     documentationUrl: "https://www.okx.com/docs-v5/en/",
     testnetSupported: false, // NO TESTNET - mainnet only
     ccxtSupported: true,
-    apiKey: "00998877009988770099887700998877",
-    apiSecret: "00998877009988770099887700998877",
+    apiKey: "", // User must enter their own credentials
+    apiSecret: "",
   },
   {
     id: "gateio-x01",
     name: "Gate.io X01",
     displayName: "Gate.io X01 (Perpetual Futures)",
-    description: "Gate.io USDT perpetual contracts with up to 100x leverage",
+    description: "Gate.io USDT perpetual contracts with up to 100x leverage - Mainnet Only",
     exchange: "gateio",
     apiTypes: ["perpetual_futures", "spot", "margin"],
     apiType: "perpetual_futures",
@@ -248,16 +248,16 @@ export const CONNECTION_PREDEFINITIONS: ConnectionPredefinition[] = [
     maxLeverage: 100,
     contractType: "usdt-perpetual",
     documentationUrl: "https://www.gate.io/docs/developers/apiv4/",
-    testnetSupported: true,
+    testnetSupported: false, // NO TESTNET - mainnet only
     ccxtSupported: true,
-    apiKey: "00998877009988770099887700998877",
-    apiSecret: "00998877009988770099887700998877",
+    apiKey: "", // User must enter their own credentials
+    apiSecret: "",
   },
   {
     id: "kucoin-x01",
     name: "KuCoin X01",
     displayName: "KuCoin X01 (Perpetual Futures)",
-    description: "KuCoin USDT perpetual contracts with up to 100x leverage",
+    description: "KuCoin USDT perpetual contracts with up to 100x leverage - Mainnet Only",
     exchange: "kucoin",
     apiTypes: ["perpetual_futures", "spot", "margin"],
     apiType: "perpetual_futures",
@@ -269,16 +269,16 @@ export const CONNECTION_PREDEFINITIONS: ConnectionPredefinition[] = [
     maxLeverage: 100,
     contractType: "usdt-perpetual",
     documentationUrl: "https://www.kucoin.com/docs/rest/futures-trading/introduction",
-    testnetSupported: true,
+    testnetSupported: false, // NO TESTNET - mainnet only
     ccxtSupported: true,
-    apiKey: "00998877009988770099887700998877",
-    apiSecret: "00998877009988770099887700998877",
+    apiKey: "", // User must enter their own credentials
+    apiSecret: "",
   },
   {
     id: "mexc-x01",
     name: "MEXC X01",
     displayName: "MEXC X01 (Perpetual Futures)",
-    description: "MEXC USDT perpetual futures with up to 200x leverage",
+    description: "MEXC USDT perpetual futures with up to 200x leverage - Mainnet Only",
     exchange: "mexc",
     apiTypes: ["perpetual_futures", "spot"],
     apiType: "perpetual_futures",
@@ -290,16 +290,16 @@ export const CONNECTION_PREDEFINITIONS: ConnectionPredefinition[] = [
     maxLeverage: 200,
     contractType: "usdt-perpetual",
     documentationUrl: "https://mexcdevelop.github.io/apidocs/contract_v1_en/",
-    testnetSupported: false,
+    testnetSupported: false, // NO TESTNET - mainnet only
     ccxtSupported: true,
-    apiKey: "00998877009988770099887700998877",
-    apiSecret: "00998877009988770099887700998877",
+    apiKey: "", // User must enter their own credentials
+    apiSecret: "",
   },
   {
     id: "bitget-x01",
     name: "Bitget X01",
     displayName: "Bitget X01 (Perpetual Futures)",
-    description: "Bitget USDT perpetual futures with up to 125x leverage",
+    description: "Bitget USDT perpetual futures with up to 125x leverage - Mainnet Only",
     exchange: "bitget",
     apiTypes: ["perpetual_futures", "spot", "margin"],
     apiType: "perpetual_futures",
@@ -311,16 +311,16 @@ export const CONNECTION_PREDEFINITIONS: ConnectionPredefinition[] = [
     maxLeverage: 125,
     contractType: "usdt-perpetual",
     documentationUrl: "https://www.bitget.com/api-doc/contract/intro",
-    testnetSupported: false,
+    testnetSupported: false, // NO TESTNET - mainnet only
     ccxtSupported: true,
-    apiKey: "00998877009988770099887700998877",
-    apiSecret: "00998877009988770099887700998877",
+    apiKey: "", // User must enter their own credentials
+    apiSecret: "",
   },
   {
     id: "pionex-x01",
     name: "Pionex X01",
     displayName: "Pionex X01 (Perpetual Futures)",
-    description: "Pionex USDT Perpetual Futures with up to 100x leverage",
+    description: "Pionex USDT Perpetual Futures with up to 100x leverage - Mainnet Only",
     exchange: "pionex",
     apiTypes: ["perpetual_futures", "spot"],
     apiType: "perpetual_futures",
@@ -332,16 +332,16 @@ export const CONNECTION_PREDEFINITIONS: ConnectionPredefinition[] = [
     maxLeverage: 100,
     contractType: "usdt-perpetual",
     documentationUrl: "https://pionex-doc.gitbook.io/apidocs/",
-    testnetSupported: false,
+    testnetSupported: false, // NO TESTNET - mainnet only
     ccxtSupported: false,
-    apiKey: "00998877009988770099887700998877",
-    apiSecret: "00998877009988770099887700998877",
+    apiKey: "", // User must enter their own credentials
+    apiSecret: "",
   },
   {
     id: "orangex-x01",
     name: "OrangeX X01",
     displayName: "OrangeX X01 (Perpetual Futures)",
-    description: "OrangeX USDT Perpetual Futures trading",
+    description: "OrangeX USDT Perpetual Futures trading - Mainnet Only",
     exchange: "orangex",
     apiTypes: ["perpetual_futures", "spot"],
     apiType: "perpetual_futures",
@@ -353,16 +353,16 @@ export const CONNECTION_PREDEFINITIONS: ConnectionPredefinition[] = [
     maxLeverage: 125,
     contractType: "usdt-perpetual",
     documentationUrl: "https://openapi-docs.orangex.com/",
-    testnetSupported: false,
+    testnetSupported: false, // NO TESTNET - mainnet only
     ccxtSupported: false,
-    apiKey: "00998877009988770099887700998877",
-    apiSecret: "00998877009988770099887700998877",
+    apiKey: "", // User must enter their own credentials
+    apiSecret: "",
   },
   {
     id: "huobi-x01",
     name: "Huobi X01",
     displayName: "Huobi X01 (Perpetual Swaps)",
-    description: "Huobi USDT linear swaps with up to 125x leverage",
+    description: "Huobi USDT linear swaps with up to 125x leverage - Mainnet Only",
     exchange: "huobi",
     apiTypes: ["perpetual_futures", "spot", "margin"],
     apiType: "perpetual_futures",
@@ -374,10 +374,10 @@ export const CONNECTION_PREDEFINITIONS: ConnectionPredefinition[] = [
     maxLeverage: 125,
     contractType: "usdt-perpetual",
     documentationUrl: "https://www.htx.com/en-us/opend/newApiPages/",
-    testnetSupported: false,
+    testnetSupported: false, // NO TESTNET - mainnet only
     ccxtSupported: true,
-    apiKey: "00998877009988770099887700998877",
-    apiSecret: "00998877009988770099887700998877",
+    apiKey: "", // User must enter their own credentials
+    apiSecret: "",
   },
 ]
 
@@ -391,12 +391,13 @@ export function getPredefinedConnectionsAsStatic(): ConnectionPredefinition[] {
 
 /**
  * Convert predefined connections to ExchangeConnection format with defaults
+ * NOTE: These are TEMPLATES/INFO ONLY - not actual connections
+ * Users must create their own connections with real API credentials
+ * All predefinitions use MAINNET ONLY (is_testnet: false)
  */
 export function getPredefinedAsExchangeConnections(): ExchangeConnection[] {
-  // Default enabled exchanges - Bybit, BingX, Pionex, OrangeX
-  const defaultEnabled = ["bybit", "bingx", "pionex", "orangex"]
-  
-  console.log("[v0] Creating predefined connections with defaults:", defaultEnabled)
+  // Primary base exchanges - Bybit, BingX, Binance, OKX (the 4 main ones)
+  const primaryExchanges = ["bybit", "bingx", "binance", "okx"]
   
   return CONNECTION_PREDEFINITIONS.map(pred => ({
     id: pred.id,
@@ -405,14 +406,14 @@ export function getPredefinedAsExchangeConnections(): ExchangeConnection[] {
     api_type: pred.apiType,
     connection_method: pred.connectionMethod,
     connection_library: pred.connectionLibrary,
-    api_key: pred.apiKey || "",
-    api_secret: pred.apiSecret || "",
+    api_key: "", // ALWAYS empty - user must provide their own
+    api_secret: "", // ALWAYS empty - user must provide their own
     margin_type: pred.marginType,
     position_mode: pred.positionMode,
-    is_testnet: false,
-    is_enabled: defaultEnabled.includes(pred.exchange.toLowerCase()),
-    is_active: defaultEnabled.includes(pred.exchange.toLowerCase()), // Active if enabled
-    is_predefined: true,
+    is_testnet: false, // ALWAYS mainnet - no testnet support
+    is_enabled: false, // Templates are NOT enabled - user creates their own connection
+    is_active: false, // Templates are NOT active
+    is_predefined: true, // Mark as predefined template (info only)
     is_live_trade: false,
     is_preset_trade: false,
     last_test_status: null,
