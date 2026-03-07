@@ -146,12 +146,13 @@ export const EXCHANGE_CONNECTION_METHODS: Record<string, string[]> = {
   coinbase: ["rest", "library"],
 }
 
+// Base connection configurations - NO TESTNET (mainnet only for production)
 export const CONNECTION_PREDEFINITIONS: ConnectionPredefinition[] = [
   {
     id: "bybit-x03",
     name: "Bybit X03",
     displayName: "Bybit X03 (Unified Trading)",
-    description: "Bybit Unified Trading Account with up to 125x leverage",
+    description: "Bybit Unified Trading Account with up to 125x leverage - Mainnet Only",
     exchange: "bybit",
     apiTypes: ["unified", "contract", "spot"],
     apiType: "unified",
@@ -163,7 +164,7 @@ export const CONNECTION_PREDEFINITIONS: ConnectionPredefinition[] = [
     maxLeverage: 125,
     contractType: "usdt-perpetual",
     documentationUrl: "https://bybit-exchange.github.io/docs/v5/intro",
-    testnetSupported: true,
+    testnetSupported: false, // NO TESTNET - mainnet only
     ccxtSupported: true,
     apiKey: "", // User must enter their own credentials
     apiSecret: "",
@@ -172,7 +173,7 @@ export const CONNECTION_PREDEFINITIONS: ConnectionPredefinition[] = [
     id: "bingx-x01",
     name: "BingX X01",
     displayName: "BingX X01 (Perpetual Futures)",
-    description: "BingX USDT Perpetual Futures with up to 150x leverage",
+    description: "BingX USDT Perpetual Futures with up to 150x leverage - Testing Connection",
     exchange: "bingx",
     apiTypes: ["perpetual_futures", "spot"],
     apiType: "perpetual_futures",
@@ -184,7 +185,7 @@ export const CONNECTION_PREDEFINITIONS: ConnectionPredefinition[] = [
     maxLeverage: 150,
     contractType: "usdt-perpetual",
     documentationUrl: "https://bingx-api.github.io/docs/#/en-us/swapV2/introduce",
-    testnetSupported: false,
+    testnetSupported: false, // NO TESTNET - mainnet only
     ccxtSupported: true,
     apiKey: "0HTardBdI36NCTGLu0EA6A91IjwdObw7gpxyvdKn8bgA3abe19X7ZKTN3sUy3rOHuKBSA2YQKdg9AuBONQ",
     apiSecret: "XsuPgjzQtFY5YzZYuaPlAxFwt6Ljq6jf8PmFD76TVhSD6v82KtzdWszI3nFBm5pePufhSQGuHj23UM48ZqYKQ",
@@ -193,7 +194,7 @@ export const CONNECTION_PREDEFINITIONS: ConnectionPredefinition[] = [
     id: "binance-x01",
     name: "Binance X01",
     displayName: "Binance X01 (USDⓈ-M Futures)",
-    description: "Binance USDT-margined perpetual futures with up to 125x leverage",
+    description: "Binance USDT-margined perpetual futures with up to 125x leverage - Mainnet Only",
     exchange: "binance",
     apiTypes: ["perpetual_futures", "spot", "margin"],
     apiType: "perpetual_futures",
@@ -205,7 +206,7 @@ export const CONNECTION_PREDEFINITIONS: ConnectionPredefinition[] = [
     maxLeverage: 125,
     contractType: "usdt-perpetual",
     documentationUrl: "https://binance-docs.github.io/apidocs/futures/en/",
-    testnetSupported: true,
+    testnetSupported: false, // NO TESTNET - mainnet only
     ccxtSupported: true,
     apiKey: "", // User must enter their own credentials
     apiSecret: "",
@@ -214,7 +215,7 @@ export const CONNECTION_PREDEFINITIONS: ConnectionPredefinition[] = [
     id: "okx-x01",
     name: "OKX X01",
     displayName: "OKX X01 (Perpetual Swap)",
-    description: "OKX USDT perpetual swap contracts with up to 125x leverage",
+    description: "OKX USDT perpetual swap contracts with up to 125x leverage - Mainnet Only",
     exchange: "okx",
     apiTypes: ["unified", "perpetual_futures", "spot"],
     apiType: "unified",
@@ -226,7 +227,7 @@ export const CONNECTION_PREDEFINITIONS: ConnectionPredefinition[] = [
     maxLeverage: 125,
     contractType: "usdt-perpetual",
     documentationUrl: "https://www.okx.com/docs-v5/en/",
-    testnetSupported: true,
+    testnetSupported: false, // NO TESTNET - mainnet only
     ccxtSupported: true,
     apiKey: "00998877009988770099887700998877",
     apiSecret: "00998877009988770099887700998877",

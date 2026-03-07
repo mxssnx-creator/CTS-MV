@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { initRedis, getRedisClient, getSettings, getConnection } from "@/lib/redis-db"
+import { getProgressionLogs } from "@/lib/engine-progression-logs"
 
 export const dynamic = "force-dynamic"
 
@@ -12,8 +13,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const { id } = await params
     const connectionId = id
-    
-    console.log(`[v0] [Progression] Fetching progression for: ${connectionId}`)
 
     await initRedis()
 
@@ -23,65 +22,70 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     // Get progression phase data from engine-manager's updateProgressionPhase
     const progression = await getSettings(`engine_progression:${connectionId}`)
-    console.log(`[v0] [Progression] Raw progression data for ${connName}:`, progression)
     
     // Get engine state from the correct Redis key: trade_engine:global
     const client = getRedisClient()
-    const engineHash = client ? await client.hgetall("trade_engine:global") : null
-    const isGloballyRunning = engineHash?.status === "running"
+    let globalState: any = {}
+    try {
+      const globalStateStr = await client.get("trade_engine:global")
+      globalState = globalStateStr ? JSON.parse(globalStateStr) : {}
+    } catch {
+      globalState = {}
+    }
+    const isGloballyRunning = globalState?.status === "running"
     
     // Check if this connection is currently active/dashboard enabled
     const isActive = connection?.is_enabled_dashboard === "1" || connection?.is_enabled_dashboard === true
+    const isEnabled = connection?.is_enabled === "1" || connection?.is_enabled === true
+    const isInserted = connection?.is_inserted === "1" || connection?.is_inserted === true
     
     // Count indications processed for this connection
     let indicationsCount = 0
+    let strategiesCount = 0
     if (client && isActive) {
       try {
-        indicationsCount = await client.scard(`indications:${connectionId}`)
+        // Check indication keys
+        const keys = await client.keys(`indication:${connectionId}:*`)
+        indicationsCount = keys.length
+        
+        // Check strategy keys
+        const stratKeys = await client.keys(`strategy:${connectionId}:*`)
+        strategiesCount = stratKeys.length
       } catch (e) {
         indicationsCount = 0
+        strategiesCount = 0
       }
     }
     
     // Engine is running if: global engine is running AND this connection is active
-    const engineRunning = isGloballyRunning && isActive
+    const engineRunning = isGloballyRunning && isActive && isEnabled && isInserted
     
-    console.log(`[v0] [Progression] Engine state for ${connName}:`, {
-      running: engineRunning,
-      isGloballyRunning,
-      isActive,
-      indicationsCount,
-    })
+    // Phase progression depends on stored phase or derived from state
+    let phase = progression?.phase || "idle"
+    let progress = Number(progression?.progress) || 0
+    let detail = progression?.detail || "Not running"
     
-    // Phase progression depends on what stage the connection is at
-    let phase = "idle"
-    let progress = 0
-    let detail = "Not running"
-    
-    if (engineRunning && isActive) {
+    // Override phase based on actual connection state if no stored progression
+    if (!progression && isActive && isEnabled && isInserted) {
+      phase = "initializing"
+      progress = 10
+      detail = "Connection enabled - waiting for engine cycle..."
+    } else if (!isActive && !isEnabled) {
+      phase = "idle"
+      progress = 0
+      detail = "Connection disabled"
+    } else if (engineRunning && phase !== "error") {
       // Engine is running and connection is active - show realtime progression
-      phase = "realtime"
-      progress = 85
-      detail = "Processing realtime indications and strategies"
-      
-      // Check prehistoric data if we have it
-      const prehistoricKey = `prehistoric:${connectionId}:data`
-      const prehistoricCount = client ? await client.hlen(prehistoricKey).catch(() => 0) : 0
-      
-      if (prehistoricCount > 0) {
-        // Historical data already loaded, show progress
-        progress = 90
-        detail = `${prehistoricCount} historical candles loaded - processing realtime...`
+      if (indicationsCount > 0) {
+        phase = "realtime"
+        progress = 85
+        detail = `Processing ${indicationsCount} indications, ${strategiesCount} strategies`
       }
     }
     
-    console.log(`[v0] [Progression] Phase for ${connName}:`, {
-      phase,
-      progress,
-      detail,
-      running: engineRunning,
-      isActive,
-    })
+    // Get recent logs for context
+    const recentLogs = await getProgressionLogs(connectionId)
+    const lastLog = recentLogs[0] || null
     
     const subItem = progression?.sub_item || ""
     const subCurrent = Number(progression?.sub_current) || 0
@@ -111,6 +115,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       success: true,
       connectionId,
       connectionName: connName,
+      connection: {
+        exchange: connection?.exchange || "unknown",
+        isActive,
+        isEnabled,
+        isInserted,
+      },
       progression: {
         phase,
         progress,
@@ -120,7 +130,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           current: subCurrent,
           total: subTotal,
         },
-        startedAt: engineHash?.started_at || null,
+        startedAt: globalState?.started_at || null,
         updatedAt: progression?.updated_at || new Date().toISOString(),
         details: {
           historicalDataLoaded: currentIdx >= 3,
@@ -131,9 +141,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         },
         error: phase === "error" ? detail : null,
       },
+      metrics: {
+        indicationsCount,
+        strategiesCount,
+        engineRunning,
+        globalEngineStatus: globalState?.status || "unknown",
+      },
+      recentLogs: recentLogs.slice(0, 10).map(log => ({
+        timestamp: log.timestamp,
+        level: log.level,
+        phase: log.phase,
+        message: log.message,
+      })),
     }
 
-    console.log(`[v0] [Progression] Response for ${connName}:`, response)
     return NextResponse.json(response)
   } catch (error) {
     console.error("[v0] [Progression] Failed to fetch progression:", error)

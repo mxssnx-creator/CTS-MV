@@ -6,7 +6,24 @@ import { getConnectionManager } from "@/lib/connection-manager"
 import { testConnectionLimiter } from "@/lib/connection-rate-limiter"
 import { apiErrorHandler, ApiError } from "@/lib/api-error-handler"
 
-const TEST_TIMEOUT_MS = 30000
+// Timeout handler for requests with abort controller
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+  
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => 
+        controller.signal.addEventListener('abort', () => 
+          reject(new Error(`Timeout: ${label} exceeded ${timeoutMs}ms`))
+        )
+      ),
+    ])
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const testLog: string[] = []
@@ -15,7 +32,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const body = await request.json()
 
   try {
-    // Check rate limit using systemwide limiter
+    // Check rate limit using systemwide limiter (includes timeout config)
     const limitResult = await testConnectionLimiter.checkLimit(id)
     
     if (!limitResult.allowed) {
@@ -23,7 +40,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json(
         {
           error: "Rate limit exceeded",
-          details: `Maximum ${10} tests per minute. Retry after ${limitResult.retryAfter} seconds.`,
+          details: `Maximum 50 tests per minute. Retry after ${limitResult.retryAfter} seconds.`,
           retryAfter: limitResult.retryAfter,
           resetTime: limitResult.resetTime,
           log: testLog,
@@ -32,12 +49,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       )
     }
 
+    const timeoutMs = limitResult.timeoutMs || 30000
     testLog.push(`[${new Date().toISOString()}] Starting connection test for ID: ${id}`)
     testLog.push(`[${new Date().toISOString()}] Using API Type: ${body.api_type || "perpetual_futures"}`)
     testLog.push(`[${new Date().toISOString()}] Rate limit remaining: ${limitResult.remaining}`)
+    testLog.push(`[${new Date().toISOString()}] Timeout: ${timeoutMs}ms`)
 
-    // CRITICAL: Initialize Redis first and verify it's ready
-    await initRedis()
+    // CRITICAL: Initialize Redis first and verify it's ready with timeout
+    await withTimeout(initRedis(), timeoutMs / 3, "Redis initialization")
     
     // Small delay to ensure Redis client is fully initialized
     await new Promise(resolve => setTimeout(resolve, 100))

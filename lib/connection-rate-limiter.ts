@@ -3,6 +3,7 @@ import { initRedis, getRedisClient } from "@/lib/redis-db"
 interface RateLimitConfig {
   windowMs: number // Time window in milliseconds
   maxRequests: number // Max requests per window
+  timeoutMs?: number // Request timeout in milliseconds
   keyPrefix: string // Redis key prefix
 }
 
@@ -11,11 +12,13 @@ interface RateLimitResult {
   remaining: number
   resetTime: number
   retryAfter?: number
+  timeoutMs?: number
 }
 
 /**
- * Systemwide rate limiter for connection requests
+ * Systemwide rate limiter with timeout management for connection requests
  * Uses Redis for distributed rate limiting across multiple servers
+ * Integrated with timeout handling to prevent hanging requests
  */
 export class ConnectionRateLimiter {
   private config: RateLimitConfig
@@ -24,6 +27,7 @@ export class ConnectionRateLimiter {
     this.config = {
       windowMs: config.windowMs || 60 * 1000, // 1 minute default
       maxRequests: config.maxRequests || 30, // 30 requests per window
+      timeoutMs: config.timeoutMs || 30000, // 30 second timeout
       keyPrefix: config.keyPrefix || "rate_limit:connection:",
     }
   }
@@ -39,12 +43,13 @@ export class ConnectionRateLimiter {
       const client = getRedisClient()
 
       if (!client) {
-        // If Redis not available, allow the request
+        // If Redis not available, allow the request with timeout info
         console.warn("[v0] [RateLimit] Redis client unavailable, allowing request")
         return {
           allowed: true,
           remaining: this.config.maxRequests,
           resetTime: Date.now() + this.config.windowMs,
+          timeoutMs: this.config.timeoutMs,
         }
       }
 
@@ -86,6 +91,7 @@ export class ConnectionRateLimiter {
           remaining: 0,
           resetTime,
           retryAfter,
+          timeoutMs: this.config.timeoutMs,
         }
       }
 
@@ -96,6 +102,7 @@ export class ConnectionRateLimiter {
         allowed: true,
         remaining: this.config.maxRequests - newCount,
         resetTime: windowStart + this.config.windowMs,
+        timeoutMs: this.config.timeoutMs,
       }
     } catch (error) {
       console.error("[v0] [RateLimit] Error checking limit:", error)
@@ -104,6 +111,7 @@ export class ConnectionRateLimiter {
         allowed: true,
         remaining: this.config.maxRequests,
         resetTime: Date.now() + this.config.windowMs,
+        timeoutMs: this.config.timeoutMs,
       }
     }
   }
@@ -173,24 +181,30 @@ export class ConnectionRateLimiter {
 // Global rate limiters for different connection request types
 export const testConnectionLimiter = new ConnectionRateLimiter({
   windowMs: 60 * 1000, // 1 minute
-  maxRequests: 10, // 10 test requests per minute
+  maxRequests: 50, // 50 test requests per minute (increased from 10)
+  timeoutMs: 30000, // 30 second timeout
   keyPrefix: "rate_limit:test:",
 })
 
 export const toggleConnectionLimiter = new ConnectionRateLimiter({
   windowMs: 60 * 1000, // 1 minute
   maxRequests: 30, // 30 toggle requests per minute
+  timeoutMs: 30000,
   keyPrefix: "rate_limit:toggle:",
 })
 
 export const fetchDataLimiter = new ConnectionRateLimiter({
   windowMs: 60 * 1000, // 1 minute
   maxRequests: 20, // 20 data fetch requests per minute
+  timeoutMs: 30000,
   keyPrefix: "rate_limit:fetch:",
 })
 
 export const generalLimiter = new ConnectionRateLimiter({
   windowMs: 60 * 1000, // 1 minute
   maxRequests: 60, // 60 general requests per minute
+  timeoutMs: 30000,
+  keyPrefix: "rate_limit:general:",
+})
   keyPrefix: "rate_limit:general:",
 })
