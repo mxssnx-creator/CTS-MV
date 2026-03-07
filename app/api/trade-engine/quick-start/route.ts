@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
-import { getAllConnections, initRedis, updateConnection, setSettings } from "@/lib/redis-db"
+import { getAllConnections, initRedis, updateConnection, setSettings, getRedisClient } from "@/lib/redis-db"
 import { API_VERSIONS } from "@/lib/system-version"
-import { logProgressionEvent } from "@/lib/engine-progression-logs"
+import { logProgressionEvent, getProgressionLogs } from "@/lib/engine-progression-logs"
+import { createExchangeConnector } from "@/lib/exchange-connectors"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -9,14 +10,20 @@ export const dynamic = "force-dynamic"
 const API_VERSION = API_VERSIONS.tradeEngine
 const LOG_PREFIX = `[v0] [QuickStart] ${API_VERSION}`
 
+// Default trading symbols for major exchanges
+const DEFAULT_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
+
 /**
  * POST /api/trade-engine/quick-start
- * Quick-start endpoint with enhanced features:
- * 1. Tests connection with balance check
- * 2. Auto-retrieves top 3 symbols by 24h volume
- * 3. Sets up connection with these symbols as defaults
+ * Quick-start endpoint with direct function calls (no HTTP fetch):
+ * 1. Tests connection using createExchangeConnector directly
+ * 2. Auto-retrieves top symbols or uses defaults
+ * 3. Sets up connection with these symbols
+ * 4. Logs all progression events
  */
 export async function POST(request: Request) {
+  const startTime = Date.now()
+  
   try {
     const body = await request.json().catch(() => ({}))
     const action = body.action || "enable"
@@ -24,47 +31,54 @@ export async function POST(request: Request) {
     await initRedis()
     const allConnections = await getAllConnections()
     
-    console.log(`[v0] [QuickStart] ${API_VERSION}: Action=${action}, Checking ${allConnections.length} connections`)
+    console.log(`${LOG_PREFIX}: === QUICKSTART ${action.toUpperCase()} ===`)
+    console.log(`${LOG_PREFIX}: Scanning ${allConnections.length} connections...`)
     
-    // Find user-created BingX/Bybit FIRST (preferred), fallback to predefined
+    // Find user-created connection with credentials FIRST, then fall back to any with credentials
     let connection = allConnections.find((c: any) => {
       const exch = (c.exchange || "").toLowerCase()
       const isPredefined = c.is_predefined === true || c.is_predefined === "1" || c.is_predefined === "true"
-      return exch === "bingx" && !isPredefined  // User-created BingX
+      const hasCredentials = !!(c.api_key && c.api_secret && c.api_key.length >= 10 && c.api_secret.length >= 10)
+      return (exch === "bingx" || exch === "bybit") && !isPredefined && hasCredentials
     }) || allConnections.find((c: any) => {
       const exch = (c.exchange || "").toLowerCase()
-      const isPredefined = c.is_predefined === true || c.is_predefined === "1" || c.is_predefined === "true"
-      return exch === "bybit" && !isPredefined  // User-created Bybit
-    }) || allConnections.find((c: any) => {
-      const exch = (c.exchange || "").toLowerCase()
-      return exch === "bingx"  // Any BingX (including predefined template)
-    }) || allConnections.find((c: any) => {
-      const exch = (c.exchange || "").toLowerCase()
-      return exch === "bybit"  // Any Bybit (including predefined template)
+      const hasCredentials = !!(c.api_key && c.api_secret && c.api_key.length >= 10 && c.api_secret.length >= 10)
+      return (exch === "bingx" || exch === "bybit" || exch === "binance" || exch === "okx") && hasCredentials
     })
     
     if (!connection) {
-      console.log(`[v0] [QuickStart] ${API_VERSION}: ✗ No BingX/Bybit connections found`)
+      console.log(`${LOG_PREFIX}: ✗ No connections with valid API credentials found`)
+      console.log(`${LOG_PREFIX}: Available: ${allConnections.map((c: any) => `${c.name}(${c.api_key ? 'has-key' : 'no-key'})`).join(", ")}`)
+      
+      await logProgressionEvent("global", "quickstart_no_connection", "error", "No connections with valid API credentials", {
+        totalConnections: allConnections.length,
+        availableExchanges: [...new Set(allConnections.map((c: any) => c.exchange))],
+      })
+      
       return NextResponse.json(
         { 
           success: false,
-          error: "No BingX/Bybit connections found",
+          error: "No connections with valid API credentials found",
+          message: "Create a connection in Settings with your exchange API key and secret first",
           availableConnections: allConnections.map((c: any) => ({ 
             name: c.name,
             id: c.id,
             exchange: c.exchange,
+            hasCredentials: !!(c.api_key && c.api_secret),
+            isPredefined: c.is_predefined === true || c.is_predefined === "1",
           }))
         },
-        { status: 404 }
+        { status: 400 }
       )
     }
     
     const exchangeName = (connection.exchange || "").toLowerCase()
-    console.log(`[v0] [QuickStart] ${API_VERSION}: Found ${connection.name} (${connection.id}) on ${exchangeName}`)
+    const connectionId = connection.id
+    console.log(`${LOG_PREFIX}: Found ${connection.name} (${connectionId}) on ${exchangeName}`)
     
     if (action === "disable") {
       // DISABLE: Clear dashboard fields
-      console.log(`[v0] [QuickStart] ${API_VERSION}: Disabling ${connection.name}...`)
+      console.log(`${LOG_PREFIX}: Disabling ${connection.name}...`)
       const disabled = {
         ...connection,
         is_dashboard_inserted: "0",
@@ -72,148 +86,211 @@ export async function POST(request: Request) {
         is_enabled: "0",
         updated_at: new Date().toISOString(),
       }
-      await updateConnection(connection.id, disabled)
-      console.log(`[v0] [QuickStart] ${API_VERSION}: ✓ Disabled ${connection.name}`)
+      await updateConnection(connectionId, disabled)
+      
+      await logProgressionEvent(connectionId, "quickstart_disabled", "info", "Connection disabled via QuickStart", {
+        connectionName: connection.name,
+      })
+      
+      console.log(`${LOG_PREFIX}: ✓ Disabled ${connection.name}`)
       return NextResponse.json({
         success: true,
         action: "disable",
-        connection: {
-          id: connection.id,
-          name: connection.name,
-          exchange: connection.exchange,
-        },
-        version: API_VERSION,
-      })
-    } else {
-      // ENABLE: Test connection and auto-retrieve top symbols
-      const startTime = Date.now()
-      console.log(`${LOG_PREFIX}: === QUICKSTART ENABLE FLOW ===`)
-      console.log(`${LOG_PREFIX}: Step 1/4: Testing connection ${connection.name}...`)
-      
-      // Log to engine progression
-      await logProgressionEvent(connection.id, "quickstart_started", "info", "QuickStart enable flow initiated", {
-        connectionId: connection.id,
-        connectionName: connection.name,
-        exchange: exchangeName,
-      })
-      
-      // Step 1: Test connection with balance check
-      let testPassed = false
-      let testError = ""
-      let testDuration = 0
-      try {
-        const testStart = Date.now()
-        const testResponse = await fetch(`/api/settings/connections/${connection.id}/test`, {
-          method: "GET",
-          headers: { "Content-Type": "application/json" },
-        })
-        testDuration = Date.now() - testStart
-        const testData = await testResponse.json()
-        testPassed = testData.success !== false
-        testError = testData.error || testData.details || ""
-        console.log(`${LOG_PREFIX}: Step 1/4 COMPLETE: Connection test ${testPassed ? "PASSED" : "FAILED"} (${testDuration}ms)`)
-        if (testError) console.log(`${LOG_PREFIX}:   Error: ${testError}`)
-        
-        await logProgressionEvent(connection.id, "quickstart_test", testPassed ? "info" : "warning", 
-          `Connection test ${testPassed ? "passed" : "failed"}`, {
-            testPassed,
-            testError: testError || undefined,
-            duration: testDuration,
-          })
-      } catch (testErr) {
-        console.error(`${LOG_PREFIX}: Step 1/4 ERROR: Connection test exception:`, testErr)
-        testError = testErr instanceof Error ? testErr.message : "Unknown error"
-        await logProgressionEvent(connection.id, "quickstart_test_error", "error", "Connection test threw exception", {
-          error: testError,
-        })
-      }
-      
-      // Step 2: Get top 3 symbols by volume
-      console.log(`${LOG_PREFIX}: Step 2/4: Retrieving top symbols by volume...`)
-      let symbols = body.symbols || ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
-      try {
-        const symbolsResponse = await fetch(`/api/exchange/${exchangeName}/top-symbols?limit=3`)
-        const symbolsData = await symbolsResponse.json()
-        if (symbolsData.success && symbolsData.symbols && symbolsData.symbols.length > 0) {
-          symbols = symbolsData.symbols
-          console.log(`${LOG_PREFIX}: Step 2/4 COMPLETE: Retrieved ${symbols.length} symbols: ${symbols.join(", ")}`)
-        } else {
-          console.log(`${LOG_PREFIX}: Step 2/4 COMPLETE: Using default symbols: ${symbols.join(", ")}`)
-        }
-        await logProgressionEvent(connection.id, "quickstart_symbols", "info", "Symbols configured", {
-          symbols,
-          source: symbolsData.success ? "exchange" : "defaults",
-        })
-      } catch (symbolErr) {
-        console.error(`${LOG_PREFIX}: Step 2/4 WARNING: Failed to retrieve symbols, using defaults:`, symbolErr)
-        await logProgressionEvent(connection.id, "quickstart_symbols_fallback", "warning", "Using default symbols", {
-          symbols,
-          error: symbolErr instanceof Error ? symbolErr.message : String(symbolErr),
-        })
-      }
-      
-      // Step 3: Update connection - AUTO ADD TO ACTIVE CONNECTIONS
-      console.log(`${LOG_PREFIX}: Step 3/4: Updating connection state...`)
-      const enabled = {
-        ...connection,
-        is_enabled: "1",            // Enable in Settings
-        is_enabled_dashboard: "0",  // Dashboard toggle OFF - user must toggle to start
-        is_dashboard_inserted: "1", // Inserted for dashboard access
-        is_active_inserted: "1",    // AUTO ADD to Active Connections panel
-        is_active: "1",             // Mark as active
-        is_inserted: "1",           // Mark as inserted
-        active_symbols: JSON.stringify(symbols),
-        updated_at: new Date().toISOString(),
-      }
-      await updateConnection(connection.id, enabled)
-      console.log(`${LOG_PREFIX}: Step 3/4 COMPLETE: Connection state updated`)
-      
-      // Step 4: Initialize engine progression state
-      console.log(`${LOG_PREFIX}: Step 4/4: Initializing engine progression...`)
-      await setSettings(`engine_progression:${connection.id}`, {
-        phase: "ready",
-        progress: 0,
-        detail: "Connection ready. Toggle Enable on dashboard to start processing.",
-        updated_at: new Date().toISOString(),
-      })
-      
-      await logProgressionEvent(connection.id, "quickstart_complete", "info", "QuickStart completed successfully", {
-        testPassed,
-        symbols,
-        totalDuration: Date.now() - startTime,
-      })
-      
-      const totalDuration = Date.now() - startTime
-      console.log(`${LOG_PREFIX}: === QUICKSTART COMPLETE ===`)
-      console.log(`${LOG_PREFIX}: Connection: ${connection.name}`)
-      console.log(`${LOG_PREFIX}: Test: ${testPassed ? "PASSED" : "FAILED"}`)
-      console.log(`${LOG_PREFIX}: Symbols: ${symbols.join(", ")}`)
-      console.log(`${LOG_PREFIX}: Total Duration: ${totalDuration}ms`)
-      console.log(`${LOG_PREFIX}: Next Step: Toggle Enable on dashboard to start engine`)
-      
-      return NextResponse.json({
-        success: true,
-        action: "enable",
-        connection: {
-          id: connection.id,
-          name: connection.name,
-          exchange: connection.exchange,
-          is_enabled: "1",
-          is_active_inserted: "1",
-          testPassed,
-          testError: testError || undefined,
-        },
-        symbols,
-        message: `Connection added to Active Connections. Toggle Enable to start processing.`,
-        settingsUrl: `/settings?tab=connections&id=${connection.id}`,
-        duration: totalDuration,
+        connection: { id: connectionId, name: connection.name, exchange: exchangeName },
         version: API_VERSION,
       })
     }
+    
+    // ENABLE FLOW: Direct function calls (no HTTP fetch)
+    await logProgressionEvent(connectionId, "quickstart_started", "info", "QuickStart enable flow initiated", {
+      connectionId,
+      connectionName: connection.name,
+      exchange: exchangeName,
+    })
+    
+    // Step 1: Test connection DIRECTLY using createExchangeConnector
+    console.log(`${LOG_PREFIX}: [1/4] Testing connection directly...`)
+    let testPassed = false
+    let testError = ""
+    let testBalance = null
+    let testDuration = 0
+    
+    try {
+      const testStart = Date.now()
+      const connector = await createExchangeConnector(exchangeName, {
+        apiKey: connection.api_key,
+        apiSecret: connection.api_secret,
+        apiPassphrase: connection.api_passphrase || "",
+        isTestnet: false, // Always mainnet
+        apiType: connection.api_type || "perpetual_futures",
+      })
+      
+      const testResult = await Promise.race([
+        connector.testConnection(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Test timeout (30s)")), 30000))
+      ]) as any
+      
+      testDuration = Date.now() - testStart
+      testPassed = testResult.success !== false
+      testBalance = testResult.balance
+      testError = testResult.error || ""
+      
+      console.log(`${LOG_PREFIX}: [1/4] ✓ Test ${testPassed ? "PASSED" : "FAILED"} (${testDuration}ms)${testBalance ? ` Balance: ${testBalance}` : ""}`)
+      
+      await logProgressionEvent(connectionId, "quickstart_test", testPassed ? "info" : "warning", 
+        `Connection test ${testPassed ? "passed" : "failed"}`, {
+          testPassed,
+          testError: testError || undefined,
+          balance: testBalance,
+          duration: testDuration,
+        })
+    } catch (testErr) {
+      testDuration = Date.now() - startTime
+      testError = testErr instanceof Error ? testErr.message : String(testErr)
+      console.log(`${LOG_PREFIX}: [1/4] ✗ Test ERROR: ${testError}`)
+      
+      await logProgressionEvent(connectionId, "quickstart_test_error", "error", "Connection test failed", {
+        error: testError,
+        duration: testDuration,
+      })
+    }
+    
+    // Step 2: Get symbols (use defaults - direct API calls to exchange are optional)
+    console.log(`${LOG_PREFIX}: [2/4] Configuring symbols...`)
+    let symbols = body.symbols || [...DEFAULT_SYMBOLS]
+    
+    // Try to get exchange-specific top symbols if connector supports it
+    if (testPassed) {
+      try {
+        const connector = await createExchangeConnector(exchangeName, {
+          apiKey: connection.api_key,
+          apiSecret: connection.api_secret,
+          isTestnet: false,
+        })
+        
+        if (typeof connector.getTopSymbols === "function") {
+          const topSymbols = await connector.getTopSymbols(3)
+          if (topSymbols && topSymbols.length > 0) {
+            symbols = topSymbols
+            console.log(`${LOG_PREFIX}: [2/4] ✓ Retrieved top symbols from exchange: ${symbols.join(", ")}`)
+          }
+        }
+      } catch {
+        // Use defaults if retrieval fails
+      }
+    }
+    console.log(`${LOG_PREFIX}: [2/4] ✓ Symbols: ${symbols.join(", ")}`)
+    
+    await logProgressionEvent(connectionId, "quickstart_symbols", "info", "Trading symbols configured", {
+      symbols,
+      count: symbols.length,
+    })
+    
+    // Step 3: Update connection state - ADD TO ACTIVE CONNECTIONS
+    console.log(`${LOG_PREFIX}: [3/4] Updating connection state...`)
+    const enabled = {
+      ...connection,
+      is_enabled: "1",
+      is_enabled_dashboard: "0", // User must toggle Enable to start processing
+      is_dashboard_inserted: "1",
+      is_active_inserted: "1",
+      is_active: "1",
+      is_inserted: "1",
+      is_testnet: false, // Always mainnet
+      active_symbols: JSON.stringify(symbols),
+      last_test_status: testPassed ? "success" : "failed",
+      last_test_balance: testBalance,
+      last_test_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+    await updateConnection(connectionId, enabled)
+    console.log(`${LOG_PREFIX}: [3/4] ✓ Connection added to Active panel`)
+    
+    await logProgressionEvent(connectionId, "quickstart_updated", "info", "Connection state updated", {
+      is_enabled: "1",
+      is_active_inserted: "1",
+      symbols,
+    })
+    
+    // Step 4: Initialize engine progression state
+    console.log(`${LOG_PREFIX}: [4/4] Initializing engine state...`)
+    await setSettings(`engine_progression:${connectionId}`, {
+      phase: "ready",
+      progress: 0,
+      connectionId,
+      connectionName: connection.name,
+      exchange: exchangeName,
+      symbols,
+      testPassed,
+      detail: testPassed 
+        ? "Connection ready. Toggle Enable on dashboard to start processing."
+        : `Connection test failed: ${testError}. Fix credentials and retry.`,
+      updated_at: new Date().toISOString(),
+    })
+    
+    // Store in global quickstart state for dashboard visibility
+    const client = getRedisClient()
+    await client.set("quickstart:last_run", JSON.stringify({
+      connectionId,
+      connectionName: connection.name,
+      exchange: exchangeName,
+      testPassed,
+      testError: testError || undefined,
+      symbols,
+      timestamp: new Date().toISOString(),
+    }))
+    
+    await logProgressionEvent(connectionId, "quickstart_complete", "info", "QuickStart completed successfully", {
+      testPassed,
+      symbols,
+      totalDuration: Date.now() - startTime,
+    })
+    
+    const totalDuration = Date.now() - startTime
+    console.log(`${LOG_PREFIX}: === QUICKSTART COMPLETE ===`)
+    console.log(`${LOG_PREFIX}: Connection: ${connection.name}`)
+    console.log(`${LOG_PREFIX}: Test: ${testPassed ? "PASSED" : "FAILED"}`)
+    console.log(`${LOG_PREFIX}: Symbols: ${symbols.join(", ")}`)
+    console.log(`${LOG_PREFIX}: Duration: ${totalDuration}ms`)
+    console.log(`${LOG_PREFIX}: Next: Toggle Enable on dashboard to start engine`)
+    
+    return NextResponse.json({
+      success: true,
+      action: "enable",
+      connection: {
+        id: connectionId,
+        name: connection.name,
+        exchange: exchangeName,
+        is_enabled: "1",
+        is_active_inserted: "1",
+        testPassed,
+        testError: testError || undefined,
+        testBalance,
+      },
+      symbols,
+      message: testPassed 
+        ? `Connection added to Active Connections. Toggle Enable to start processing.`
+        : `Connection added but test failed: ${testError}. Check credentials.`,
+      duration: totalDuration,
+      version: API_VERSION,
+    })
+    
   } catch (error) {
-    console.error(`[v0] [QuickStart] ${API_VERSION}: Error:`, error)
+    const errorMsg = error instanceof Error ? error.message : String(error)
+    console.error(`${LOG_PREFIX}: FATAL ERROR:`, errorMsg)
+    
+    await logProgressionEvent("global", "quickstart_error", "error", "QuickStart failed with exception", {
+      error: errorMsg,
+      duration: Date.now() - startTime,
+    })
+    
     return NextResponse.json(
-      { error: "Quick start failed", details: error instanceof Error ? error.message : "Unknown error", version: API_VERSION },
+      { 
+        success: false, 
+        error: "Quick start failed", 
+        details: errorMsg, 
+        version: API_VERSION 
+      },
       { status: 500 }
     )
   }
