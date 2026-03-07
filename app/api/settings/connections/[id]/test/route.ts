@@ -7,6 +7,8 @@ import { RateLimiter } from "@/lib/rate-limiter"
 import { apiErrorHandler, ApiError } from "@/lib/api-error-handler"
 
 const TEST_TIMEOUT_MS = 30000
+const MAX_RETRIES = 3
+const RETRY_INTERVAL_MS = 1000
 
 // Timeout handler for requests with abort controller
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
@@ -25,6 +27,31 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: str
   } finally {
     clearTimeout(timeoutId)
   }
+}
+
+// Retry handler with configurable attempts and interval
+async function withRetry<T>(
+  operation: () => Promise<T>,
+  maxRetries: number = MAX_RETRIES,
+  intervalMs: number = RETRY_INTERVAL_MS,
+  onRetry?: (attempt: number, error: Error) => void
+): Promise<T> {
+  let lastError: Error | null = null
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation()
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error))
+      
+      if (attempt < maxRetries) {
+        onRetry?.(attempt, lastError)
+        await new Promise(resolve => setTimeout(resolve, intervalMs))
+      }
+    }
+  }
+  
+  throw lastError || new Error("Max retries exceeded")
 }
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -143,27 +170,37 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const rateLimiter = new RateLimiter(connection.exchange)
 
-    const testResult = await rateLimiter.execute(async () => {
-      await new Promise((resolve) => setTimeout(resolve, minInterval))
+    // Execute with retry system: 3 attempts with 1 second interval
+    const testResult = await withRetry(
+      async () => {
+        return await rateLimiter.execute(async () => {
+          await new Promise((resolve) => setTimeout(resolve, minInterval))
 
-      // Use request body values (which may be edited, unsaved values) OR fall back to stored connection
-      const connector = await createExchangeConnector(connection.exchange, {
-        apiKey: body.api_key || connection.api_key,
-        apiSecret: body.api_secret || connection.api_secret,
-        apiPassphrase: body.api_passphrase || connection.api_passphrase || "",
-        isTestnet: body.is_testnet !== undefined ? body.is_testnet : (connection.is_testnet || false),
-        apiType: body.api_type || connection.api_type,
-        connectionMethod: body.connection_method || connection.connection_method,
-        connectionLibrary: body.connection_library || connection.connection_library,
-      })
+          // Use request body values (which may be edited, unsaved values) OR fall back to stored connection
+          const connector = await createExchangeConnector(connection.exchange, {
+            apiKey: body.api_key || connection.api_key,
+            apiSecret: body.api_secret || connection.api_secret,
+            apiPassphrase: body.api_passphrase || connection.api_passphrase || "",
+            isTestnet: body.is_testnet !== undefined ? body.is_testnet : (connection.is_testnet || false),
+            apiType: body.api_type || connection.api_type,
+            connectionMethod: body.connection_method || connection.connection_method,
+            connectionLibrary: body.connection_library || connection.connection_library,
+          })
 
-      const testPromise = connector.testConnection()
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("Connection test timeout after 30 seconds")), TEST_TIMEOUT_MS)
-      )
+          const testPromise = connector.testConnection()
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("Connection test timeout after 30 seconds")), TEST_TIMEOUT_MS)
+          )
 
-      return await Promise.race([testPromise, timeoutPromise])
-    })
+          return await Promise.race([testPromise, timeoutPromise])
+        })
+      },
+      MAX_RETRIES,
+      RETRY_INTERVAL_MS,
+      (attempt, error) => {
+        testLog.push(`[${new Date().toISOString()}] Retry ${attempt}/${MAX_RETRIES}: ${error.message}`)
+      }
+    )
 
     const result = testResult as any
 
