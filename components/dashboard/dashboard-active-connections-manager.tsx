@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Plus, AlertTriangle } from "lucide-react"
+import { Plus, AlertTriangle, RotateCcw } from "lucide-react"
 import { toast } from "@/lib/simple-toast"
 import type { Connection } from "@/lib/redis-db"
 import type { ActiveConnection } from "@/lib/active-connections"
@@ -26,6 +26,7 @@ export function DashboardActiveConnectionsManager() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set())
+  const [resetting, setResetting] = useState(false)
   const [globalEngineRunning, setGlobalEngineRunning] = useState(false)
   const [globalEngineLoading, setGlobalEngineLoading] = useState(true)
   const globalEngineRef = React.useRef(false)
@@ -293,6 +294,34 @@ export function DashboardActiveConnectionsManager() {
       })
     } catch (error) {
       toast.error("Failed to remove connection")
+    }
+  }
+
+  const handleResetDashboard = async () => {
+    try {
+      setResetting(true)
+      const response = await fetch("/api/settings/connections/reset-dashboard-state", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      })
+      
+      if (!response.ok) {
+        throw new Error("Failed to reset dashboard state")
+      }
+      
+      const data = await response.json()
+      toast.success("Dashboard reset complete", {
+        description: `${data.updatedCount} connections disabled`
+      })
+      
+      // Reload connections
+      setTimeout(() => loadConnections(), 300)
+    } catch (error) {
+      toast.error("Failed to reset dashboard", {
+        description: error instanceof Error ? error.message : "Unknown error"
+      })
+    } finally {
+      setResetting(false)
     }
   }
 

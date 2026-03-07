@@ -3,12 +3,10 @@ import { SystemLogger } from "@/lib/system-logger"
 import { createExchangeConnector } from "@/lib/exchange-connectors"
 import { initRedis, getConnection, updateConnection, getSettings, getAllConnections } from "@/lib/redis-db"
 import { getConnectionManager } from "@/lib/connection-manager"
-import { RateLimiter } from "@/lib/rate-limiter"
+import { testConnectionLimiter } from "@/lib/connection-rate-limiter"
 import { apiErrorHandler, ApiError } from "@/lib/api-error-handler"
 
 const TEST_TIMEOUT_MS = 30000
-const testAttemptMap = new Map<string, { count: number; lastTime: number }>()
-const MAX_TESTS_PER_MINUTE = 3
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const testLog: string[] = []
@@ -17,31 +15,26 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const body = await request.json()
 
   try {
-    const now = Date.now()
-    const attempt = testAttemptMap.get(id) || { count: 0, lastTime: 0 }
-
-    if (now - attempt.lastTime > 60000) {
-      attempt.count = 0
-    }
-
-    if (attempt.count >= MAX_TESTS_PER_MINUTE) {
-      testLog.push(`[${new Date().toISOString()}] ERROR: Too many test attempts (${attempt.count}/${MAX_TESTS_PER_MINUTE}) in the last minute`)
+    // Check rate limit using systemwide limiter
+    const limitResult = await testConnectionLimiter.checkLimit(id)
+    
+    if (!limitResult.allowed) {
+      testLog.push(`[${new Date().toISOString()}] ERROR: Rate limit exceeded`)
       return NextResponse.json(
         {
           error: "Rate limit exceeded",
-          details: `Maximum ${MAX_TESTS_PER_MINUTE} tests per minute per connection. Please wait before retrying.`,
+          details: `Maximum ${10} tests per minute. Retry after ${limitResult.retryAfter} seconds.`,
+          retryAfter: limitResult.retryAfter,
+          resetTime: limitResult.resetTime,
           log: testLog,
         },
-        { status: 429 }
+        { status: 429, headers: { "Retry-After": String(limitResult.retryAfter) } }
       )
     }
 
-    attempt.count++
-    attempt.lastTime = now
-    testAttemptMap.set(id, attempt)
-
     testLog.push(`[${new Date().toISOString()}] Starting connection test for ID: ${id}`)
     testLog.push(`[${new Date().toISOString()}] Using API Type: ${body.api_type || "perpetual_futures"}`)
+    testLog.push(`[${new Date().toISOString()}] Rate limit remaining: ${limitResult.remaining}`)
 
     // CRITICAL: Initialize Redis first and verify it's ready
     await initRedis()

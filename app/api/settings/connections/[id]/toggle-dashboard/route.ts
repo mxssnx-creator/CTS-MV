@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { initRedis, getConnection, updateConnection } from "@/lib/redis-db"
+import { toggleConnectionLimiter } from "@/lib/connection-rate-limiter"
 
 // POST toggle connection active status (inserted/enabled) - INDEPENDENT from Settings
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -7,6 +8,21 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { id } = await params
     const connectionId = id
     const body = await request.json()
+    
+    // Check rate limit using systemwide limiter
+    const limitResult = await toggleConnectionLimiter.checkLimit(connectionId)
+    
+    if (!limitResult.allowed) {
+      return NextResponse.json(
+        {
+          error: "Rate limit exceeded",
+          details: `Maximum 30 toggle requests per minute. Retry after ${limitResult.retryAfter} seconds.`,
+          retryAfter: limitResult.retryAfter,
+          resetTime: limitResult.resetTime,
+        },
+        { status: 429, headers: { "Retry-After": String(limitResult.retryAfter) } }
+      )
+    }
     
     // Support both active fields:
     // - is_active_inserted: whether connection appears in active list
@@ -35,6 +51,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     console.log(`[v0] [Toggle] Toggling ${connection.name} (${connectionId}):`)
     console.log(`[v0] [Toggle]   Before: is_active_inserted=${connection.is_active_inserted}, is_enabled_dashboard=${connection.is_enabled_dashboard}`)
+    console.log(`[v0] [Toggle]   Rate limit remaining: ${limitResult.remaining}`)
 
     // Build update object with all necessary fields
     const updatedConnection = {
