@@ -104,26 +104,57 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           exchange: connection.exchange,
         })
         
-        // Update engine progression phase to show initializing
-        await setSettings(`engine_progression:${resolvedId}`, {
-          phase: "initializing",
-          progress: 5,
-          detail: "Connection enabled - engine starting...",
-          updated_at: new Date().toISOString(),
-        })
+        // Check if connection has valid credentials
+        const hasCredentials = (updatedConnection.api_key || updatedConnection.apiKey) && 
+                               (updatedConnection.api_secret || updatedConnection.apiSecret)
         
-        // Update global engine state to trigger coordinator
-        const globalState = await getSettings("trade_engine:global") || {}
-        await setSettings("trade_engine:global", {
-          ...globalState,
-          status: "running",
-          started_at: globalState.started_at || new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          active_connections: (globalState.active_connections || 0) + 1,
-        })
-        
-        engineStatus = "started"
-        console.log(`[v0] [Toggle] Engine progression initialized for ${connection.name}`)
+        if (!hasCredentials) {
+          // No credentials - set progression to waiting for credentials
+          await setSettings(`engine_progression:${resolvedId}`, {
+            phase: "waiting_credentials",
+            progress: 5,
+            detail: "Connection enabled but missing API credentials. Add credentials in Settings.",
+            updated_at: new Date().toISOString(),
+          })
+          
+          await logProgressionEvent(resolvedId, "waiting_credentials", "warning", 
+            "Connection enabled but API credentials are missing", {
+              connectionId: resolvedId,
+              hint: "Add API key and secret in Settings to start trading",
+            })
+          
+          engineStatus = "waiting_credentials"
+          console.log(`[v0] [Toggle] Connection enabled but missing credentials: ${connection.name}`)
+        } else {
+          // Has credentials - update engine progression phase to show initializing
+          await setSettings(`engine_progression:${resolvedId}`, {
+            phase: "initializing",
+            progress: 10,
+            detail: "Connection enabled - engine starting...",
+            updated_at: new Date().toISOString(),
+          })
+          
+          // Update global engine state to trigger coordinator
+          const globalState = await getSettings("trade_engine:global") || {}
+          await setSettings("trade_engine:global", {
+            ...globalState,
+            status: "running",
+            started_at: globalState.started_at || new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            active_connections: (globalState.active_connections || 0) + 1,
+            refresh_requested: new Date().toISOString(), // Signal coordinator to refresh
+          })
+          
+          // Signal the coordinator to refresh engines by setting a refresh flag
+          await setSettings("engine_coordinator:refresh_requested", {
+            timestamp: new Date().toISOString(),
+            connectionId: resolvedId,
+            action: "start",
+          })
+          
+          engineStatus = "started"
+          console.log(`[v0] [Toggle] Engine progression initialized for ${connection.name}`)
+        }
       } catch (engineError) {
         console.error(`[v0] [Toggle] Failed to initialize engine:`, engineError)
         engineStatus = "error"
@@ -156,6 +187,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           updated_at: new Date().toISOString(),
           active_connections: activeCount,
           status: activeCount > 0 ? "running" : "idle",
+          refresh_requested: new Date().toISOString(),
+        })
+        
+        // Signal the coordinator to refresh engines
+        await setSettings("engine_coordinator:refresh_requested", {
+          timestamp: new Date().toISOString(),
+          connectionId: resolvedId,
+          action: "stop",
         })
         
         engineStatus = "stopped"

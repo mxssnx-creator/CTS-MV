@@ -116,24 +116,22 @@ export async function POST(request: Request) {
         console.error(`[v0] [QuickStart] ${API_VERSION}: Failed to retrieve symbols:`, symbolErr)
       }
       
-      // Step 3: Update connection - AUTO ADD TO ACTIVE CONNECTIONS
+      // Step 3: Update connection with defaults
       console.log(`[v0] [QuickStart] ${API_VERSION}: Enabling ${connection.name} with ${symbols.length} symbols: ${symbols.join(", ")}`)
       const enabled = {
         ...connection,
         is_enabled: "1",            // Enable in Settings
-        is_enabled_dashboard: "0",  // Dashboard toggle OFF by default - user must toggle to start processing
+        is_enabled_dashboard: "0",  // NOT enabled by default - user must toggle
         is_dashboard_inserted: "1", // Inserted for dashboard access
-        is_active_inserted: "1",    // AUTO ADD to Active panel
-        is_active: "1",             // Mark as active
-        is_inserted: "1",           // Mark as inserted for engine tracking
+        is_active_inserted: "0",    // NOT in Active panel by default
+        is_active: "0",             // Not actively processing until user enables
         active_symbols: JSON.stringify(symbols),
         updated_at: new Date().toISOString(),
       }
       await updateConnection(connection.id, enabled)
       console.log(`[v0] [QuickStart] ${API_VERSION}: ✓ Updated ${connection.name}`)
-      console.log(`[v0] [QuickStart] ${API_VERSION}: ✓ Auto-added to Active Connections panel`)
       console.log(`[v0] [QuickStart] ${API_VERSION}: Connection tested, symbols set to: ${symbols.join(", ")}`)
-      console.log(`[v0] [QuickStart] ${API_VERSION}: Toggle Enable on dashboard to start processing`)
+      console.log(`[v0] [QuickStart] ${API_VERSION}: User must toggle Enable to start processing`)
       
       return NextResponse.json({
         success: true,
@@ -143,12 +141,11 @@ export async function POST(request: Request) {
           name: connection.name,
           exchange: connection.exchange,
           is_enabled: "1",
-          is_active_inserted: "1",
           testPassed,
           testError: testError || undefined,
           defaultSymbols: symbols,
         },
-        message: `Connection configured with ${symbols.length} symbols and added to Active Connections. Toggle Enable to start processing.`,
+        message: `Connection tested and configured with ${symbols.length} default symbols. Toggle Enable to start processing.`,
         settingsUrl: `/settings?tab=connections&id=${connection.id}`,
         version: API_VERSION,
       })
