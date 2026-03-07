@@ -2,9 +2,11 @@ import { type NextRequest, NextResponse } from "next/server"
 import { SystemLogger } from "@/lib/system-logger"
 import { createExchangeConnector } from "@/lib/exchange-connectors"
 import { initRedis, getConnection, updateConnection, getSettings, getAllConnections } from "@/lib/redis-db"
-import { getConnectionManager } from "@/lib/connection-manager"
 import { testConnectionLimiter } from "@/lib/connection-rate-limiter"
+import { RateLimiter } from "@/lib/rate-limiter"
 import { apiErrorHandler, ApiError } from "@/lib/api-error-handler"
+
+const TEST_TIMEOUT_MS = 30000
 
 // Timeout handler for requests with abort controller
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
