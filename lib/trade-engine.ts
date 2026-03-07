@@ -199,9 +199,10 @@ export class GlobalTradeEngineCoordinator {
    */
   async refreshEngines(): Promise<void> {
     try {
-      console.log("[v0] [Coordinator] Refreshing engines - checking for connection state changes...")
+      console.log("[v0] [Coordinator] === REFRESH ENGINES START ===")
       
       const { initRedis, getInsertedAndEnabledConnections, getAllConnections } = await import("@/lib/redis-db")
+      const { logProgressionEvent } = await import("@/lib/engine-progression-logs")
       
       await initRedis()
       const enabledConnections = await getInsertedAndEnabledConnections()
@@ -210,17 +211,32 @@ export class GlobalTradeEngineCoordinator {
       const enabledIds = new Set(enabledConnections.map(c => c.id))
       const runningIds = new Set(this.engineManagers.keys())
       
+      console.log(`[v0] [Coordinator] State: enabled=${enabledConnections.length}, running=${runningIds.size}`)
+      
       // Start engines for newly enabled connections
+      let started = 0
+      let skipped = 0
       for (const connection of enabledConnections) {
         if (!runningIds.has(connection.id)) {
           try {
             const hasCredentials = (connection.api_key || connection.apiKey) && (connection.api_secret || connection.apiSecret)
             if (!hasCredentials) {
-              console.log(`[v0] [Coordinator] Skipping ${connection.name} - no credentials`)
+              console.log(`[v0] [Coordinator] SKIP: ${connection.name} - no credentials`)
+              await logProgressionEvent(connection.id, "engine_skip", "warning", "Engine start skipped - missing credentials", {
+                connectionId: connection.id,
+                connectionName: connection.name,
+              })
+              skipped++
               continue
             }
             
-            console.log(`[v0] [Coordinator] ✓ NEW: Starting engine for ${connection.name}`)
+            console.log(`[v0] [Coordinator] START: ${connection.name} (${connection.exchange})`)
+            await logProgressionEvent(connection.id, "engine_starting", "info", "Coordinator starting engine", {
+              connectionId: connection.id,
+              connectionName: connection.name,
+              exchange: connection.exchange,
+            })
+            
             const { loadSettingsAsync } = await import("@/lib/settings-storage")
             const settings = await loadSettingsAsync()
             
@@ -232,30 +248,49 @@ export class GlobalTradeEngineCoordinator {
             }
             
             await this.startEngine(connection.id, config)
+            started++
+            
+            await logProgressionEvent(connection.id, "engine_started", "info", "Engine started by coordinator", {
+              connectionId: connection.id,
+              config,
+            })
           } catch (error) {
-            console.error(`[v0] [Coordinator] Failed to start engine for ${connection.name}:`, error)
+            const errorMsg = error instanceof Error ? error.message : String(error)
+            console.error(`[v0] [Coordinator] ERROR starting ${connection.name}:`, errorMsg)
+            await logProgressionEvent(connection.id, "engine_start_error", "error", "Coordinator failed to start engine", {
+              error: errorMsg,
+            })
           }
         }
       }
       
       // Stop engines for disabled connections
+      let stopped = 0
       for (const connectionId of runningIds) {
         if (!enabledIds.has(connectionId)) {
           try {
             const conn = allConnections.find(c => c.id === connectionId)
-            console.log(`[v0] [Coordinator] ✓ STOP: Stopping engine for ${conn?.name || connectionId}`)
+            console.log(`[v0] [Coordinator] STOP: ${conn?.name || connectionId}`)
+            
+            await logProgressionEvent(connectionId, "engine_stopping", "info", "Coordinator stopping engine", {
+              connectionId,
+              connectionName: conn?.name,
+            })
+            
             await this.stopEngine(connectionId)
+            stopped++
+            
+            await logProgressionEvent(connectionId, "engine_stopped", "info", "Engine stopped by coordinator", {
+              connectionId,
+            })
           } catch (error) {
-            console.error(`[v0] [Coordinator] Failed to stop engine for ${connectionId}:`, error)
+            const errorMsg = error instanceof Error ? error.message : String(error)
+            console.error(`[v0] [Coordinator] ERROR stopping ${connectionId}:`, errorMsg)
           }
         }
       }
       
-      const nowRunning = enabledIds.size
-      const previousRunning = runningIds.size
-      if (nowRunning !== previousRunning) {
-        console.log(`[v0] [Coordinator] ✓ Refresh complete: ${nowRunning} engines running (was ${previousRunning})`)
-      }
+      console.log(`[v0] [Coordinator] === REFRESH COMPLETE: started=${started}, stopped=${stopped}, skipped=${skipped} ===`)
     } catch (error) {
       console.error("[v0] [Coordinator] Error refreshing engines:", error)
     }
@@ -487,17 +522,41 @@ export class GlobalTradeEngineCoordinator {
   }
 
   /**
-   * Start global health monitoring
+   * Start global health monitoring with connection refresh detection
    */
   private startGlobalHealthMonitoring(): void {
-    const healthCheckInterval = 30000 // Check every 30 seconds
+    const healthCheckInterval = 10000 // Check every 10 seconds for faster response
 
-    console.log("[v0] Starting global trade engine health monitoring")
+    console.log("[v0] Starting global trade engine health monitoring with refresh detection")
 
     this.healthCheckTimer = setInterval(async () => {
-      if (!this.isGloballyRunning) return
-
       try {
+        // Check for refresh requests from toggle-dashboard
+        const refreshRequest = await getSettings("engine_coordinator:refresh_requested")
+        
+        if (refreshRequest && refreshRequest.timestamp) {
+          const requestTime = new Date(refreshRequest.timestamp).getTime()
+          const now = Date.now()
+          
+          // Process refresh requests within the last 30 seconds
+          if (now - requestTime < 30000) {
+            console.log(`[v0] [Coordinator] Refresh requested for ${refreshRequest.connectionId}: ${refreshRequest.action}`)
+            
+            // Clear the request to prevent duplicate processing
+            await setSettings("engine_coordinator:refresh_requested", {
+              timestamp: null,
+              connectionId: null,
+              action: null,
+              processed_at: new Date().toISOString(),
+            })
+            
+            // Trigger engine refresh
+            await this.refreshEngines()
+          }
+        }
+        
+        if (!this.isGloballyRunning) return
+
         const health = await this.getGlobalHealth()
 
         if (health.overall !== "healthy") {

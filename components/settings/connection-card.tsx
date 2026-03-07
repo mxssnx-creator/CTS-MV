@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { Power, Trash2, Settings, ChevronDown, Loader2, AlertCircle, CheckCircle2, Edit2, Lock, Eye, EyeOff } from "lucide-react"
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { toast } from "@/lib/simple-toast"
 import { isHTMLResponse, parseHTMLResponse, parseCloudflareError } from "@/lib/html-response-parser"
 import {
@@ -230,26 +230,8 @@ export function ConnectionCard({
     }
   }
 
-  // Track if auto-test has already run for this connection
-  const autoTestRanRef = useRef<Set<string>>(new Set())
-  
-  // Auto-run test ONLY ONCE on newly added connections if credentials configured
-  useEffect(() => {
-    // Skip if already tested this connection
-    if (autoTestRanRef.current.has(connection.id)) return
-    
-    const shouldAutoTest = isNewlyAdded && 
-      connection.is_enabled && 
-      connection.api_key && 
-      connection.api_secret
-    
-    if (shouldAutoTest) {
-      // Mark as tested to prevent infinite loop
-      autoTestRanRef.current.add(connection.id)
-      handleTestConnection()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isNewlyAdded, connection.id])
+  // Auto-test disabled - users should manually click "Test Connection"
+  // This prevents infinite loops when connection tests fail repeatedly
 
   const handleSaveSettings = async () => {
     if (!editFormData.api_key || !editFormData.api_secret) {

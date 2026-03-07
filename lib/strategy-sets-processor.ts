@@ -1,11 +1,26 @@
 /**
  * Independent Strategy Sets Processor
- * Maintains separate 250-entry pools for each strategy calculation type
+ * Maintains separate 500-entry pools for each strategy calculation type
  * Each type evaluates independently with own set configurations
  */
 
 import { getRedisClient, initRedis, getSettings, setSettings } from "@/lib/redis-db"
 import { logProgressionEvent } from "@/lib/engine-progression-logs"
+
+// Default limits per strategy type (independently configurable)
+const DEFAULT_LIMITS = {
+  base: 500,
+  main: 500,
+  real: 500,
+  live: 500,
+}
+
+export interface StrategySetLimits {
+  base: number
+  main: number
+  real: number
+  live: number
+}
 
 export interface StrategySet {
   type: "base" | "main" | "real" | "live"
@@ -19,7 +34,7 @@ export interface StrategySet {
     config: any
     metadata: any
   }>
-  maxEntries: number // Configurable, default 250
+  maxEntries: number // Configurable per type, default 500
   stats: {
     totalCalculated: number
     totalQualified: number
@@ -30,7 +45,7 @@ export interface StrategySet {
 
 export class StrategySetsProcessor {
   private connectionId: string
-  private maxEntriesPerSet = 250 // Configurable in settings
+  private limits: StrategySetLimits = { ...DEFAULT_LIMITS }
 
   constructor(connectionId: string) {
     this.connectionId = connectionId
@@ -40,12 +55,26 @@ export class StrategySetsProcessor {
   private async loadSettings(): Promise<void> {
     try {
       const settings = await getSettings("strategy_sets_config")
-      if (settings?.maxEntriesPerSet) {
-        this.maxEntriesPerSet = Number.parseInt(String(settings.maxEntriesPerSet))
+      if (settings) {
+        // Load independent limits per type
+        if (settings.base) this.limits.base = Number(settings.base)
+        if (settings.main) this.limits.main = Number(settings.main)
+        if (settings.real) this.limits.real = Number(settings.real)
+        if (settings.live) this.limits.live = Number(settings.live)
+        // Fallback: legacy maxEntriesPerSet applies to all
+        if (settings.maxEntriesPerSet && !settings.base) {
+          const limit = Number(settings.maxEntriesPerSet)
+          this.limits = { base: limit, main: limit, real: limit, live: limit }
+        }
       }
     } catch (error) {
       console.error("[v0] [StrategySets] Failed to load settings:", error)
     }
+  }
+
+  /** Get the limit for a specific strategy type */
+  getLimit(type: keyof StrategySetLimits): number {
+    return this.limits[type] || DEFAULT_LIMITS[type] || 500
   }
 
   /**

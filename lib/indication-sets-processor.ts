@@ -1,11 +1,28 @@
 /**
  * Independent Indication Sets Processor
- * Maintains separate 250-entry pools for each indication type
+ * Maintains separate 500-entry pools for each indication type
  * Each type calculates independently with own set configurations
  */
 
 import { getRedisClient, initRedis, getSettings, setSettings } from "@/lib/redis-db"
 import { logProgressionEvent } from "@/lib/engine-progression-logs"
+
+// Default limits per indication type (independently configurable)
+const DEFAULT_LIMITS = {
+  direction: 500,
+  move: 500,
+  active: 500,
+  optimal: 500,
+  active_advanced: 500,
+}
+
+export interface IndicationSetLimits {
+  direction: number
+  move: number
+  active: number
+  optimal: number
+  active_advanced: number
+}
 
 export interface IndicationSet {
   type: "direction" | "move" | "active" | "optimal" | "active_advanced"
@@ -19,7 +36,7 @@ export interface IndicationSet {
     config: any
     metadata: any
   }>
-  maxEntries: number // Configurable, default 250
+  maxEntries: number // Configurable per type, default 500
   stats: {
     totalCalculated: number
     totalQualified: number
@@ -31,7 +48,7 @@ export interface IndicationSet {
 export class IndicationSetsProcessor {
   private connectionId: string
   private sets: Map<string, IndicationSet> = new Map()
-  private maxEntriesPerSet = 250 // Configurable in settings
+  private limits: IndicationSetLimits = { ...DEFAULT_LIMITS }
 
   constructor(connectionId: string) {
     this.connectionId = connectionId
@@ -41,12 +58,27 @@ export class IndicationSetsProcessor {
   private async loadSettings(): Promise<void> {
     try {
       const settings = await getSettings("indication_sets_config")
-      if (settings?.maxEntriesPerSet) {
-        this.maxEntriesPerSet = Number.parseInt(String(settings.maxEntriesPerSet))
+      if (settings) {
+        // Load independent limits per type
+        if (settings.direction) this.limits.direction = Number(settings.direction)
+        if (settings.move) this.limits.move = Number(settings.move)
+        if (settings.active) this.limits.active = Number(settings.active)
+        if (settings.optimal) this.limits.optimal = Number(settings.optimal)
+        if (settings.active_advanced) this.limits.active_advanced = Number(settings.active_advanced)
+        // Fallback: legacy maxEntriesPerSet applies to all
+        if (settings.maxEntriesPerSet && !settings.direction) {
+          const limit = Number(settings.maxEntriesPerSet)
+          this.limits = { direction: limit, move: limit, active: limit, optimal: limit, active_advanced: limit }
+        }
       }
     } catch (error) {
       console.error("[v0] [IndicationSets] Failed to load settings:", error)
     }
+  }
+
+  /** Get the limit for a specific indication type */
+  getLimit(type: keyof IndicationSetLimits): number {
+    return this.limits[type] || DEFAULT_LIMITS[type] || 500
   }
 
   /**
