@@ -487,42 +487,17 @@ export class GlobalTradeEngineCoordinator {
   }
 
   /**
-   * Start global health monitoring with connection refresh detection
+   * Start global health monitoring
    */
   private startGlobalHealthMonitoring(): void {
-    const healthCheckInterval = 10000 // Check every 10 seconds for faster response
+    const healthCheckInterval = 30000 // Check every 30 seconds
 
-    console.log("[v0] Starting global trade engine health monitoring with refresh detection")
+    console.log("[v0] Starting global trade engine health monitoring")
 
     this.healthCheckTimer = setInterval(async () => {
-      try {
-        // Check for refresh requests from toggle-dashboard
-        const { getSettings, setSettings } = await import("@/lib/redis-db")
-        const refreshRequest = await getSettings("engine_coordinator:refresh_requested")
-        
-        if (refreshRequest && refreshRequest.timestamp) {
-          const requestTime = new Date(refreshRequest.timestamp).getTime()
-          const now = Date.now()
-          
-          // Process refresh requests within the last 30 seconds
-          if (now - requestTime < 30000) {
-            console.log(`[v0] [Coordinator] Refresh requested for ${refreshRequest.connectionId}: ${refreshRequest.action}`)
-            
-            // Clear the request to prevent duplicate processing
-            await setSettings("engine_coordinator:refresh_requested", {
-              timestamp: null,
-              connectionId: null,
-              action: null,
-              processed_at: new Date().toISOString(),
-            })
-            
-            // Trigger engine refresh
-            await this.refreshEngines()
-          }
-        }
-        
-        if (!this.isGloballyRunning) return
+      if (!this.isGloballyRunning) return
 
+      try {
         const health = await this.getGlobalHealth()
 
         if (health.overall !== "healthy") {

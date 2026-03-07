@@ -103,35 +103,34 @@ export async function POST(request: Request) {
         testError = testErr instanceof Error ? testErr.message : "Unknown error"
       }
       
-      // Step 2: Get top 3 symbols by volume
-      let symbols = body.symbols || ["BTCUSDT", "ETHUSDT", "BNBUSDT"] // Fallback defaults
+      // Step 2: Get top 3 symbols by volume and save to connection settings (not shown in response)
+      let symbols = body.symbols || ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
       try {
         const symbolsResponse = await fetch(`/api/exchange/${exchangeName}/top-symbols?limit=3`)
         const symbolsData = await symbolsResponse.json()
         if (symbolsData.success && symbolsData.symbols && symbolsData.symbols.length > 0) {
           symbols = symbolsData.symbols
-          console.log(`[v0] [QuickStart] ${API_VERSION}: ✓ Retrieved top 3 symbols: ${symbols.join(", ")}`)
         }
       } catch (symbolErr) {
         console.error(`[v0] [QuickStart] ${API_VERSION}: Failed to retrieve symbols:`, symbolErr)
       }
       
-      // Step 3: Update connection with defaults
-      console.log(`[v0] [QuickStart] ${API_VERSION}: Enabling ${connection.name} with ${symbols.length} symbols: ${symbols.join(", ")}`)
+      // Step 3: Update connection - AUTO ADD TO ACTIVE CONNECTIONS
+      console.log(`[v0] [QuickStart] ${API_VERSION}: Adding ${connection.name} to Active Connections`)
       const enabled = {
         ...connection,
         is_enabled: "1",            // Enable in Settings
-        is_enabled_dashboard: "0",  // NOT enabled by default - user must toggle
+        is_enabled_dashboard: "0",  // Dashboard toggle OFF - user must toggle to start
         is_dashboard_inserted: "1", // Inserted for dashboard access
-        is_active_inserted: "0",    // NOT in Active panel by default
-        is_active: "0",             // Not actively processing until user enables
+        is_active_inserted: "1",    // AUTO ADD to Active Connections panel
+        is_active: "1",             // Mark as active
+        is_inserted: "1",           // Mark as inserted
         active_symbols: JSON.stringify(symbols),
         updated_at: new Date().toISOString(),
       }
       await updateConnection(connection.id, enabled)
-      console.log(`[v0] [QuickStart] ${API_VERSION}: ✓ Updated ${connection.name}`)
-      console.log(`[v0] [QuickStart] ${API_VERSION}: Connection tested, symbols set to: ${symbols.join(", ")}`)
-      console.log(`[v0] [QuickStart] ${API_VERSION}: User must toggle Enable to start processing`)
+      console.log(`[v0] [QuickStart] ${API_VERSION}: ✓ Added ${connection.name} to Active Connections`)
+      console.log(`[v0] [QuickStart] ${API_VERSION}: Toggle Enable on dashboard to start processing`)
       
       return NextResponse.json({
         success: true,
@@ -141,11 +140,11 @@ export async function POST(request: Request) {
           name: connection.name,
           exchange: connection.exchange,
           is_enabled: "1",
+          is_active_inserted: "1",
           testPassed,
           testError: testError || undefined,
-          defaultSymbols: symbols,
         },
-        message: `Connection tested and configured with ${symbols.length} default symbols. Toggle Enable to start processing.`,
+        message: `Connection added to Active Connections. Toggle Enable to start processing.`,
         settingsUrl: `/settings?tab=connections&id=${connection.id}`,
         version: API_VERSION,
       })
