@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import { initRedis, getRedisClient } from "@/lib/redis-db"
 import { getGlobalTradeEngineCoordinator } from "@/lib/trade-engine"
 
+export const dynamic = "force-dynamic"
+
 export async function GET() {
   try {
     console.log("[v0] [Monitoring] Fetching system metrics...")
