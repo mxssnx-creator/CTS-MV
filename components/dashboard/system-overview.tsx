@@ -19,6 +19,7 @@ interface SystemStats {
   database: {
     status: string
     requestsPerSecond: number
+    totalKeys?: number
   }
   exchangeConnections: {
     total: number
@@ -129,6 +130,8 @@ export function SystemOverview() {
       case "loading":
         return "bg-blue-50 text-blue-600 border-blue-200"
       case "partial":
+      case "waiting":
+      case "ready":
         return "bg-yellow-100 text-yellow-800 border-yellow-200"
       default:
         return "bg-blue-100 text-blue-900 border-blue-200"
@@ -151,6 +154,8 @@ export function SystemOverview() {
       case "loading":
         return "border-l-blue-400"
       case "partial":
+      case "waiting":
+      case "ready":
         return "border-l-yellow-500"
       default:
         return "border-l-blue-500"
@@ -239,9 +244,13 @@ export function SystemOverview() {
                   {stats.database.status}
                 </Badge>
               </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Req/sec</span>
+                <span className="font-semibold">{stats.database.requestsPerSecond}</span>
+              </div>
               <div className="pt-1 border-t">
-                <div className="text-2xl font-bold">{stats.database.requestsPerSecond}</div>
-                <div className="text-[10px] text-muted-foreground">req/sec</div>
+                <div className="text-2xl font-bold">{stats.database.totalKeys ?? 0}</div>
+                <div className="text-[10px] text-muted-foreground">DB Keys</div>
               </div>
             </div>
           </div>

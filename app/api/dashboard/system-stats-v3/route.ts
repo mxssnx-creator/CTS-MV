@@ -81,6 +81,11 @@ export async function GET() {
       if (conn.preset_trade_enabled === true || conn.preset_trade_enabled === "1" || conn.is_preset_trade === true || conn.is_preset_trade === "1") presetTradeCount++
     }
     
+    // Get total Redis keys count - same pattern as monitoring route
+    const allRedisKeys = await client.keys("*").catch(() => [])
+    const totalKeys = Array.isArray(allRedisKeys) ? allRedisKeys.length : 0
+    console.log(`[v0] [SystemStats] Total DB keys: ${totalKeys}`)
+
     // Trade Engine Status from Redis (stored as hash, not string)
     let globalEngineState: any = {}
     try {
@@ -91,8 +96,22 @@ export async function GET() {
       globalEngineState = {}
     }
     const globalStatus = globalEngineState.status || "stopped"
-    const mainStatus = globalStatus === "running" && liveTradeCount > 0 ? "running" : liveTradeCount > 0 ? "ready" : "stopped"
-    const presetStatus = globalStatus === "running" && presetTradeCount > 0 ? "running" : presetTradeCount > 0 ? "ready" : "stopped"
+
+    // Main/Preset only show "running" when:
+    // 1. Global engine is running AND
+    // 2. At least one connection has the dashboard Enable slider ON (is_enabled_dashboard=1)
+    //    AND that connection has live/preset trade enabled
+    const anyDashboardEnabled = enabledDashboard.length > 0
+    const mainStatus = globalStatus === "running" && anyDashboardEnabled && liveTradeCount > 0
+      ? "running"
+      : liveTradeCount > 0
+      ? "ready"
+      : "stopped"
+    const presetStatus = globalStatus === "running" && anyDashboardEnabled && presetTradeCount > 0
+      ? "running"
+      : presetTradeCount > 0
+      ? "ready"
+      : "stopped"
     
     // Connections with valid credentials (can actually trade)
     const connectionsWithCredentials = baseConnections.filter((c: any) => {
@@ -123,6 +142,7 @@ export async function GET() {
       database: {
         status: "healthy",
         requestsPerSecond: getRedisRequestsPerSecond(),
+        totalKeys,
       },
       exchangeConnections: {
         // Base connections = available in Settings

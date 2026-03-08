@@ -215,27 +215,12 @@ export function StatisticsOverviewV2({ connections }: StatisticsOverviewV2Props)
     )
   }
 
-  // Check if no trading data exists
-  const hasNoTradingData = !performance || 
-    (performance.last250Positions.total === 0 && 
-     performance.last50Positions.total === 0 && 
-     performance.last32Hours.totalPositions === 0)
-
   return (
     <Card className="col-span-full bg-gradient-to-br from-card to-card/50 border-primary/20">
       <CardHeader className="pb-3">
         <CardTitle className="text-lg">Trading Statistics Overview</CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
-        {hasNoTradingData && (
-          <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
-            <div className="text-sm text-blue-900 font-semibold mb-1">No Trading Data Yet</div>
-            <div className="text-xs text-blue-800">
-              Trading statistics will appear here once you enable connections with valid API credentials and start the engines. 
-              All values will be 0 until trades are generated.
-            </div>
-          </div>
-        )}
         {/* PERFORMANCE METRICS - Overall trading performance */}
         {performance && (
           <div className="space-y-3 pb-4 border-b">
