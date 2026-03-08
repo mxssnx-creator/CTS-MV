@@ -4,6 +4,7 @@ import { getGlobalTradeEngineCoordinator } from "@/lib/trade-engine"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
+export const fetchCache = "force-no-store"
 
 export async function GET() {
   try {
