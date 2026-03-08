@@ -45,6 +45,7 @@ export async function POST() {
           is_testnet: false,
           is_enabled: true, // BASE connections start ENABLED (not dashboard-active yet)
           is_dashboard_inserted: shouldBeOnDashboard ? "1" : "0", // Only bybit/bingx on dashboard
+          is_active_inserted: shouldBeOnDashboard ? "1" : "0", // Same as dashboard_inserted
           is_enabled_dashboard: "0", // Dashboard-active disabled by default
           is_predefined: true,
           api_key: predefined.apiKey || "",
@@ -80,6 +81,7 @@ export async function POST() {
           ...c,
           is_enabled: true, // BASE ENABLED - always ensure enabled in settings
           is_dashboard_inserted: dashboardInserted, // Dashboard state: respect user's choice
+          is_active_inserted: dashboardInserted, // Same as dashboard_inserted for Active panel
           is_enabled_dashboard: "0", // Dashboard-active disabled by default - never auto-enable
           updated_at: new Date().toISOString(),
         })
@@ -98,10 +100,39 @@ export async function POST() {
     
     console.log(`[v0] [Startup] Initialization complete:`, results)
     
+    // Initialize engine stats if they don't exist
+    const { getRedisClient } = await import("@/lib/redis-db")
+    const client = getRedisClient()
+    
+    // Count actual indication/strategy data in Redis
+    const allKeys = await client.keys("*").catch(() => [])
+    const indicationCount = allKeys.filter((k: string) => 
+      k.includes("indication") || k.includes(":rsi") || k.includes(":macd") || k.includes(":ema")
+    ).length
+    const strategyCount = allKeys.filter((k: string) => 
+      k.includes("strategy") || k.includes("entry:") || k.includes("signal:")
+    ).length
+    
+    // Initialize stats with actual counts
+    await client.set("engine:indications:stats", JSON.stringify({
+      running: false,
+      cycleCount: 0,
+      resultsCount: indicationCount,
+      lastUpdate: new Date().toISOString(),
+    }))
+    await client.set("engine:strategies:stats", JSON.stringify({
+      running: false,
+      cycleCount: 0,
+      resultsCount: strategyCount,
+      lastUpdate: new Date().toISOString(),
+    }))
+    console.log(`[v0] [Startup] Engine stats initialized: indications=${indicationCount}, strategies=${strategyCount}`)
+    
     return NextResponse.json({
       success: true,
       message: "System initialized successfully",
       results,
+      engineStats: { indications: indicationCount, strategies: strategyCount },
       timestamp: new Date().toISOString(),
     })
   } catch (error) {
