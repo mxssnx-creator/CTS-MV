@@ -30,8 +30,27 @@ export async function GET() {
     const positions1h = allKeys.filter((k: string) => k.includes("position")).length
     const entries1h = allKeys.filter((k: string) => k.includes("entry") || k.includes("indication")).length
 
-    console.log(`[v0] [Monitoring] DB Keys: ${keys}, Sets: ${sets}, Positions: ${positions1h}, Indication results: ${entries1h}`)
-    console.log(`[v0] [Monitoring] Engine running: ${engineRunning}, Coordinator ready: ${coordinatorReady}`)
+    // Get engine status from coordinator
+    const coordinatorReady = coordinator?.isReady?.() ?? false
+    const engineRunning = coordinator?.isRunning?.() ?? false
+    const activeEngineCount = coordinator?.getActiveEngineCount?.() ?? 0
+    
+    // Get engine stats from Redis (stored by engine processors)
+    const indicationsStatsStr = await client.get("engine:indications:stats").catch(() => null)
+    const strategiesStatsStr = await client.get("engine:strategies:stats").catch(() => null)
+    const indicationsStats = indicationsStatsStr ? JSON.parse(indicationsStatsStr) : {}
+    const strategiesStats = strategiesStatsStr ? JSON.parse(strategiesStatsStr) : {}
+    
+    const indicationsCycleCount = indicationsStats.cycleCount ?? 0
+    const totalIndicationsResults = indicationsStats.resultsCount ?? entries1h
+    const indicationsEngineRunning = indicationsStats.running ?? (engineRunning && activeEngineCount > 0)
+    
+    const strategiesCycleCount = strategiesStats.cycleCount ?? 0
+    const totalStrategiesResults = strategiesStats.resultsCount ?? 0
+    const strategiesEngineRunning = strategiesStats.running ?? (engineRunning && activeEngineCount > 0)
+
+    console.log(`[v0] [Monitoring] DB Keys: ${keys}, Sets: ${sets}, Positions: ${positions1h}, Entries: ${entries1h}`)
+    console.log(`[v0] [Monitoring] Engine running: ${engineRunning}, Coordinator ready: ${coordinatorReady}, Active: ${activeEngineCount}`)
     console.log(`[v0] [Monitoring] Indications: cycles=${indicationsCycleCount}, results=${totalIndicationsResults}, running=${indicationsEngineRunning}`)
     console.log(`[v0] [Monitoring] Strategies: cycles=${strategiesCycleCount}, results=${totalStrategiesResults}, running=${strategiesEngineRunning}`)
 
