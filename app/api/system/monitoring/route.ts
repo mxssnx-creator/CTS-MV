@@ -3,11 +3,10 @@ import { initRedis, getRedisClient } from "@/lib/redis-db"
 import { getGlobalTradeEngineCoordinator } from "@/lib/trade-engine"
 
 export const dynamic = "force-dynamic"
+export const runtime = "nodejs"
 
 export async function GET() {
   try {
-    console.log("[v0] [Monitoring] Fetching system metrics...")
-    
     await initRedis()
     const client = getRedisClient()
     const coordinator = getGlobalTradeEngineCoordinator()
@@ -15,29 +14,22 @@ export async function GET() {
     // CPU and Memory (in-process estimation)
     const cpuUsage = process.cpuUsage()
     const memUsage = process.memoryUsage()
-    
-    // Rough CPU percentage based on user CPU time
     const cpuPercent = Math.min(100, Math.round((cpuUsage.user / 1000000) * 0.1))
     const memPercent = Math.round((memUsage.heapUsed / memUsage.heapTotal) * 100)
 
-    console.log(`[v0] [Monitoring] CPU: ${cpuPercent}%, Memory: ${memPercent}%`)
-
-    // Get Redis stats (Upstash compatible - no INFO or DBSIZE commands)
-    // Use SCAN pattern to count keys efficiently
+    // Get Redis key counts
     const allKeys = await client.keys("*").catch(() => [])
     const keys = Array.isArray(allKeys) ? allKeys.length : 0
-    
-    // Count different types of keys
     const sets = allKeys.filter((k: string) => k.includes(":set") || k.includes("_set")).length
     const positions1h = allKeys.filter((k: string) => k.includes("position")).length
     const entries1h = allKeys.filter((k: string) => k.includes("entry") || k.includes("indication")).length
 
-    // Get engine status from coordinator
+    // Get engine status - define ALL variables BEFORE using them
     const coordinatorReady = coordinator?.isReady?.() ?? false
     const engineRunning = coordinator?.isRunning?.() ?? false
     const activeEngineCount = coordinator?.getActiveEngineCount?.() ?? 0
     
-    // Get engine stats from Redis (stored by engine processors)
+    // Get engine stats from Redis
     const indicationsStatsStr = await client.get("engine:indications:stats").catch(() => null)
     const strategiesStatsStr = await client.get("engine:strategies:stats").catch(() => null)
     const indicationsStats = indicationsStatsStr ? JSON.parse(indicationsStatsStr) : {}
@@ -51,10 +43,9 @@ export async function GET() {
     const totalStrategiesResults = strategiesStats.resultsCount ?? 0
     const strategiesEngineRunning = strategiesStats.running ?? (engineRunning && activeEngineCount > 0)
 
-    console.log(`[v0] [Monitoring] DB Keys: ${keys}, Sets: ${sets}, Positions: ${positions1h}, Entries: ${entries1h}`)
-    console.log(`[v0] [Monitoring] Engine running: ${engineRunning}, Coordinator ready: ${coordinatorReady}, Active: ${activeEngineCount}`)
-    console.log(`[v0] [Monitoring] Indications: cycles=${indicationsCycleCount}, results=${totalIndicationsResults}, running=${indicationsEngineRunning}`)
-    console.log(`[v0] [Monitoring] Strategies: cycles=${strategiesCycleCount}, results=${totalStrategiesResults}, running=${strategiesEngineRunning}`)
+    // Log AFTER all variables are defined
+    console.log(`[v0] [Monitoring] DB Keys: ${keys}, CPU: ${cpuPercent}%, Mem: ${memPercent}%`)
+    console.log(`[v0] [Monitoring] Engine: running=${engineRunning}, ready=${coordinatorReady}, active=${activeEngineCount}`)
 
     return NextResponse.json({
       cpu: cpuPercent,
@@ -65,13 +56,13 @@ export async function GET() {
         tradeEngine: engineRunning,
         indicationsEngine: indicationsEngineRunning,
         strategiesEngine: strategiesEngineRunning,
-        websocket: true, // Assume websocket is always active
+        websocket: true,
       },
       modules: {
-        redis: true, // Already connected
-        persistence: allKeys.length > 0,
+        redis: true,
+        persistence: keys > 0,
         coordinator: coordinatorReady,
-        logger: true, // Always active
+        logger: true,
       },
       database: {
         size: keys,
@@ -95,12 +86,9 @@ export async function GET() {
       timestamp: new Date().toISOString(),
     })
   } catch (error) {
-    console.error("[v0] [Monitoring] Error fetching system metrics:", error)
+    console.error("[v0] [Monitoring] Error:", error)
     return NextResponse.json(
-      {
-        error: "Failed to fetch system metrics",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
+      { error: "Failed to fetch metrics", details: error instanceof Error ? error.message : "Unknown" },
       { status: 500 }
     )
   }
