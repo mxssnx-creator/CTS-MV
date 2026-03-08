@@ -400,10 +400,17 @@ export async function saveIndication(connectionId: string, indication: any): Pro
 export async function getRedisStats(): Promise<any> {
   const client = getClient()
   const size = await client.dbSize()
+  // Also get actual key count for accuracy
+  const allKeys = await client.keys("*").catch(() => [])
+  const keyCount = Array.isArray(allKeys) ? allKeys.length : size
+  
   return {
     connected: isConnected,
     dbSize: size,
+    keyCount: keyCount,
+    total_keys: keyCount, // Alias for init-status endpoint
     uptimeSeconds: process.uptime(),
+    uptime_seconds: process.uptime(), // Alias for init-status endpoint
   }
 }
 
