@@ -24,7 +24,6 @@ interface SystemStats {
     total: number
     enabled: number
     working: number
-    withCredentials?: number
     status: string
   }
   activeConnections: {
@@ -130,7 +129,6 @@ export function SystemOverview() {
       case "loading":
         return "bg-blue-50 text-blue-600 border-blue-200"
       case "partial":
-      case "waiting":
         return "bg-yellow-100 text-yellow-800 border-yellow-200"
       default:
         return "bg-blue-100 text-blue-900 border-blue-200"
@@ -153,7 +151,6 @@ export function SystemOverview() {
       case "loading":
         return "border-l-blue-400"
       case "partial":
-      case "waiting":
         return "border-l-yellow-500"
       default:
         return "border-l-blue-500"

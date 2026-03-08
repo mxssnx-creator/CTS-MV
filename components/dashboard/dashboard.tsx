@@ -10,6 +10,7 @@ import { DashboardActiveConnectionsManager } from "./dashboard-active-connection
 import { IntervalsStrategiesOverview } from "./intervals-strategies-overview"
 import { StatisticsOverviewV2 } from "./statistics-overview-v2"
 import { SystemMonitoringPanel } from "./system-monitoring-panel"
+import { WorkflowOnboarding } from "./workflow-onboarding"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { RefreshCw } from "lucide-react"
@@ -155,6 +156,11 @@ export function Dashboard() {
           Refresh
         </Button>
       </div>
+
+      {/* Workflow Onboarding - Setup Guide */}
+      <ErrorBoundary name="Workflow Onboarding">
+        <WorkflowOnboarding />
+      </ErrorBoundary>
 
       {/* Smart Overview - Comprehensive system status */}
       <ErrorBoundary name="System Overview">

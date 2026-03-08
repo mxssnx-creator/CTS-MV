@@ -151,29 +151,29 @@ export const CONNECTION_PREDEFINITIONS: ConnectionPredefinition[] = [
   {
     id: "bybit-x03",
     name: "Bybit X03",
-    displayName: "Bybit X03 (Unified Trading)",
-    description: "Bybit Unified Trading Account with up to 125x leverage - Mainnet Only",
+    displayName: "Bybit X03 (Perpetual Futures)",
+    description: "Bybit USDT Perpetual Futures with up to 100x leverage - Demo Mode for Testing. Use your Bybit account to generate API keys from https://www.bybit.com/en/user-service/my-api",
     exchange: "bybit",
-    apiTypes: ["unified", "contract", "spot"],
-    apiType: "unified",
-    connectionMethod: "library",
+    apiTypes: ["unified", "contract"],
+    apiType: "contract",
+    connectionMethod: "rest",
     connectionLibrary: "native",
     libraryPackage: "pybit",
     marginType: "cross",
     positionMode: "hedge",
-    maxLeverage: 125,
-    contractType: "usdt-perpetual",
+    maxLeverage: 100,
+    contractType: "linear",
     documentationUrl: "https://bybit-exchange.github.io/docs/v5/intro",
-    testnetSupported: false, // NO TESTNET - mainnet only
+    testnetSupported: true, // Use testnet for demo
     ccxtSupported: true,
-    apiKey: "", // User must enter their own credentials
-    apiSecret: "",
+    apiKey: "", // User must enter their own - for demo: use https://api-demo.bybit.com
+    apiSecret: "", // User must enter their own
   },
   {
     id: "bingx-x01",
     name: "BingX X01",
     displayName: "BingX X01 (Perpetual Futures)",
-    description: "BingX USDT Perpetual Futures with up to 150x leverage - Mainnet Only",
+    description: "BingX USDT Perpetual Futures with up to 150x leverage - Demo Mode for Testing. Use your BingX account to generate API keys from https://bingx.com/en/account/api",
     exchange: "bingx",
     apiTypes: ["perpetual_futures", "spot"],
     apiType: "perpetual_futures",
@@ -185,41 +185,41 @@ export const CONNECTION_PREDEFINITIONS: ConnectionPredefinition[] = [
     maxLeverage: 150,
     contractType: "usdt-perpetual",
     documentationUrl: "https://bingx-api.github.io/docs/#/en-us/swapV2/introduce",
-    testnetSupported: false, // NO TESTNET - mainnet only
+    testnetSupported: true, // Use testnet for demo
     ccxtSupported: true,
-    apiKey: "", // User must enter their own credentials
-    apiSecret: "",
+    apiKey: "", // User must enter their own - for demo: use testnet endpoint
+    apiSecret: "", // User must enter their own
   },
   {
     id: "binance-x01",
     name: "Binance X01",
-    displayName: "Binance X01 (USDⓈ-M Futures)",
-    description: "Binance USDT-margined perpetual futures with up to 125x leverage - Mainnet Only",
+    displayName: "Binance X01 (Perpetual Futures)",
+    description: "Binance USD-M Perpetual with up to 125x leverage - Demo Mode for Testing. Use your Binance account to generate API keys from https://www.binance.com/en/my/settings/api-management",
     exchange: "binance",
-    apiTypes: ["perpetual_futures", "spot", "margin"],
+    apiTypes: ["spot", "perpetual_futures", "margin"],
     apiType: "perpetual_futures",
-    connectionMethod: "library",
+    connectionMethod: "rest",
     connectionLibrary: "native",
     libraryPackage: "python-binance",
     marginType: "cross",
     positionMode: "hedge",
     maxLeverage: 125,
     contractType: "usdt-perpetual",
-    documentationUrl: "https://binance-docs.github.io/apidocs/futures/en/",
-    testnetSupported: false, // NO TESTNET - mainnet only
+    documentationUrl: "https://developers.binance.com/docs/binance-futures-api/quickstart",
+    testnetSupported: true, // Use testnet for demo
     ccxtSupported: true,
-    apiKey: "", // User must enter their own credentials
-    apiSecret: "",
+    apiKey: "", // User must enter their own - for demo: use https://testnet.binancefuture.com
+    apiSecret: "", // User must enter their own
   },
   {
     id: "okx-x01",
     name: "OKX X01",
     displayName: "OKX X01 (Perpetual Swap)",
-    description: "OKX USDT perpetual swap contracts with up to 125x leverage - Mainnet Only",
+    description: "OKX USDT Perpetual Swaps with up to 125x leverage - Demo Mode for Testing. Use your OKX account to generate API keys from https://www.okx.com/account/my-api",
     exchange: "okx",
-    apiTypes: ["unified", "perpetual_futures", "spot"],
-    apiType: "unified",
-    connectionMethod: "library",
+    apiTypes: ["unified", "spot", "perpetual"],
+    apiType: "perpetual",
+    connectionMethod: "rest",
     connectionLibrary: "native",
     libraryPackage: "python-okx",
     marginType: "cross",
@@ -227,10 +227,10 @@ export const CONNECTION_PREDEFINITIONS: ConnectionPredefinition[] = [
     maxLeverage: 125,
     contractType: "usdt-perpetual",
     documentationUrl: "https://www.okx.com/docs-v5/en/",
-    testnetSupported: false, // NO TESTNET - mainnet only
+    testnetSupported: true, // Use testnet for demo
     ccxtSupported: true,
-    apiKey: "", // User must enter their own credentials
-    apiSecret: "",
+    apiKey: "", // User must enter their own - for demo: use sandbox.okx.com
+    apiSecret: "", // User must enter their own
   },
   {
     id: "gateio-x01",
