@@ -135,6 +135,8 @@ export async function GET() {
       insertedBaseConnections.length > 0 ? "waiting" :
       baseConnections.length > 0 ? "partial" : "down"
     
+    console.log(`[v0] [SystemStats] Response: exchangeConnections.total=${insertedBaseConnections.length}, debug: base=${baseConnections.length}, enabled=${enabledBase.length}, inserted=${insertedBaseConnections.length}`)
+    
     return NextResponse.json({
       success: true,
       tradeEngines: {
@@ -179,6 +181,13 @@ export async function GET() {
         lastHour: 0,
         topConnections: [],
       },
+      // DEBUG: Help understand what's being counted
+      _debug: {
+        baseConnectionsTotal: baseConnections.length,
+        baseConnectionsEnabled: enabledBase.length,
+        insertedBaseConnectionsCount: insertedBaseConnections.length,
+        activeInsertedAllCount: activeInsertedAll.length,
+      }
     })
   } catch (error) {
     console.error("[v0] [System Stats v3] ERROR:", error)

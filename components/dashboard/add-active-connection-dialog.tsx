@@ -57,11 +57,11 @@ export function AddActiveConnectionDialog({
       }
 
       // Filter to show base exchange connections that are:
-      // 1. Base exchange (bybit, bingx, pionex, orangex, binance, okx)
+      // 1. Base exchange (bybit, bingx, binance, okx only)
       // 2. Enabled in Settings (is_enabled=1)
       // 3. Not yet added to Active panel (is_active_inserted=0)
       // Note: Both predefined templates AND user-created connections can be added
-      const BASE_EXCHANGES = ["bybit", "bingx", "pionex", "orangex", "binance", "okx"]
+      const BASE_EXCHANGES = ["bybit", "bingx", "binance", "okx"]
       const availableForAdd = allConnections.filter((c: any) => {
         const exchange = (c.exchange || "").toLowerCase().trim()
         const isBase = BASE_EXCHANGES.includes(exchange)
