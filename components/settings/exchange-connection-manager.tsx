@@ -451,10 +451,9 @@ export default function ExchangeConnectionManager() {
   // Default exchanges to display
   const DEFAULT_EXCHANGES = ["bybit", "bingx", "pionex", "orangex"]
 
-  // Filter connections to show only default exchanges
-  const displayedConnections = connections.filter((c) => 
-    DEFAULT_EXCHANGES.some((exchange) => c.exchange?.toLowerCase().includes(exchange.toLowerCase()))
-  )
+  // Separate predefined (templates) from user-created connections
+  const predefinedConnections = connections.filter((c: any) => c.is_predefined === true || c.is_predefined === "1")
+  const userConnections = connections.filter((c: any) => !(c.is_predefined === true || c.is_predefined === "1"))
 
   const loadConnections = async () => {
     try {
