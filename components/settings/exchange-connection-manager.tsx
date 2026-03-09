@@ -457,6 +457,16 @@ export default function ExchangeConnectionManager() {
   const predefinedConnections = connections.filter((c: any) => c.is_predefined === true || c.is_predefined === "1")
   const userConnections = connections.filter((c: any) => !(c.is_predefined === true || c.is_predefined === "1"))
 
+  // For display: show user-created connections + base inserted connections
+  const displayedConnections = connections.filter((c: any) => {
+    const exch = (c.exchange || "").toLowerCase()
+    // Show if user-created OR if it's a base exchange that's been inserted
+    const isUserCreated = !(c.is_predefined === true || c.is_predefined === "1")
+    const isInserted = c.is_active_inserted === true || c.is_active_inserted === "1"
+    const isBase = exch === "bybit" || exch === "bingx" || exch === "binance" || exch === "okx"
+    return isUserCreated || (isBase && isInserted)
+  })
+
   const loadConnections = async () => {
     try {
       setLoading(true)
