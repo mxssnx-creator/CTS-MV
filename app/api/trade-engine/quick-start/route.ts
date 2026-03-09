@@ -44,18 +44,22 @@ export async function POST(request: Request) {
     // Find connections with credentials OR any base connection for setup
     let connection = allConnections.find((c: any) => {
       const exch = (c.exchange || "").toLowerCase()
-      const isPredefined = c.is_predefined === true || c.is_predefined === "1" || c.is_predefined === "true"
       const hasCredentials = !!(c.api_key && c.api_secret && c.api_key.length >= 10 && c.api_secret.length >= 10)
-      return (exch === "bingx" || exch === "bybit") && !isPredefined && hasCredentials
+      // Priority 1: BingX/Bybit user-created connections with real credentials
+      const isUserCreated = !(c.is_predefined === true || c.is_predefined === "1" || c.is_predefined === "true")
+      return (exch === "bingx" || exch === "bybit") && isUserCreated && hasCredentials
     }) || allConnections.find((c: any) => {
       const exch = (c.exchange || "").toLowerCase()
       const hasCredentials = !!(c.api_key && c.api_secret && c.api_key.length >= 10 && c.api_secret.length >= 10)
+      // Priority 2: Any BingX/Bybit/Binance/OKX with real credentials (including auto-added ones)
       return (exch === "bingx" || exch === "bybit" || exch === "binance" || exch === "okx") && hasCredentials
     }) || allConnections.find((c: any) => {
-      // Fallback: any active-inserted connection without credentials (for setup mode)
       const exch = (c.exchange || "").toLowerCase()
-      const isActiveInserted = c.is_active_inserted === "1" || c.is_active_inserted === true
-      return (exch === "bingx" || exch === "bybit") && isActiveInserted
+      // Priority 3: Base connections that are inserted/active (even without credentials)
+      const isBaseInserted = c.is_active_inserted === "1" || c.is_active_inserted === true || 
+                            c.is_dashboard_inserted === "1" || c.is_dashboard_inserted === true
+      const isBase = exch === "bingx" || exch === "bybit" || exch === "binance" || exch === "okx"
+      return isBase && isBaseInserted
     })
     
     if (!connection) {
