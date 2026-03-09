@@ -121,19 +121,18 @@ export async function GET() {
     })
     console.log(`[v0] [SystemStats] Connections with valid credentials: ${connectionsWithCredentials.length}`)
     
-    // REAL EXCHANGE CONNECTIONS = Inserted base connections with valid credentials only
-    const realExchangeConnections = baseConnections.filter((c: any) => {
+    // EXCHANGE CONNECTIONS = Base connections that are inserted as connection cards (is_active_inserted=1)
+    // Independent of credentials - just counting which are added to the active panel
+    const insertedBaseConnections = baseConnections.filter((c: any) => {
       const isInserted = c.is_active_inserted === true || c.is_active_inserted === "1" || c.is_active_inserted === "true"
-      const hasKey = !!(c.api_key || c.apiKey) && (c.api_key || c.apiKey).length > 10
-      const hasSecret = !!(c.api_secret || c.apiSecret) && (c.api_secret || c.apiSecret).length > 10
-      return isInserted && hasKey && hasSecret
+      return isInserted
     })
-    console.log(`[v0] [SystemStats] Real exchange connections (inserted + valid credentials): ${realExchangeConnections.length}`)
+    console.log(`[v0] [SystemStats] Exchange connections (inserted as cards): ${insertedBaseConnections.length}`)
     
-    // Exchange status: healthy if connections with credentials exist, otherwise waiting
+    // Exchange status: healthy if connections with credentials exist, otherwise waiting for credentials
     const exchangeStatus = 
-      realExchangeConnections.length > 0 ? "healthy" :
-      enabledBase.length > 0 ? "waiting" :
+      connectionsWithCredentials.length > 0 ? "healthy" :
+      insertedBaseConnections.length > 0 ? "waiting" :
       baseConnections.length > 0 ? "partial" : "down"
     
     return NextResponse.json({
@@ -154,14 +153,14 @@ export async function GET() {
         totalKeys,
       },
       exchangeConnections: {
-        // Real exchange connections = inserted + valid credentials
-        total: realExchangeConnections.length,
-        enabled: realExchangeConnections.filter((c: any) => c.is_enabled === true || c.is_enabled === "1").length,
-        working: realExchangeConnections.filter((c: any) => {
+        // Exchange connections = inserted base connections (independent of credentials)
+        total: insertedBaseConnections.length,
+        enabled: insertedBaseConnections.filter((c: any) => c.is_enabled === true || c.is_enabled === "1").length,
+        working: insertedBaseConnections.filter((c: any) => {
           const status = c.last_test_status || c.test_status || c.connection_status
           return status === "success" || status === "ok" || status === "connected"
         }).length,
-        withCredentials: realExchangeConnections.length,
+        withCredentials: connectionsWithCredentials.length,
         status: exchangeStatus,
       },
       activeConnections: {
