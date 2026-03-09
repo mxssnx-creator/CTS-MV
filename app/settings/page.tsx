@@ -82,6 +82,9 @@ interface Settings {
   databaseSizePreset: number
   positionCooldownMs: number
   maxPositionsPerConfigDirection: number
+  maxPositionsLong: number // Max 1 long position per config
+  maxPositionsShort: number // Max 1 short position per config
+  indicationTimeoutMs: number // 100ms to 3000ms, step 100ms
   maxConcurrentOperations: number
   autoRestartOnErrors: boolean
   logLevel: string
@@ -399,7 +402,10 @@ const initialSettings: Settings = {
 
   // Trade Engine Configuration
   positionCooldownMs: 100, // 50-3000ms, default 100ms
-  maxPositionsPerConfigDirection: 2, // default 2
+  maxPositionsPerConfigDirection: 1, // default 1 (max positions per config per direction)
+  maxPositionsLong: 1, // Max 1 long position per configuration
+  maxPositionsShort: 1, // Max 1 short position per configuration
+  indicationTimeoutMs: 1000, // 100ms to 3000ms, step 100ms, default 1000ms
   maxConcurrentOperations: 100, // 10-250, default 100
 
   // System Configuration

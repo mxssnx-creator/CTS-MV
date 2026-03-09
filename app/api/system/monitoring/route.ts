@@ -38,20 +38,51 @@ export async function GET() {
     ).length
     const entryKeys = allKeys.filter((k: string) => k.includes("entry:") || k.includes("entries:")).length
     
-    // Get engine stats from Redis (may not exist yet)
-    const indicationsStatsStr = await client.get("engine:indications:stats").catch(() => null)
-    const strategiesStatsStr = await client.get("engine:strategies:stats").catch(() => null)
-    const indicationsStats = indicationsStatsStr ? JSON.parse(indicationsStatsStr) : {}
-    const strategiesStats = strategiesStatsStr ? JSON.parse(strategiesStatsStr) : {}
+    // Get engine stats from ALL active connections (they store in trade_engine_state:{connectionId})
+    // Also check global engine stats keys
+    const connectionStateKeys = allKeys.filter((k: string) => k.startsWith("trade_engine_state:"))
+    let totalIndicationCycles = 0
+    let totalStrategyCycles = 0
+    let indicationsRunning = false
+    let strategiesRunning = false
     
-    // Use actual Redis counts as fallback when stats not available
-    const indicationsCycleCount = indicationsStats.cycleCount ?? 0
-    const totalIndicationsResults = indicationsStats.resultsCount ?? indicationKeys ?? entries1h
-    const indicationsEngineRunning = indicationsStats.running ?? (engineRunning && activeEngineCount > 0)
+    for (const stateKey of connectionStateKeys) {
+      try {
+        const stateStr = await client.get(stateKey)
+        if (stateStr) {
+          const state = JSON.parse(stateStr)
+          totalIndicationCycles += state.indication_cycle_count ?? 0
+          totalStrategyCycles += state.strategy_cycle_count ?? 0
+          if (state.status === "running") {
+            indicationsRunning = true
+            strategiesRunning = true
+          }
+        }
+      } catch { /* ignore parse errors */ }
+    }
     
-    const strategiesCycleCount = strategiesStats.cycleCount ?? 0
-    const totalStrategiesResults = strategiesStats.resultsCount ?? strategyKeys ?? entryKeys
-    const strategiesEngineRunning = strategiesStats.running ?? (engineRunning && activeEngineCount > 0)
+    // Also check global engine stats (fallback)
+    const globalIndicationsStr = await client.get("engine:indications:stats").catch(() => null)
+    const globalStrategiesStr = await client.get("engine:strategies:stats").catch(() => null)
+    if (globalIndicationsStr) {
+      const globalInd = JSON.parse(globalIndicationsStr)
+      totalIndicationCycles = Math.max(totalIndicationCycles, globalInd.cycleCount ?? 0)
+      indicationsRunning = indicationsRunning || globalInd.running
+    }
+    if (globalStrategiesStr) {
+      const globalStrat = JSON.parse(globalStrategiesStr)
+      totalStrategyCycles = Math.max(totalStrategyCycles, globalStrat.cycleCount ?? 0)
+      strategiesRunning = strategiesRunning || globalStrat.running
+    }
+    
+    // Use actual Redis key counts for results (actual data in DB)
+    const indicationsCycleCount = totalIndicationCycles
+    const totalIndicationsResults = indicationKeys || entries1h
+    const indicationsEngineRunning = indicationsRunning || (engineRunning && activeEngineCount > 0)
+    
+    const strategiesCycleCount = totalStrategyCycles
+    const totalStrategiesResults = strategyKeys || entryKeys
+    const strategiesEngineRunning = strategiesRunning || (engineRunning && activeEngineCount > 0)
 
     // Log AFTER all variables are defined
     console.log(`[v0] [Monitoring] DB Keys: ${keys}, CPU: ${cpuPercent}%, Mem: ${memPercent}%`)

@@ -33,6 +33,12 @@ export async function GET(request: NextRequest) {
     // Get migration status
     const migrationStatus = await getMigrationStatus()
     const stats = await getRedisStats()
+    
+    // Get actual key count directly (most reliable)
+    const { getRedisClient } = await import("@/lib/redis-db")
+    const client = getRedisClient()
+    const allKeys = await client.keys("*").catch(() => [])
+    const actualKeyCount = Array.isArray(allKeys) ? allKeys.length : 0
 
     // Get connection count
     let connectionsCount = 0
@@ -70,7 +76,7 @@ export async function GET(request: NextRequest) {
           enabled: enabledConnectionsCount,
         },
         statistics: {
-          total_keys: stats.keyCount || stats.total_keys || stats.dbSize || 0,
+          total_keys: actualKeyCount || stats.keyCount || stats.total_keys || stats.dbSize || 0,
           memory_used: stats.memory_used || "N/A",
           uptime_seconds: stats.uptime_seconds || stats.uptimeSeconds || 0,
         },

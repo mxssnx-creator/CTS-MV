@@ -82,6 +82,7 @@ export async function POST(request: Request) {
             isPredefined: c.is_predefined === true || c.is_predefined === "1",
           })),
           logs: await getProgressionLogs("global"),
+          logsCount: (await getProgressionLogs("global")).length,
         },
         { status: 400 }
       )
@@ -112,10 +113,16 @@ export async function POST(request: Request) {
       })
       
       console.log(`${LOG_PREFIX}: ✓ Disabled ${connection.name}`)
+      
+      // Get all logs for response
+      const disableLogs = await getProgressionLogs(connectionId)
+      
       return NextResponse.json({
         success: true,
         action: "disable",
         connection: { id: connectionId, name: connection.name, exchange: exchangeName },
+        logs: disableLogs,
+        logsCount: disableLogs.length,
         version: API_VERSION,
       })
     }
@@ -283,6 +290,9 @@ export async function POST(request: Request) {
     console.log(`${LOG_PREFIX}: Duration: ${totalDuration}ms`)
     console.log(`${LOG_PREFIX}: Next: Toggle Enable on dashboard to start engine`)
     
+    // Get all logs for response
+    const allLogs = await getProgressionLogs(connectionId)
+    
     return NextResponse.json({
       success: true,
       action: "enable",
@@ -301,6 +311,8 @@ export async function POST(request: Request) {
         ? `Connection added to Active Connections. Toggle Enable to start processing.`
         : `Connection added but test failed: ${testError}. Check credentials.`,
       duration: totalDuration,
+      logs: allLogs,
+      logsCount: allLogs.length,
       version: API_VERSION,
     })
     
@@ -313,11 +325,16 @@ export async function POST(request: Request) {
       duration: Date.now() - startTime,
     })
     
+    // Get logs for error response
+    const errorLogs = await getProgressionLogs("global")
+    
     return NextResponse.json(
       { 
         success: false, 
         error: "Quick start failed", 
-        details: errorMsg, 
+        details: errorMsg,
+        logs: errorLogs,
+        logsCount: errorLogs.length,
         version: API_VERSION 
       },
       { status: 500 }

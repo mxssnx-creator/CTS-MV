@@ -444,7 +444,7 @@ export default function ExchangeConnectionManager() {
   const [connections, setConnections] = useState<Connection[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [showAddDialog, setShowAddDialog] = useState(false)
+  const [showAddDialog, setShowAddDialog] = useState(false) // Keep at top level
   const [testingId, setTestingId] = useState<string | null>(null)
   const [recentlyInsertedBase, setRecentlyInsertedBase] = useState<Set<string>>(new Set())
 

@@ -318,9 +318,19 @@ export class TradeEngineManager {
         const engineState = (await getSettings(`trade_engine_state:${this.connectionId}`)) || {}
         await setSettings(`trade_engine_state:${this.connectionId}`, {
           ...engineState,
+          status: "running",
           last_indication_run: new Date().toISOString(),
           indication_cycle_count: cycleCount,
           indication_avg_duration_ms: totalDuration / cycleCount,
+        })
+        
+        // Also update global engine stats for monitoring
+        await setSettings("engine:indications:stats", {
+          cycleCount,
+          resultsCount: symbols.length * cycleCount,
+          running: true,
+          lastRun: new Date().toISOString(),
+          connectionId: this.connectionId,
         })
       } catch (error) {
         errorCount++
@@ -384,10 +394,20 @@ export class TradeEngineManager {
         const engineState = (await getSettings(`trade_engine_state:${this.connectionId}`)) || {}
         await setSettings(`trade_engine_state:${this.connectionId}`, {
           ...engineState,
+          status: "running",
           last_strategy_run: new Date().toISOString(),
           strategy_cycle_count: cycleCount,
           strategy_avg_duration_ms: totalDuration / cycleCount,
           total_strategies_evaluated: totalStrategiesEvaluated,
+        })
+        
+        // Also update global engine stats for monitoring
+        await setSettings("engine:strategies:stats", {
+          cycleCount,
+          resultsCount: totalStrategiesEvaluated,
+          running: true,
+          lastRun: new Date().toISOString(),
+          connectionId: this.connectionId,
         })
       } catch (error) {
         errorCount++

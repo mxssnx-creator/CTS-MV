@@ -62,7 +62,7 @@ export function AddConnectionDialog({ open, onOpenChange, onConnectionAdded, sho
     api_passphrase: "",
     margin_type: "cross",
     position_mode: "hedge",
-    is_testnet: false,
+    is_testnet: false, // ALWAYS MAINNET
   })
 
   useEffect(() => {

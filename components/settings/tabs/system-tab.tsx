@@ -3,6 +3,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Slider } from "@/components/ui/slider"
 import { Tabs, TabsContent } from "@/components/ui/tabs"
 import { Info } from "lucide-react"
 import { StatisticsOverview } from "@/components/settings/statistics-overview"
@@ -56,6 +57,66 @@ export function SystemTab({ settings, handleSettingChange }: SystemTabProps) {
                     </p>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            <div className="space-y-4 border-t pt-4">
+              <h3 className="text-lg font-semibold">Position Limits</h3>
+              <p className="text-xs text-muted-foreground">Maximum positions per configuration per direction</p>
+
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Max Long Positions per Config</Label>
+                    <span className="text-sm font-semibold">{settings.maxPositionsLong ?? 1}</span>
+                  </div>
+                  <Slider
+                    value={[settings.maxPositionsLong ?? 1]}
+                    onValueChange={(v) => handleSettingChange("maxPositionsLong", v[0])}
+                    min={1}
+                    max={5}
+                    step={1}
+                  />
+                  <p className="text-xs text-muted-foreground">Max 1 recommended for independent config processing</p>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Max Short Positions per Config</Label>
+                    <span className="text-sm font-semibold">{settings.maxPositionsShort ?? 1}</span>
+                  </div>
+                  <Slider
+                    value={[settings.maxPositionsShort ?? 1]}
+                    onValueChange={(v) => handleSettingChange("maxPositionsShort", v[0])}
+                    min={1}
+                    max={5}
+                    step={1}
+                  />
+                  <p className="text-xs text-muted-foreground">Max 1 recommended for independent config processing</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4 border-t pt-4">
+              <h3 className="text-lg font-semibold">Indication Timeout</h3>
+              <p className="text-xs text-muted-foreground">Time to wait for valid indication evaluation (100ms - 3000ms)</p>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Indication Timeout</Label>
+                  <span className="text-sm font-semibold">{settings.indicationTimeoutMs ?? 1000}ms</span>
+                </div>
+                <Slider
+                  value={[settings.indicationTimeoutMs ?? 1000]}
+                  onValueChange={(v) => handleSettingChange("indicationTimeoutMs", v[0])}
+                  min={100}
+                  max={3000}
+                  step={100}
+                />
+                <p className="text-xs text-muted-foreground">
+                  After a valid indication evaluation, wait this duration before processing next. 
+                  Lower values = faster but more CPU. Higher values = more reliable but slower response.
+                </p>
               </div>
             </div>
 

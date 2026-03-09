@@ -100,39 +100,10 @@ export async function POST() {
     
     console.log(`[v0] [Startup] Initialization complete:`, results)
     
-    // Initialize engine stats if they don't exist
-    const { getRedisClient } = await import("@/lib/redis-db")
-    const client = getRedisClient()
-    
-    // Count actual indication/strategy data in Redis
-    const allKeys = await client.keys("*").catch(() => [])
-    const indicationCount = allKeys.filter((k: string) => 
-      k.includes("indication") || k.includes(":rsi") || k.includes(":macd") || k.includes(":ema")
-    ).length
-    const strategyCount = allKeys.filter((k: string) => 
-      k.includes("strategy") || k.includes("entry:") || k.includes("signal:")
-    ).length
-    
-    // Initialize stats with actual counts
-    await client.set("engine:indications:stats", JSON.stringify({
-      running: false,
-      cycleCount: 0,
-      resultsCount: indicationCount,
-      lastUpdate: new Date().toISOString(),
-    }))
-    await client.set("engine:strategies:stats", JSON.stringify({
-      running: false,
-      cycleCount: 0,
-      resultsCount: strategyCount,
-      lastUpdate: new Date().toISOString(),
-    }))
-    console.log(`[v0] [Startup] Engine stats initialized: indications=${indicationCount}, strategies=${strategyCount}`)
-    
     return NextResponse.json({
       success: true,
       message: "System initialized successfully",
       results,
-      engineStats: { indications: indicationCount, strategies: strategyCount },
       timestamp: new Date().toISOString(),
     })
   } catch (error) {

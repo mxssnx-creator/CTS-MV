@@ -79,10 +79,10 @@ export function ConnectionCard({
     connection_library: connection.connection_library || "native",
     margin_type: connection.margin_type,
     position_mode: connection.position_mode,
-    is_testnet: connection.is_testnet,
+    is_testnet: false, // ALWAYS MAINNET - force to false
     api_passphrase: connection.api_passphrase || "",
-    order_type: "market", // Market or Limit (default: Market)
-    order_volume_usdt: 100, // Default $100 per order
+    order_type: "market",
+    order_volume_usdt: 100,
   })
 
   // Auto-set connection library based on connection method when editFormData changes
