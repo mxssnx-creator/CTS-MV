@@ -9,6 +9,7 @@ import { toast } from "@/lib/simple-toast"
 import type { Connection } from "@/lib/redis-db"
 import { AddConnectionDialog } from "@/components/settings/add-connection-dialog"
 import { ConnectionCard } from "@/components/settings/connection-card"
+import { BingXCredentialsDialog } from "@/components/settings/bingx-credentials-dialog"
 import {
   Dialog,
   DialogContent,
@@ -444,9 +445,10 @@ export default function ExchangeConnectionManager() {
   const [connections, setConnections] = useState<Connection[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [showAddDialog, setShowAddDialog] = useState(false) // Keep at top level
+  const [showAddDialog, setShowAddDialog] = useState(false)
   const [testingId, setTestingId] = useState<string | null>(null)
   const [recentlyInsertedBase, setRecentlyInsertedBase] = useState<Set<string>>(new Set())
+  const [showBingXCredentialsDialog, setShowBingXCredentialsDialog] = useState(false)
 
   // Default exchanges to display
   const DEFAULT_EXCHANGES = ["bybit", "bingx", "pionex", "orangex"]
@@ -835,6 +837,15 @@ export default function ExchangeConnectionManager() {
           }
           await loadConnections()
         }} 
+      />
+
+      <BingXCredentialsDialog
+        open={showBingXCredentialsDialog}
+        onOpenChange={setShowBingXCredentialsDialog}
+        onSuccess={() => {
+          // Reload connections after credentials are saved
+          loadConnections()
+        }}
       />
     </div>
   )
