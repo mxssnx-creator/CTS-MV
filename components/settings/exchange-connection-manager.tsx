@@ -463,7 +463,7 @@ export default function ExchangeConnectionManager() {
     // Show if user-created OR if it's a base exchange that's been inserted
     const isUserCreated = !(c.is_predefined === true || c.is_predefined === "1")
     const isInserted = c.is_active_inserted === true || c.is_active_inserted === "1"
-    const isBase = exch === "bybit" || exch === "bingx" || exch === "binance" || exch === "okx"
+    const isBase = exch === "bybit" || exch === "bingx" || exch === "pionex" || exch === "orangex"
     return isUserCreated || (isBase && isInserted)
   })
 

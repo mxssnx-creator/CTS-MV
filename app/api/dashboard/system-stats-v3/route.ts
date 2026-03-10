@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic"
 export const revalidate = 0
 export const fetchCache = "force-no-store"
 
-const BASE_EXCHANGES = ["bybit", "bingx", "binance", "okx"]
+const BASE_EXCHANGES = ["bybit", "bingx", "pionex", "orangex"]
 
 function isBaseExchange(c: any): boolean {
   return BASE_EXCHANGES.includes((c?.exchange || "").toLowerCase().trim())

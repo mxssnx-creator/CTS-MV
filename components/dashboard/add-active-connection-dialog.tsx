@@ -61,7 +61,7 @@ export function AddActiveConnectionDialog({
       // 2. Enabled in Settings (is_enabled=1)
       // 3. Not yet added to Active panel (is_active_inserted=0)
       // Note: Both predefined templates AND user-created connections can be added
-      const BASE_EXCHANGES = ["bybit", "bingx", "binance", "okx"]
+      const BASE_EXCHANGES = ["bybit", "bingx", "pionex", "orangex"]
       const availableForAdd = allConnections.filter((c: any) => {
         const exchange = (c.exchange || "").toLowerCase().trim()
         const isBase = BASE_EXCHANGES.includes(exchange)
