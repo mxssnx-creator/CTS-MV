@@ -488,11 +488,6 @@ export async function getInsertedAndEnabledConnections(): Promise<any[]> {
 
 // ========== Stats Operations ==========
 
-export function getRedisRequestsPerSecond(): number {
-  // Return a placeholder value - real implementation would track requests
-  return 0
-}
-
 export async function closeRedis(): Promise<void> {
   // No-op for in-memory implementation
   isConnected = false
