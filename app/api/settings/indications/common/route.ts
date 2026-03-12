@@ -24,7 +24,8 @@ export async function POST(request: Request) {
 
     await initRedis()
     const client = getRedisClient()
-    await client.set("indications:common", settings)
+    // Settings stored with 30-day TTL (2592000 seconds)
+    await client.set("indications:common", settings, { EX: 2592000 })
 
     return NextResponse.json({ success: true, message: "Common indication settings saved successfully" })
   } catch (error) {

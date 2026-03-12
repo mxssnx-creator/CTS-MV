@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
             parsedValue = actualValue
           }
 
-          await client.set(`settings:${actualKey}`, typeof parsedValue === "string" ? parsedValue : JSON.stringify(parsedValue))
+          await client.set(`settings:${actualKey}`, typeof parsedValue === "string" ? parsedValue : JSON.stringify(parsedValue), { EX: 2592000 })
           imported++
         }
       } catch (error) {

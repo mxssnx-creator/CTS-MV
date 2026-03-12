@@ -65,8 +65,9 @@ export async function logProgressionEvent(
       logs = logs.slice(0, MAX_LOGS_PER_CONNECTION)
     }
     
-    // Save back to Redis
-    await client.set(logKey, JSON.stringify(logs))
+    // Save back to Redis with TTL (24 hours)
+    const ttlSeconds = LOG_RETENTION_HOURS * 3600 // 24 hours = 86400 seconds
+    await client.set(logKey, JSON.stringify(logs), { EX: ttlSeconds })
 
     // Also log to console for immediate visibility
     console.log(`[v0] [${level.toUpperCase()}] [${phase}] ${message}`, details || "")
