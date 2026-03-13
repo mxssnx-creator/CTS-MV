@@ -8,7 +8,9 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  turbopack: {},
+  turbopack: {
+    root: process.cwd(),
+  },
   productionBrowserSourceMaps: false,
   compress: true,
 }
