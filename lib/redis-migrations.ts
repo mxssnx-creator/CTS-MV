@@ -347,10 +347,10 @@ const migrations: Migration[] = [
     up: async (client: any) => {
       await client.set("_schema_version", "15")
       
-      // Base connections: 4 primary exchange templates (bybit-x03, bingx-x01, binance-x01, okx-x01)
+      // Base connections: 4 primary exchange templates (bybit-x03, bingx-x01, pionex-x01, orangex-x01)
       // These are PREDEFINED TEMPLATES, not user-created connections
       // They should remain disabled by default - users must create their own credentials
-      const baseTemplateIds = ["bybit-x03", "bingx-x01", "binance-x01", "okx-x01"]
+      const baseTemplateIds = ["bybit-x03", "bingx-x01", "pionex-x01", "orangex-x01"]
       
       const connections = await client.smembers("connections") || []
       let updatedBase = 0
@@ -471,7 +471,8 @@ const migrations: Migration[] = [
       await client.set("_schema_version", "15")
       
       // The 4 base exchanges that should be marked as INSERTED and ENABLED
-      const baseExchangeIds = ["bybit-x03", "bingx-x01", "binance-x01", "okx-x01"]
+      // Using bybit, bingx, pionex, orangex as specified
+      const baseExchangeIds = ["bybit-x03", "bingx-x01", "pionex-x01", "orangex-x01"]
       
       const connections = await client.smembers("connections")
       let updatedBase = 0
