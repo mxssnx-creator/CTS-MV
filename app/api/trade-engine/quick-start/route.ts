@@ -121,15 +121,50 @@ export async function POST(request: Request) {
       // Get all logs for response
       const disableLogs = await getProgressionLogs(connectionId)
       
-      return NextResponse.json({
-        success: true,
-        action: "disable",
-        connection: { id: connectionId, name: connection.name, exchange: exchangeName },
-        logs: disableLogs,
-        logsCount: disableLogs.length,
+    return NextResponse.json({
+      success: true,
+      action: "enable",
+      connection: { 
+        id: connectionId, 
+        name: connection.name, 
+        exchange: exchangeName,
+        symbols,
+      },
+      engineCounts: {
+        indications: indicationsCount,
+        strategies: strategiesCount,
+        positions: positionsCount,
+        trades: tradesCount,
+      },
+      status: hasCredentials ? "ready_with_credentials" : "ready_without_credentials",
+      nextSteps: hasCredentials 
+        ? "Toggle 'Enable' on dashboard to start live trading"
+        : "Add API credentials in Settings > Connections > [Connection] > Edit, then toggle Enable",
+      duration: totalDuration,
+      logs: allLogs.slice(0, 50), // Return last 50 logs
+      logsCount: allLogs.length,
+      version: API_VERSION,
+    })
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err)
+    console.error(`${LOG_PREFIX}: Error: ${error}`)
+    
+    await logProgressionEvent("global", "quickstart_error", "error", error, {
+      action,
+      timestamp: new Date().toISOString(),
+    })
+    
+    return NextResponse.json(
+      {
+        success: false,
+        error,
+        logs: await getProgressionLogs("global"),
         version: API_VERSION,
-      })
-    }
+      },
+      { status: 500 }
+    )
+  }
+}
     
     // ENABLE FLOW: Direct function calls (no HTTP fetch)
     await logProgressionEvent(connectionId, "quickstart_started", "info", "QuickStart enable flow initiated", {
@@ -296,6 +331,19 @@ export async function POST(request: Request) {
     
     // Get all logs for response
     const allLogs = await getProgressionLogs(connectionId)
+    
+    // Calculate engine counts from Redis
+    const client = getRedisClient()
+    const indicationsCount = await client.scard(`indications:${connectionId}`).catch(() => 0)
+    const strategiesCount = await client.scard(`strategies:${connectionId}`).catch(() => 0)
+    const positionsCount = await client.scard(`positions:${connectionId}`).catch(() => 0)
+    const tradesCount = await client.scard(`trades:${connectionId}`).catch(() => 0)
+    
+    console.log(`${LOG_PREFIX}: === ENGINE COUNTS ===`)
+    console.log(`${LOG_PREFIX}: Indications: ${indicationsCount}`)
+    console.log(`${LOG_PREFIX}: Strategies: ${strategiesCount}`)
+    console.log(`${LOG_PREFIX}: Positions: ${positionsCount}`)
+    console.log(`${LOG_PREFIX}: Trades: ${tradesCount}`)
     
     return NextResponse.json({
       success: true,

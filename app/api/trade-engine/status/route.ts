@@ -15,32 +15,26 @@ export async function GET() {
     
     // Read global engine state from Redis hash
     const engineHash = await client.hgetall("trade_engine:global") || {}
-    console.log(`[v0] [Status] Redis state: ${JSON.stringify(engineHash)}`)
     const isGloballyRunning = engineHash.status === "running"
     const isGloballyPaused = engineHash.status === "paused"
     
     // Also check in-memory coordinator state
     const coordinatorRunning = coordinator?.isRunning() || false
-    console.log(`[v0] [Status] Coordinator running: ${coordinatorRunning}`)
     
     // If coordinator says running but Redis says not, fix Redis
     if (coordinatorRunning && !isGloballyRunning) {
-      console.log(`[v0] [Status] MISMATCH DETECTED: Coordinator running=true but Redis=stopped. Fixing Redis...`)
       await client.hset("trade_engine:global", {
         status: "running",
         started_at: new Date().toISOString(),
         coordinator_ready: "true",
       })
-      console.log("[v0] [Status] ✓ Fixed: coordinator running but Redis said stopped. Updated Redis.")
     }
     
     // Effective running state: either Redis or coordinator says running
     const effectivelyRunning = isGloballyRunning || coordinatorRunning
-    console.log(`[v0] [Status] Effective running state: ${effectivelyRunning} (redis=${isGloballyRunning}, coordinator=${coordinatorRunning})`)
     
     // Get active connections
     const connections = await getActiveConnectionsForEngine()
-    console.log(`[v0] [Status] Found ${connections.length} active connections for engine`)
     
     if (connections.length === 0) {
       // Get all connections to explain why none are active
@@ -60,8 +54,6 @@ export async function GET() {
           c.is_enabled_dashboard === "1" || c.is_enabled_dashboard === true
         ).length,
       }
-      
-      console.log(`[v0] [Status] No active connections. Analysis:`, analysis)
       
       return NextResponse.json({
         success: true,

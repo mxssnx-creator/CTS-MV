@@ -69,8 +69,10 @@ export async function logProgressionEvent(
     const ttlSeconds = LOG_RETENTION_HOURS * 3600 // 24 hours = 86400 seconds
     await client.set(logKey, JSON.stringify(logs), { EX: ttlSeconds })
 
-    // Also log to console for immediate visibility
-    console.log(`[v0] [${level.toUpperCase()}] [${phase}] ${message}`, details || "")
+    // Skip console.log for debug level to reduce noise
+    if (level !== "debug") {
+      console.log(`[v0] [${level.toUpperCase()}] [${phase}] ${message}`, details || "")
+    }
   } catch (error) {
     console.error("[v0] [EngineLog] Failed to store progression log:", error instanceof Error ? error.message : String(error))
   }
