@@ -520,10 +520,15 @@ const migrations: Migration[] = [
     up: async (client: any) => {
       await client.set("_schema_version", "16")
       
-      // Migration 016: Ensure all predefined templates have consistent state
-      // Base templates should remain as templates (predefined=1, inserted=0)
-      // Only USER-CREATED connections can be inserted into dashboard
-      const baseTemplateIds = ["bybit-x03", "bingx-x01", "binance-x01", "okx-x01"]
+      // Migration 016: Ensure all 4 base connections are properly set up with env credentials
+      // Base connections: bybit, bingx, pionex, orangex - should be INSERTED and ENABLED
+      const baseTemplateIds = ["bybit-x03", "bingx-x01", "pionex-x01", "orangex-x01"]
+      
+      // Check for real BingX credentials from environment
+      const bingxApiKey = process.env.BINGX_API_KEY || ""
+      const bingxApiSecret = process.env.BINGX_API_SECRET || ""
+      const hasBingxCredentials = bingxApiKey.length > 10 && bingxApiSecret.length > 10
+      console.log(`[v0] Migration 016: BingX credentials available: ${hasBingxCredentials}`)
       
       const connections = await client.smembers("connections") || []
       let updatedTemplates = 0
@@ -538,18 +543,29 @@ const migrations: Migration[] = [
         const isPredefined = connData.is_predefined === "1" || connData.is_predefined === true
         const isBaseTemplate = baseTemplateIds.includes(connId)
         
-        if (isBaseTemplate && isPredefined) {
-          // Base templates: keep as pure templates
-          await client.hset(`connection:${connId}`, {
-            is_inserted: "0",        // NOT inserted
-            is_enabled: "0",         // NOT enabled
-            is_active_inserted: "0", // NOT in active panel
-            is_enabled_dashboard: "0",
-            is_active: "0",
+        if (isBaseTemplate) {
+          // Base connections: inserted and enabled by default
+          // Update with env credentials if available (for BingX)
+          const updateData: Record<string, string> = {
+            is_inserted: "1",        // INSERTED
+            is_enabled: "1",         // ENABLED
+            is_active_inserted: "1", // In active panel
+            is_enabled_dashboard: "1",
+            is_active: "1",
+            connection_method: "library", // Use native SDK by default
             updated_at: new Date().toISOString(),
-          })
+          }
+          
+          // Add real BingX credentials if available
+          if (connId === "bingx-x01" && hasBingxCredentials) {
+            updateData.api_key = bingxApiKey
+            updateData.api_secret = bingxApiSecret
+            console.log(`[v0] Migration 016: Adding real BingX credentials to ${connId}`)
+          }
+          
+          await client.hset(`connection:${connId}`, updateData)
           updatedTemplates++
-          console.log(`[v0] Migration 016: ✓ ${connId} verified as pure template`)
+          console.log(`[v0] Migration 016: ✓ ${connId} -> inserted=1, enabled=1, active=1 (base connection)`)
         } else if (!isPredefined) {
           // User-created connections: reset dashboard state if not properly set
           if (!connData.is_active_inserted || !connData.is_enabled_dashboard) {
