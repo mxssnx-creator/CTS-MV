@@ -614,6 +614,25 @@ export async function runMigrations(): Promise<{ success: boolean; message: stri
     
     if (pendingMigrations.length === 0) {
       console.log(`[v0] [Migrations] Already at latest version ${finalVersion}`)
+      
+      // Still check and inject credentials even if migrations are up-to-date
+      const bingxApiKey = process.env.BINGX_API_KEY || ""
+      const bingxApiSecret = process.env.BINGX_API_SECRET || ""
+      if (bingxApiKey.length > 10 && bingxApiSecret.length > 10) {
+        const currentBingx = await client.hgetall("connection:bingx-x01")
+        const currentKey = (currentBingx?.api_key || "") as string
+        if (currentKey.length < 10 || currentKey.includes("placeholder")) {
+          console.log(`[v0] [Migrations] Injecting BingX credentials from environment...`)
+          await client.hset("connection:bingx-x01", {
+            api_key: bingxApiKey,
+            api_secret: bingxApiSecret,
+            credentials_source: "environment",
+            credentials_updated_at: new Date().toISOString(),
+          })
+          console.log(`[v0] [Migrations] ✓ BingX credentials injected`)
+        }
+      }
+      
       setMigrationsRun(true)
       return { success: true, message: `Already at latest version ${finalVersion}`, version: finalVersion }
     }
@@ -645,6 +664,22 @@ export async function runMigrations(): Promise<{ success: boolean; message: stri
     // Verify final state
     const finalVersionCheck = await client.get("_schema_version")
     console.log(`[v0] [Migrations] ✓ Verification: Schema version is now ${finalVersionCheck}`)
+    
+    // AUTO-INJECT: Apply environment credentials to connections
+    const bingxApiKey = process.env.BINGX_API_KEY || ""
+    const bingxApiSecret = process.env.BINGX_API_SECRET || ""
+    if (bingxApiKey.length > 10 && bingxApiSecret.length > 10) {
+      console.log(`[v0] [Migrations] Injecting BingX credentials from environment...`)
+      await client.hset("connection:bingx-x01", {
+        api_key: bingxApiKey,
+        api_secret: bingxApiSecret,
+        credentials_source: "environment",
+        credentials_updated_at: new Date().toISOString(),
+      })
+      console.log(`[v0] [Migrations] ✓ BingX credentials injected successfully`)
+    } else {
+      console.log(`[v0] [Migrations] No BingX credentials in environment`)
+    }
     
     // Mark migrations as run in this process
     setMigrationsRun(true)
