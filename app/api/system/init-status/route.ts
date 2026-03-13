@@ -34,6 +34,29 @@ export async function GET(request: NextRequest) {
     const migrationStatus = await getMigrationStatus()
     const stats = await getRedisStats()
     
+    // AUTO-INJECT: Check for credentials in environment and inject them into connections
+    // This ensures credentials are available even if migrations ran before env vars were set
+    const bingxKey = process.env.BINGX_API_KEY || ""
+    const bingxSecret = process.env.BINGX_API_SECRET || ""
+    if (bingxKey.length > 10 && bingxSecret.length > 10) {
+      const { getRedisClient } = await import("@/lib/redis-db")
+      const redisClient = getRedisClient()
+      const existingConn = await redisClient.hgetall("connection:bingx-x01")
+      // Only update if credentials are missing or different
+      if (!existingConn?.api_key || existingConn.api_key.length < 10 || existingConn.api_key !== bingxKey) {
+        await redisClient.hset("connection:bingx-x01", {
+          api_key: bingxKey,
+          api_secret: bingxSecret,
+          is_active_inserted: "1",
+          is_enabled: "1",
+          is_enabled_dashboard: "1",
+          connection_method: "library",
+          updated_at: new Date().toISOString(),
+        })
+        console.log("[v0] [Init] Auto-injected BingX credentials from environment")
+      }
+    }
+    
     // Get actual key count directly (most reliable)
     const { getRedisClient } = await import("@/lib/redis-db")
     const client = getRedisClient()

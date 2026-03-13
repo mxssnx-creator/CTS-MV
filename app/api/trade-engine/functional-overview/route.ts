@@ -38,10 +38,10 @@ export async function GET() {
     const strategyMetrics = await client.hgetall("metrics:strategies")
     const strategiesEvaluated = parseInt(strategyMetrics?.evaluated_count || "0") || 0
 
-    // Check if sets are created (use get instead of exists for Upstash compatibility)
-    const baseSetsExist = await client.get("data:base_set").then(v => v !== null).catch(() => false)
-    const mainSetsExist = await client.get("data:main_set").then(v => v !== null).catch(() => false)
-    const realSetsExist = await client.get("data:real_set").then(v => v !== null).catch(() => false)
+    // Check if sets are created
+    const baseSetsExist = await client.exists("data:base_set")
+    const mainSetsExist = await client.exists("data:main_set")
+    const realSetsExist = await client.exists("data:real_set")
 
     // Get position entries count from Redis
     const positionKeys = await client.keys("positions:*")
@@ -55,9 +55,9 @@ export async function GET() {
       symbolsActive: configuredSymbols,
       indicationsCalculated,
       strategiesEvaluated,
-      baseSetsCreated: !!baseSetsExist,
-      mainSetsCreated: !!mainSetsExist,
-      realSetsCreated: !!realSetsExist,
+      baseSetsCreated: baseSetsExist > 0,
+      mainSetsCreated: mainSetsExist > 0,
+      realSetsCreated: realSetsExist > 0,
       positionsEntriesCreated: positionsCount,
       enabledConnections: enabledConnections.length,
       persistenceKeys: persistenceKeys.length,

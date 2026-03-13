@@ -448,24 +448,30 @@ export async function getActiveConnectionsForEngine(): Promise<any[]> {
   const allConnections = await getAllConnections()
   // Filter for connections that are:
   // 1. Active-inserted (in Active panel) AND enabled (is_enabled OR is_enabled_dashboard)
-  // 2. Either has credentials OR is set to testnet (for demo/sandbox mode)
-  // This allows both production (with credentials) and demo/paper trading (testnet)
-  return allConnections.filter((c: any) => {
+  // 2. Either has credentials OR is set to testnet/demo mode
+  const filtered = allConnections.filter((c: any) => {
     const isActiveInserted = c.is_active_inserted === "1" || c.is_active_inserted === true
     const isEnabled = c.is_enabled === "1" || c.is_enabled === true
     const isDashboardEnabled = c.is_enabled_dashboard === "1" || c.is_enabled_dashboard === true
     
-    // Check for credentials
-    const hasCredentials = !!(c.api_key || c.apiKey) && !!(c.api_secret || c.apiSecret) &&
-                          (c.api_key || c.apiKey).length > 10 &&
-                          (c.api_secret || c.apiSecret).length > 10
+    // Check for credentials (from connection OR from environment)
+    const apiKey = c.api_key || c.apiKey || ""
+    const apiSecret = c.api_secret || c.apiSecret || ""
+    const hasCredentials = apiKey.length > 10 && apiSecret.length > 10
     
-    // Connection must be in Active panel AND enabled (either is_enabled or is_enabled_dashboard)
-    // AND either have valid credentials OR be in testnet/demo mode
+    // Check for testnet/demo mode
     const isTestnet = c.is_testnet === "1" || c.is_testnet === true
+    const isDemoMode = c.demo_mode === "1" || c.demo_mode === true
     
-    return isActiveInserted && (isEnabled || isDashboardEnabled) && (hasCredentials || isTestnet)
+    // Connection must be in Active panel AND enabled
+    const isReadyForEngine = isActiveInserted && (isEnabled || isDashboardEnabled)
+    
+    // AND either have valid credentials OR be in testnet/demo mode
+    return isReadyForEngine && (hasCredentials || isTestnet || isDemoMode)
   })
+  
+  console.log(`[v0] [Engine] Active connections for engine: ${filtered.length} (from ${allConnections.length} total)`)
+  return filtered
 }
 
 export async function getEnabledConnections(): Promise<any[]> {

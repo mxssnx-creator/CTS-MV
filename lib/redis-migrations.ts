@@ -483,16 +483,20 @@ const migrations: Migration[] = [
         if (!connData || Object.keys(connData).length === 0) continue
         
         if (baseExchangeIds.includes(connId)) {
-          // Mark as INSERTED and ENABLED by default (base connection)
-          // Base connections are automatically enabled to start the engine
+          // Mark as INSERTED, ENABLED, and ACTIVE_INSERTED by default (base connection)
+          // Base connections are automatically enabled and added to Active panel
           await client.hset(`connection:${connId}`, {
             is_inserted: "1",
-            is_enabled: "1",  // ENABLED by default so engine finds it
+            is_enabled: "1",              // ENABLED by default
+            is_active_inserted: "1",      // Added to Active panel
+            is_enabled_dashboard: "1",    // Dashboard toggle enabled
+            is_active: "1",
             is_predefined: "1",
+            connection_method: "library", // Use native SDK by default
             updated_at: new Date().toISOString(),
           })
           updatedBase++
-          console.log(`[v0] Migration 015: ${connId} -> inserted=1, enabled=1 (base connection, auto-enabled)`)
+          console.log(`[v0] Migration 015: ${connId} -> inserted=1, enabled=1, active_inserted=1, dashboard_enabled=1 (base connection)`)
         } else {
           // Non-base predefined connections: just informational templates
           // NOT inserted, NOT enabled - they are templates only
@@ -615,22 +619,42 @@ export async function runMigrations(): Promise<{ success: boolean; message: stri
     if (pendingMigrations.length === 0) {
       console.log(`[v0] [Migrations] Already at latest version ${finalVersion}`)
       
-      // Still check and inject credentials even if migrations are up-to-date
-      const bingxApiKey = process.env.BINGX_API_KEY || ""
-      const bingxApiSecret = process.env.BINGX_API_SECRET || ""
-      if (bingxApiKey.length > 10 && bingxApiSecret.length > 10) {
-        const currentBingx = await client.hgetall("connection:bingx-x01")
-        const currentKey = (currentBingx?.api_key || "") as string
-        if (currentKey.length < 10 || currentKey.includes("placeholder")) {
-          console.log(`[v0] [Migrations] Injecting BingX credentials from environment...`)
-          await client.hset("connection:bingx-x01", {
-            api_key: bingxApiKey,
-            api_secret: bingxApiSecret,
-            credentials_source: "environment",
-            credentials_updated_at: new Date().toISOString(),
-          })
-          console.log(`[v0] [Migrations] ✓ BingX credentials injected`)
+      // AUTO-FIX: Still ensure base connections are configured (handles env var addition after initial migration)
+      const baseConnections = ["bybit-x03", "bingx-x01", "pionex-x01", "orangex-x01"]
+      const envMappings: Record<string, { key: string; secret: string }> = {
+        "bingx-x01": { key: "BINGX_API_KEY", secret: "BINGX_API_SECRET" },
+        "bybit-x03": { key: "BYBIT_API_KEY", secret: "BYBIT_API_SECRET" },
+        "pionex-x01": { key: "PIONEX_API_KEY", secret: "PIONEX_API_SECRET" },
+        "orangex-x01": { key: "ORANGEX_API_KEY", secret: "ORANGEX_API_SECRET" },
+      }
+      
+      let credentialsInjected = 0
+      for (const connId of baseConnections) {
+        const mapping = envMappings[connId]
+        if (mapping) {
+          const apiKey = process.env[mapping.key] || ""
+          const apiSecret = process.env[mapping.secret] || ""
+          if (apiKey.length > 10 && apiSecret.length > 10) {
+            // Check if credentials already exist
+            const existing = await client.hget(`connection:${connId}`, "api_key")
+            if (!existing || existing.length < 10 || existing !== apiKey) {
+              await client.hset(`connection:${connId}`, {
+                api_key: apiKey,
+                api_secret: apiSecret,
+                is_active_inserted: "1",
+                is_enabled: "1",
+                is_enabled_dashboard: "1",
+                connection_method: "library",
+                updated_at: new Date().toISOString(),
+              })
+              console.log(`[v0] [Migrations] Auto-injected ${connId} credentials from environment`)
+              credentialsInjected++
+            }
+          }
         }
+      }
+      if (credentialsInjected > 0) {
+        console.log(`[v0] [Migrations] ✓ Injected credentials for ${credentialsInjected} connections`)
       }
       
       setMigrationsRun(true)
@@ -665,21 +689,40 @@ export async function runMigrations(): Promise<{ success: boolean; message: stri
     const finalVersionCheck = await client.get("_schema_version")
     console.log(`[v0] [Migrations] ✓ Verification: Schema version is now ${finalVersionCheck}`)
     
-    // AUTO-INJECT: Apply environment credentials to connections
-    const bingxApiKey = process.env.BINGX_API_KEY || ""
-    const bingxApiSecret = process.env.BINGX_API_SECRET || ""
-    if (bingxApiKey.length > 10 && bingxApiSecret.length > 10) {
-      console.log(`[v0] [Migrations] Injecting BingX credentials from environment...`)
-      await client.hset("connection:bingx-x01", {
-        api_key: bingxApiKey,
-        api_secret: bingxApiSecret,
-        credentials_source: "environment",
-        credentials_updated_at: new Date().toISOString(),
-      })
-      console.log(`[v0] [Migrations] ✓ BingX credentials injected successfully`)
-    } else {
-      console.log(`[v0] [Migrations] No BingX credentials in environment`)
+    // AUTO-FIX: Ensure base connections are properly configured with credentials from env
+    const baseConnections = ["bybit-x03", "bingx-x01", "pionex-x01", "orangex-x01"]
+    const envMappings: Record<string, { key: string; secret: string }> = {
+      "bingx-x01": { key: "BINGX_API_KEY", secret: "BINGX_API_SECRET" },
+      "bybit-x03": { key: "BYBIT_API_KEY", secret: "BYBIT_API_SECRET" },
+      "pionex-x01": { key: "PIONEX_API_KEY", secret: "PIONEX_API_SECRET" },
+      "orangex-x01": { key: "ORANGEX_API_KEY", secret: "ORANGEX_API_SECRET" },
     }
+    
+    for (const connId of baseConnections) {
+      const updateData: Record<string, string> = {
+        is_active_inserted: "1",
+        is_enabled: "1",
+        is_enabled_dashboard: "1",
+        is_active: "1",
+        connection_method: "library",
+        updated_at: new Date().toISOString(),
+      }
+      
+      // Check for env credentials
+      const mapping = envMappings[connId]
+      if (mapping) {
+        const apiKey = process.env[mapping.key] || ""
+        const apiSecret = process.env[mapping.secret] || ""
+        if (apiKey.length > 10 && apiSecret.length > 10) {
+          updateData.api_key = apiKey
+          updateData.api_secret = apiSecret
+          console.log(`[v0] [Migrations] Injecting ${connId} credentials from environment`)
+        }
+      }
+      
+      await client.hset(`connection:${connId}`, updateData)
+    }
+    console.log(`[v0] [Migrations] ✓ Auto-fixed ${baseConnections.length} base connections`)
     
     // Mark migrations as run in this process
     setMigrationsRun(true)
