@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getProgressionLogs } from "@/lib/engine-progression-logs"
+import { getProgressionLogs, clearProgressionLogs } from "@/lib/engine-progression-logs"
 import { initRedis, getRedisClient, getSettings } from "@/lib/redis-db"
 import { ProgressionStateManager } from "@/lib/progression-state-manager"
 
@@ -71,6 +71,40 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     console.error("[v0] Error fetching progression logs:", error)
     return NextResponse.json(
       { error: "Failed to fetch progression logs", details: error instanceof Error ? error.message : String(error) },
+      { status: 500 }
+    )
+  }
+}
+
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params
+    const connectionId = id
+    
+    await initRedis()
+
+    if (!connectionId) {
+      return NextResponse.json({ error: "Connection ID required" }, { status: 400 })
+    }
+
+    // Clear progression logs
+    await clearProgressionLogs(connectionId)
+    
+    // Also clear structured logs
+    const client = getRedisClient()
+    await client.del(`engine:logs:${connectionId}`)
+    await client.del(`engine_logs:${connectionId}`)
+
+    return NextResponse.json({
+      success: true,
+      message: "Logs cleared successfully",
+      connectionId,
+      timestamp: new Date().toISOString(),
+    })
+  } catch (error) {
+    console.error("[v0] Error clearing progression logs:", error)
+    return NextResponse.json(
+      { error: "Failed to clear logs", details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     )
   }

@@ -246,6 +246,26 @@ export class InlineLocalRedis {
     return deleted
   }
 
+  async hincrby(key: string, field: string, increment: number): Promise<number> {
+    this.trackOperation()
+    const hash = this.data.hashes.get(key) || {}
+    const currentValue = parseInt(hash[field] || "0", 10)
+    const newValue = currentValue + increment
+    hash[field] = String(newValue)
+    this.data.hashes.set(key, hash)
+    return newValue
+  }
+
+  async hincrbyfloat(key: string, field: string, increment: number): Promise<number> {
+    this.trackOperation()
+    const hash = this.data.hashes.get(key) || {}
+    const currentValue = parseFloat(hash[field] || "0")
+    const newValue = currentValue + increment
+    hash[field] = String(newValue)
+    this.data.hashes.set(key, hash)
+    return newValue
+  }
+
   async sadd(key: string, ...members: string[]): Promise<number> {
     this.trackOperation()
     const set = this.data.sets.get(key) || new Set()

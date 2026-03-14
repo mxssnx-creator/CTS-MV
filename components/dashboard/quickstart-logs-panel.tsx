@@ -22,8 +22,17 @@ interface QuickstartLogsPanelProps {
   className?: string
 }
 
+interface ProgressionState {
+  cyclesCompleted: number
+  successfulCycles: number
+  failedCycles: number
+  cycleSuccessRate: number
+  totalTrades: number
+}
+
 export function QuickstartLogsPanel({ connectionId, className = "" }: QuickstartLogsPanelProps) {
   const [logs, setLogs] = useState<ProgressionLogEntry[]>([])
+  const [progressionState, setProgressionState] = useState<ProgressionState | null>(null)
   const [loading, setLoading] = useState(false)
   const [autoRefresh, setAutoRefresh] = useState(true)
 
@@ -37,6 +46,9 @@ export function QuickstartLogsPanel({ connectionId, className = "" }: Quickstart
 
       if (data.logs) {
         setLogs(data.logs)
+      }
+      if (data.progressionState) {
+        setProgressionState(data.progressionState)
       }
     } catch (error) {
       console.error("Failed to fetch logs:", error)
@@ -124,6 +136,28 @@ export function QuickstartLogsPanel({ connectionId, className = "" }: Quickstart
       </CardHeader>
 
       <CardContent className="space-y-2">
+        {/* Progression State Summary */}
+        {progressionState && progressionState.cyclesCompleted > 0 && (
+          <div className="grid grid-cols-4 gap-2 p-2 bg-muted rounded-lg text-xs mb-2">
+            <div className="text-center">
+              <div className="font-semibold">{progressionState.cyclesCompleted}</div>
+              <div className="text-muted-foreground">Cycles</div>
+            </div>
+            <div className="text-center">
+              <div className="font-semibold text-green-600">{progressionState.successfulCycles}</div>
+              <div className="text-muted-foreground">Success</div>
+            </div>
+            <div className="text-center">
+              <div className="font-semibold text-red-600">{progressionState.failedCycles}</div>
+              <div className="text-muted-foreground">Failed</div>
+            </div>
+            <div className="text-center">
+              <div className="font-semibold">{(progressionState.cycleSuccessRate || 0).toFixed(1)}%</div>
+              <div className="text-muted-foreground">Rate</div>
+            </div>
+          </div>
+        )}
+        
         {loading && logs.length === 0 ? (
           <div className="flex items-center justify-center py-8 text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin mr-2" />

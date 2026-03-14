@@ -12,9 +12,16 @@ import {
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
-import { FileText, Trash2 } from "lucide-react"
-import { getProgressionLogs, clearProgressionLogs, formatLogsForDisplay, type ProgressionLogEntry } from "@/lib/engine-progression-logs"
+import { FileText, Trash2, RefreshCw } from "lucide-react"
 import { toast } from "@/lib/simple-toast"
+
+interface ProgressionLogEntry {
+  timestamp: string
+  level: string
+  phase: string
+  message: string
+  details?: any
+}
 
 interface ProgressionLogsDialogProps {
   open: boolean
@@ -32,26 +39,38 @@ export function ProgressionLogsDialog({
   progression,
 }: ProgressionLogsDialogProps) {
   const [logs, setLogs] = useState<ProgressionLogEntry[]>([])
+  const [progressionState, setProgressionState] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
     if (open) {
-      console.log(`[v0] [ProgressionLogs] Opening logs dialog for ${connectionName}`)
       loadLogs()
       // Auto-refresh logs while dialog is open
-      const refreshInterval = setInterval(loadLogs, 2000)
+      const refreshInterval = setInterval(loadLogs, 3000)
       return () => clearInterval(refreshInterval)
     }
-  }, [open])
+  }, [open, connectionId])
 
   const loadLogs = async () => {
     setIsLoading(true)
     try {
-      const fetchedLogs = await getProgressionLogs(connectionId)
-      setLogs(fetchedLogs)
+      // Use the API route instead of direct Redis access
+      const response = await fetch(`/api/connections/progression/${connectionId}/logs`)
+      if (response.ok) {
+        const data = await response.json()
+        setLogs(data.logs || [])
+        setProgressionState(data.progressionState || null)
+      } else {
+        // Fallback: try to get logs from progression endpoint
+        const progResponse = await fetch(`/api/connections/progression/${connectionId}`)
+        if (progResponse.ok) {
+          const progData = await progResponse.json()
+          setLogs(progData.recentLogs || [])
+          setProgressionState(progData.state || null)
+        }
+      }
     } catch (error) {
       console.error("[v0] Failed to load progression logs:", error)
-      toast.error("Failed to load logs")
     } finally {
       setIsLoading(false)
     }
@@ -61,9 +80,15 @@ export function ProgressionLogsDialog({
     if (!confirm("Clear all logs for this connection? This cannot be undone.")) return
 
     try {
-      await clearProgressionLogs(connectionId)
-      setLogs([])
-      toast.success("Logs cleared")
+      const response = await fetch(`/api/connections/progression/${connectionId}/logs`, {
+        method: "DELETE",
+      })
+      if (response.ok) {
+        setLogs([])
+        toast.success("Logs cleared")
+      } else {
+        toast.error("Failed to clear logs")
+      }
     } catch (error) {
       console.error("[v0] Failed to clear logs:", error)
       toast.error("Failed to clear logs")
@@ -93,20 +118,52 @@ export function ProgressionLogsDialog({
           </DialogDescription>
         </DialogHeader>
 
+        {/* Progression State Summary */}
+        {progressionState && (
+          <div className="grid grid-cols-4 gap-4 mb-4 p-3 bg-muted rounded-lg">
+            <div className="text-center">
+              <div className="text-lg font-semibold">{progressionState.cyclesCompleted || 0}</div>
+              <div className="text-xs text-muted-foreground">Cycles</div>
+            </div>
+            <div className="text-center">
+              <div className="text-lg font-semibold text-green-600">{progressionState.successfulCycles || 0}</div>
+              <div className="text-xs text-muted-foreground">Successful</div>
+            </div>
+            <div className="text-center">
+              <div className="text-lg font-semibold text-red-600">{progressionState.failedCycles || 0}</div>
+              <div className="text-xs text-muted-foreground">Failed</div>
+            </div>
+            <div className="text-center">
+              <div className="text-lg font-semibold">{(progressionState.cycleSuccessRate || 0).toFixed(1)}%</div>
+              <div className="text-xs text-muted-foreground">Success Rate</div>
+            </div>
+          </div>
+        )}
+
         <div className="flex items-center justify-between mb-4">
           <div className="text-sm text-muted-foreground">
-            {logs.length} log entries
+            {logs.length} log entries {isLoading && "(refreshing...)"}
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleClearLogs}
-            className="gap-2"
-            disabled={logs.length === 0}
-          >
-            <Trash2 className="h-4 w-4" />
-            Clear Logs
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={loadLogs}
+              disabled={isLoading}
+            >
+              <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleClearLogs}
+              className="gap-2"
+              disabled={logs.length === 0}
+            >
+              <Trash2 className="h-4 w-4" />
+              Clear
+            </Button>
+          </div>
         </div>
 
         <ScrollArea className="w-full h-64 border rounded-md bg-slate-50 p-4 font-mono text-xs">

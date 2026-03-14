@@ -93,58 +93,55 @@ export class ProgressionStateManager {
 
   /**
    * Increment completed cycle (successful or failed)
-   * OPTIMIZED: Only update every 10 cycles to reduce Redis writes
+   * Writes every cycle to ensure accurate tracking across server instances
    */
-  private static cycleCounters: Map<string, number> = new Map()
-  
   static async incrementCycle(connectionId: string, successful: boolean, profit: number = 0): Promise<void> {
     try {
-      // Track locally for batching
-      const localCount = (this.cycleCounters.get(connectionId) || 0) + 1
-      this.cycleCounters.set(connectionId, localCount)
-      
-      // Only write to Redis every 10 cycles for performance
-      if (localCount % 10 !== 0) return
-      
       const client = getRedisClient()
       if (!client) {
-        console.warn("[v0] [Progression] No Redis client available")
         return
       }
       
       const key = `progression:${connectionId}`
 
-      // Get current state
-      const current = await this.getProgressionState(connectionId)
-
-      // Update metrics (add 10 cycles worth)
-      const cyclesCompleted = current.cyclesCompleted + 10
-      const successfulCycles = successful ? current.successfulCycles + 10 : current.successfulCycles
-      const failedCycles = !successful ? current.failedCycles + 10 : current.failedCycles
-      const totalProfit = current.totalProfit + profit
-      const cycleSuccessRate = cyclesCompleted > 0 ? (successfulCycles / cyclesCompleted) * 100 : 0
-
-      // Save to Redis (all values must be strings for hset)
+      // Use Redis HINCRBY for atomic increment
+      await client.hincrby(key, "cycles_completed", 1)
+      if (successful) {
+        await client.hincrby(key, "successful_cycles", 1)
+      } else {
+        await client.hincrby(key, "failed_cycles", 1)
+      }
+      
+      // Update last cycle time
       await client.hset(key, {
-        cycles_completed: String(cyclesCompleted),
-        successful_cycles: String(successfulCycles),
-        failed_cycles: String(failedCycles),
-        total_profit: String(totalProfit.toFixed(4)),
-        cycle_success_rate: String(cycleSuccessRate.toFixed(2)),
         last_cycle_time: new Date().toISOString(),
         last_update: new Date().toISOString(),
         connection_id: connectionId,
       })
+      
+      // Recalculate success rate every 10 cycles
+      const cyclesStr = await client.hget(key, "cycles_completed")
+      const successStr = await client.hget(key, "successful_cycles")
+      const cycles = parseInt(cyclesStr || "0", 10)
+      const successCycles = parseInt(successStr || "0", 10)
+      
+      if (cycles > 0 && cycles % 10 === 0) {
+        const successRate = (successCycles / cycles) * 100
+        await client.hset(key, {
+          cycle_success_rate: String(successRate.toFixed(2)),
+        })
+      }
 
-      // Set expiration to 7 days (progression state is accumulated)
+      // Set expiration to 7 days
       await client.expire(key, 7 * 24 * 60 * 60)
 
-      // Log every 100 cycles (10 batches)
-      if (cyclesCompleted % 100 === 0) {
-        console.log(`[v0] [Progression] ${connectionId}: ${cyclesCompleted} cycles (${cycleSuccessRate.toFixed(1)}% success)`)
+      // Log every 50 cycles
+      if (cycles % 50 === 0 && cycles > 0) {
+        const successRate = (successCycles / cycles) * 100
+        console.log(`[v0] [Progression] Cycle ${cycles}: ${successful ? "Success" : "Failed"} (rate: ${successRate.toFixed(1)}%)`)
       }
     } catch (error) {
-      console.error(`[v0] [Progression] Failed to increment cycle for ${connectionId}:`, error instanceof Error ? error.message : String(error))
+      // Silent fail to not block main processing
     }
   }
 
