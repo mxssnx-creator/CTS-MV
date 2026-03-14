@@ -355,20 +355,17 @@ export class TradeEngineManager {
 
   /**
    * Start indication processor (async)
-   * OPTIMIZED: Increased interval to 5s (from 1s) to reduce CPU/memory usage
+   * Runs every 1 second with debouncing to prevent overlaps
    */
-  private startIndicationProcessor(intervalSeconds: number = 5): void {
-    // Override interval if too aggressive - indication processor should run 5-30s apart
-    const optimizedInterval = Math.max(5, Math.min(intervalSeconds, 30))
-    console.log(`[v0] Starting indication processor (interval: ${optimizedInterval}s)`)
+  private startIndicationProcessor(intervalSeconds: number = 1): void {
+    console.log(`[v0] Starting indication processor (interval: ${intervalSeconds}s)`)
 
     let cycleCount = 0
     let totalDuration = 0
     let errorCount = 0
-    let isProcessing = false // Debounce flag to prevent overlapping cycles
+    let isProcessing = false
 
     this.indicationTimer = setInterval(async () => {
-      // Skip if already processing (prevents queue buildup)
       if (isProcessing) return
       
       isProcessing = true
@@ -376,8 +373,6 @@ export class TradeEngineManager {
 
       try {
         const symbols = await this.getSymbols()
-
-        // Process indications for all symbols asynchronously
         await Promise.all(symbols.map((symbol) => this.indicationProcessor.processIndication(symbol)))
 
         const duration = Date.now() - startTime
@@ -387,18 +382,14 @@ export class TradeEngineManager {
         this.componentHealth.indications.lastCycleDuration = duration
         this.componentHealth.indications.successRate = ((cycleCount - errorCount) / cycleCount) * 100
 
-        // Track progression state (every cycle)
-        await ProgressionStateManager.incrementCycle(this.connectionId, true, 0)
-
-        // OPTIMIZED: Only log every 20th cycle to reduce Redis writes
-        if (cycleCount % 20 === 0) {
+        // Batch progression updates every 10 cycles only
+        if (cycleCount % 10 === 0) {
+          await ProgressionStateManager.incrementCycle(this.connectionId, true, 0)
           await logProgressionEvent(this.connectionId, "indications", "info", `Processed ${symbols.length} symbols`, {
             cycleDuration_ms: duration,
             cycleCount,
             symbolsCount: symbols.length,
           })
-
-          // Update engine state in Redis (batched every 20 cycles)
           await setSettings(`trade_engine_state:${this.connectionId}`, {
             connection_id: this.connectionId,
             status: "running",
@@ -407,40 +398,26 @@ export class TradeEngineManager {
             indication_cycle_count: cycleCount,
             indication_avg_duration_ms: Math.round(totalDuration / cycleCount),
           })
-          
-          // Update global engine stats (batched)
-          await setSettings("engine:indications:stats", {
-            cycleCount,
-            resultsCount: symbols.length * cycleCount,
-            running: true,
-            lastRun: new Date().toISOString(),
-            connectionId: this.connectionId,
-          })
         }
       } catch (error) {
         errorCount++
         this.componentHealth.indications.errorCount++
-        await ProgressionStateManager.incrementCycle(this.connectionId, false, 0)
+        if (cycleCount % 10 === 0) {
+          await ProgressionStateManager.incrementCycle(this.connectionId, false, 0)
+        }
         console.error("[v0] Indication processor error:", error)
-        await logProgressionEvent(this.connectionId, "indications", "error", `Processor error: ${error instanceof Error ? error.message : String(error)}`, {
-          errorType: error instanceof Error ? error.name : "unknown",
-          cycleCount,
-          errorCount,
-        })
       } finally {
         isProcessing = false
       }
-    }, optimizedInterval * 1000)
+    }, intervalSeconds * 1000)
   }
 
   /**
    * Start strategy processor (async)
-   * OPTIMIZED: Added debouncing to prevent overlapping cycles
+   * With debouncing to prevent overlapping cycles
    */
-  private startStrategyProcessor(intervalSeconds: number = 10): void {
-    // Strategy processor should run less frequently than indications (10-30s)
-    const optimizedInterval = Math.max(10, Math.min(intervalSeconds, 30))
-    console.log(`[v0] Starting strategy processor (interval: ${optimizedInterval}s)`)
+  private startStrategyProcessor(intervalSeconds: number = 1): void {
+    console.log(`[v0] Starting strategy processor (interval: ${intervalSeconds}s)`)
 
     let cycleCount = 0
     let totalDuration = 0
@@ -450,14 +427,11 @@ export class TradeEngineManager {
 
     this.strategyTimer = setInterval(async () => {
       if (isProcessing) return
-      
       isProcessing = true
       const startTime = Date.now()
 
       try {
         const symbols = await this.getSymbols()
-
-        // Process strategies for all symbols asynchronously
         const strategyResults = await Promise.all(
           symbols.map((symbol) => this.strategyProcessor.processStrategy(symbol))
         )
@@ -472,10 +446,9 @@ export class TradeEngineManager {
         this.componentHealth.strategies.lastCycleDuration = duration
         this.componentHealth.strategies.successRate = ((cycleCount - errorCount) / cycleCount) * 100
 
-        // OPTIMIZED: Only log every 5th cycle
+        // Batch updates every 5 cycles
         if (cycleCount % 5 === 0) {
           console.log(`[v0] [StrategyEngine] Cycle ${cycleCount}: Evaluated ${evaluatedThisCycle} strategies`)
-          
           await logProgressionEvent(this.connectionId, "strategies", "info", `Processed strategies for ${symbols.length} symbols`, {
             cycleDuration_ms: duration,
             cycleCount,
@@ -484,8 +457,6 @@ export class TradeEngineManager {
             totalStrategiesEvaluated,
             avgStrategiesPerSymbol: Math.round(evaluatedThisCycle / symbols.length),
           })
-
-          // Update engine state in Redis (batched)
           await setSettings(`trade_engine_state:${this.connectionId}`, {
             status: "running",
             last_strategy_run: new Date().toISOString(),
@@ -493,37 +464,23 @@ export class TradeEngineManager {
             strategy_avg_duration_ms: Math.round(totalDuration / cycleCount),
             total_strategies_evaluated: totalStrategiesEvaluated,
           })
-          
-          // Update global engine stats (batched)
-          await setSettings("engine:strategies:stats", {
-            cycleCount,
-            resultsCount: totalStrategiesEvaluated,
-            running: true,
-            lastRun: new Date().toISOString(),
-            connectionId: this.connectionId,
-          })
         }
       } catch (error) {
         errorCount++
         this.componentHealth.strategies.errorCount++
         console.error("[v0] Strategy processor error:", error)
-        await logProgressionEvent(this.connectionId, "strategies", "error", `Processor error: ${error instanceof Error ? error.message : String(error)}`, {
-          errorType: error instanceof Error ? error.name : "unknown",
-        })
       } finally {
         isProcessing = false
       }
-    }, optimizedInterval * 1000)
+    }, intervalSeconds * 1000)
   }
 
   /**
    * Start realtime processor (async)
-   * OPTIMIZED: Added debouncing to prevent overlapping cycles
+   * With debouncing to prevent overlapping cycles
    */
-  private startRealtimeProcessor(intervalSeconds: number = 3): void {
-    // Realtime processor can run more frequently (3-10s) since it's lightweight
-    const optimizedInterval = Math.max(3, Math.min(intervalSeconds, 10))
-    console.log(`[v0] Starting realtime processor (interval: ${optimizedInterval}s)`)
+  private startRealtimeProcessor(intervalSeconds: number = 1): void {
+    console.log(`[v0] Starting realtime processor (interval: ${intervalSeconds}s)`)
 
     let cycleCount = 0
     let totalDuration = 0
@@ -532,7 +489,6 @@ export class TradeEngineManager {
 
     this.realtimeTimer = setInterval(async () => {
       if (isProcessing) return
-      
       isProcessing = true
       const startTime = Date.now()
 
