@@ -13,6 +13,7 @@ interface RedisData {
   sets: Map<string, Set<string>>
   lists: Map<string, string[]>
   sorted_sets: Map<string, Array<{ score: number; member: string }>>
+  ttl: Map<string, number> // key -> expiration timestamp in ms
   requestStats: {
     lastSecond: number
     requestCount: number
@@ -35,6 +36,7 @@ export class InlineLocalRedis {
         sets: new Map(),
         lists: new Map(),
         sorted_sets: new Map(),
+        ttl: new Map(),
         requestStats: {
           lastSecond: Math.floor(Date.now() / 1000),
           requestCount: 0,
@@ -42,7 +44,87 @@ export class InlineLocalRedis {
         },
       }
     }
+    // Ensure ttl map exists for older data structures
+    if (!globalForRedis.__redis_data.ttl) {
+      globalForRedis.__redis_data.ttl = new Map()
+    }
     this.data = globalForRedis.__redis_data
+    
+    // Run cleanup every 60 seconds to remove expired keys
+    this.startTTLCleanup()
+  }
+  
+  /**
+   * Start periodic TTL cleanup to remove expired keys
+   */
+  private startTTLCleanup(): void {
+    // Only start once per process
+    const globalCleanup = globalThis as unknown as { __redis_cleanup_started?: boolean }
+    if (globalCleanup.__redis_cleanup_started) return
+    globalCleanup.__redis_cleanup_started = true
+    
+    setInterval(() => {
+      this.cleanupExpiredKeys()
+    }, 60000) // Every 60 seconds
+  }
+  
+  /**
+   * Remove all expired keys
+   */
+  private cleanupExpiredKeys(): void {
+    const now = Date.now()
+    const ttlMap = this.data.ttl
+    if (!ttlMap) return
+    
+    let cleaned = 0
+    for (const [key, expireAt] of ttlMap.entries()) {
+      if (now >= expireAt) {
+        this.deleteKey(key)
+        ttlMap.delete(key)
+        cleaned++
+      }
+    }
+    
+    if (cleaned > 0) {
+      console.log(`[v0] [Redis] TTL cleanup: removed ${cleaned} expired keys`)
+    }
+  }
+  
+  /**
+   * Check if key is expired and delete if so
+   */
+  private isExpired(key: string): boolean {
+    const ttlMap = this.data.ttl
+    if (!ttlMap) return false
+    
+    const expireAt = ttlMap.get(key)
+    if (expireAt && Date.now() >= expireAt) {
+      this.deleteKey(key)
+      ttlMap.delete(key)
+      return true
+    }
+    return false
+  }
+  
+  /**
+   * Delete a key from all data structures
+   */
+  private deleteKey(key: string): void {
+    this.data.strings.delete(key)
+    this.data.hashes.delete(key)
+    this.data.sets.delete(key)
+    this.data.lists.delete(key)
+    this.data.sorted_sets.delete(key)
+  }
+  
+  /**
+   * Set TTL for a key
+   */
+  private setKeyTTL(key: string, seconds: number): void {
+    if (!this.data.ttl) {
+      this.data.ttl = new Map()
+    }
+    this.data.ttl.set(key, Date.now() + seconds * 1000)
   }
 
   /**
@@ -79,12 +161,22 @@ export class InlineLocalRedis {
 
   async get(key: string): Promise<string | null> {
     this.trackOperation()
+    if (this.isExpired(key)) return null
     return this.data.strings.get(key) ?? null
   }
 
-  async set(key: string, value: string): Promise<void> {
+  async set(key: string, value: string, options?: { EX?: number }): Promise<void> {
     this.trackOperation()
     this.data.strings.set(key, value)
+    if (options?.EX) {
+      this.setKeyTTL(key, options.EX)
+    }
+  }
+  
+  async setex(key: string, seconds: number, value: string): Promise<void> {
+    this.trackOperation()
+    this.data.strings.set(key, value)
+    this.setKeyTTL(key, seconds)
   }
 
   async del(...keys: string[]): Promise<number> {
@@ -120,6 +212,7 @@ export class InlineLocalRedis {
 
   async hgetall(key: string): Promise<Record<string, string> | null> {
     this.trackOperation()
+    if (this.isExpired(key)) return null
     return this.data.hashes.get(key) ?? null
   }
 
@@ -131,6 +224,7 @@ export class InlineLocalRedis {
 
   async hget(key: string, field: string): Promise<string | null> {
     this.trackOperation()
+    if (this.isExpired(key)) return null
     const hash = this.data.hashes.get(key)
     return hash?.[field] ?? null
   }
@@ -165,11 +259,13 @@ export class InlineLocalRedis {
 
   async scard(key: string): Promise<number> {
     this.trackOperation()
+    if (this.isExpired(key)) return 0
     return this.data.sets.get(key)?.size ?? 0
   }
 
   async smembers(key: string): Promise<string[]> {
     this.trackOperation()
+    if (this.isExpired(key)) return []
     return Array.from(this.data.sets.get(key) || new Set())
   }
 
@@ -188,12 +284,23 @@ export class InlineLocalRedis {
 
   async expire(key: string, seconds: number): Promise<number> {
     this.trackOperation()
-    // TTL not implemented in memory
-    return 1
+    // Check if key exists in any data structure
+    const exists = this.data.strings.has(key) || 
+                   this.data.hashes.has(key) || 
+                   this.data.sets.has(key) ||
+                   this.data.lists.has(key) ||
+                   this.data.sorted_sets.has(key)
+    if (exists) {
+      this.setKeyTTL(key, seconds)
+      return 1
+    }
+    return 0
   }
 
   async dbSize(): Promise<number> {
     this.trackOperation()
+    // Clean up expired keys first for accurate count
+    this.cleanupExpiredKeys()
     return this.data.strings.size + this.data.hashes.size + this.data.sets.size + this.data.lists.size + this.data.sorted_sets.size
   }
 
