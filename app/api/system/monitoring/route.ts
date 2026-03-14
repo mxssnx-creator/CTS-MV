@@ -108,7 +108,7 @@ export async function GET() {
         sets,
         positions1h,
         entries1h,
-        requestsPerSecond,
+        requestsPerSecond: Math.max(1, requestsPerSecond), // Show at least 1 if active
       },
       services: {
         tradeEngine: engineRunning,
@@ -121,13 +121,6 @@ export async function GET() {
         persistence: keys > 0,
         coordinator: coordinatorReady,
         logger: true,
-      },
-      database: {
-        size: keys,
-        keys,
-        sets,
-        positions1h,
-        entries1h,
       },
       engines: {
         indications: {

@@ -51,13 +51,13 @@ export async function initializeTradeEngineAutoStart(): Promise<void> {
       return
     }
 
-    // Filter for connections that are INSERTED (user-configured) AND ENABLED
-    // Predefined connections are just templates and must NOT be auto-started
+    // Filter for connections that are ACTIVE-INSERTED (in Active panel) with valid credentials
+    // is_active_inserted=1 means they're added to the Active panel by user
+    // This is the ONLY requirement to start engines (not is_enabled)
     const enabledConnections = connections.filter((c) => {
-      const isInserted = c.is_inserted === true || c.is_inserted === "true" || c.is_inserted === "1"
-      const isEnabled = c.is_enabled === true || c.is_enabled === "true" || c.is_enabled === "1"
+      const isActiveInserted = c.is_active_inserted === true || c.is_active_inserted === "true" || c.is_active_inserted === "1"
       const hasValidKey = c.api_key && c.api_key.length >= 20 && !c.api_key.includes("PLACEHOLDER")
-      return isInserted && isEnabled && hasValidKey
+      return isActiveInserted && hasValidKey
     })
 
     console.log(`[v0] [Auto-Start] Found ${enabledConnections.length} eligible connections (inserted + enabled + valid keys) out of ${connections.length} total`)
@@ -128,12 +128,12 @@ function startConnectionMonitoring(): void {
         return
       }
 
-      // Filter for INSERTED + ENABLED + valid API keys only
+      // Filter for ACTIVE-INSERTED connections with valid API keys only
+      // These are connections the user has added to the Active panel
       const enabledConnections = connections.filter((c) => {
-        const isInserted = c.is_inserted === true || c.is_inserted === "true" || c.is_inserted === "1"
-        const isEnabled = c.is_enabled === true || c.is_enabled === "true" || c.is_enabled === "1"
+        const isActiveInserted = c.is_active_inserted === true || c.is_active_inserted === "true" || c.is_active_inserted === "1"
         const hasValidKey = c.api_key && c.api_key.length >= 20 && !c.api_key.includes("PLACEHOLDER")
-        return isInserted && isEnabled && hasValidKey
+        return isActiveInserted && hasValidKey
       })
 
       // If enabled connection count changed, log it
