@@ -29,31 +29,6 @@ export async function GET() {
     const coordinatorRunning = coordinator?.isRunning?.() ?? false
     const coordinatorEngineCount = coordinator?.getActiveEngineCount?.() ?? 0
     
-    // Check actual Redis state for engine running status (more reliable than in-memory coordinator)
-    let redisEngineRunning = false
-    let redisActiveEngineCount = 0
-    try {
-      const globalEngineStr = await client.get("trade_engine:global")
-      if (globalEngineStr) {
-        const globalEngine = JSON.parse(globalEngineStr)
-        redisEngineRunning = globalEngine.status === "running"
-      }
-      
-      // Count connections with running engines
-      const connectionStateKeys = allKeys.filter((k: string) => k.startsWith("settings:trade_engine_state:"))
-      for (const key of connectionStateKeys) {
-        const stateStr = await client.get(key)
-        if (stateStr) {
-          const state = JSON.parse(stateStr)
-          if (state.status === "running") redisActiveEngineCount++
-        }
-      }
-    } catch { /* ignore */ }
-    
-    // Engine is running if either coordinator OR Redis state says so
-    const engineRunning = coordinatorRunning || redisEngineRunning || indicationsRunning || strategiesRunning
-    const activeEngineCount = Math.max(coordinatorEngineCount, redisActiveEngineCount)
-    
     // Count actual indications and strategies in Redis
     const indicationKeys = allKeys.filter((k: string) => 
       k.includes("indication") || k.includes("indications:") || k.includes(":rsi") || k.includes(":macd") || k.includes(":ema")
@@ -64,12 +39,12 @@ export async function GET() {
     const entryKeys = allKeys.filter((k: string) => k.includes("entry:") || k.includes("entries:")).length
     
     // Get engine stats from ALL active connections (they store in trade_engine_state:{connectionId})
-    // Also check global engine stats keys
-    const connectionStateKeys = allKeys.filter((k: string) => k.startsWith("trade_engine_state:"))
+    const connectionStateKeys = allKeys.filter((k: string) => k.startsWith("settings:trade_engine_state:"))
     let totalIndicationCycles = 0
     let totalStrategyCycles = 0
     let indicationsRunning = false
     let strategiesRunning = false
+    let redisActiveEngineCount = 0
     
     for (const stateKey of connectionStateKeys) {
       try {
@@ -81,6 +56,7 @@ export async function GET() {
           if (state.status === "running") {
             indicationsRunning = true
             strategiesRunning = true
+            redisActiveEngineCount++
           }
         }
       } catch { /* ignore parse errors */ }
@@ -90,15 +66,33 @@ export async function GET() {
     const globalIndicationsStr = await client.get("engine:indications:stats").catch(() => null)
     const globalStrategiesStr = await client.get("engine:strategies:stats").catch(() => null)
     if (globalIndicationsStr) {
-      const globalInd = JSON.parse(globalIndicationsStr)
-      totalIndicationCycles = Math.max(totalIndicationCycles, globalInd.cycleCount ?? 0)
-      indicationsRunning = indicationsRunning || globalInd.running
+      try {
+        const globalInd = JSON.parse(globalIndicationsStr)
+        totalIndicationCycles = Math.max(totalIndicationCycles, globalInd.cycleCount ?? 0)
+        indicationsRunning = indicationsRunning || globalInd.running
+      } catch { /* ignore */ }
     }
     if (globalStrategiesStr) {
-      const globalStrat = JSON.parse(globalStrategiesStr)
-      totalStrategyCycles = Math.max(totalStrategyCycles, globalStrat.cycleCount ?? 0)
-      strategiesRunning = strategiesRunning || globalStrat.running
+      try {
+        const globalStrat = JSON.parse(globalStrategiesStr)
+        totalStrategyCycles = Math.max(totalStrategyCycles, globalStrat.cycleCount ?? 0)
+        strategiesRunning = strategiesRunning || globalStrat.running
+      } catch { /* ignore */ }
     }
+    
+    // Check global engine state
+    let redisEngineRunning = false
+    try {
+      const globalEngineStr = await client.get("trade_engine:global")
+      if (globalEngineStr) {
+        const globalEngine = JSON.parse(globalEngineStr)
+        redisEngineRunning = globalEngine.status === "running"
+      }
+    } catch { /* ignore */ }
+    
+    // Engine is running if either coordinator OR Redis state says so
+    const engineRunning = coordinatorRunning || redisEngineRunning || indicationsRunning || strategiesRunning
+    const activeEngineCount = Math.max(coordinatorEngineCount, redisActiveEngineCount)
     
     // Use actual Redis key counts for results (actual data in DB)
     const indicationsCycleCount = totalIndicationCycles
