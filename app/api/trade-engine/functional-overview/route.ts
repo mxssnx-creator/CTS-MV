@@ -38,10 +38,10 @@ export async function GET() {
     const strategyMetrics = await client.hgetall("metrics:strategies")
     const strategiesEvaluated = parseInt(strategyMetrics?.evaluated_count || "0") || 0
 
-    // Check if sets are created
-    const baseSetsExist = await client.exists("data:base_set")
-    const mainSetsExist = await client.exists("data:main_set")
-    const realSetsExist = await client.exists("data:real_set")
+    // Check if sets are created (use scard for sets, with fallback)
+    const baseSetsExist = await client.scard("data:base_set").catch(() => 0)
+    const mainSetsExist = await client.scard("data:main_set").catch(() => 0)
+    const realSetsExist = await client.scard("data:real_set").catch(() => 0)
 
     // Get position entries count from Redis
     const positionKeys = await client.keys("positions:*")
