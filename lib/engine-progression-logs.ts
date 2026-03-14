@@ -19,13 +19,20 @@ const MAX_LOGS_PER_CONNECTION = 500
 
 // In-memory buffer for batch logging (reduces Redis writes significantly)
 const logBuffer: Map<string, string[]> = new Map()
-const BUFFER_FLUSH_SIZE = 20 // Flush every 20 logs
-const BUFFER_FLUSH_INTERVAL = 5000 // Or every 5 seconds
+const BUFFER_FLUSH_SIZE = 10 // Flush every 10 logs (reduced for more responsive logging)
+const BUFFER_FLUSH_INTERVAL = 3000 // Or every 3 seconds (reduced for more responsive logging)
 let flushTimerStarted = false
+
+// Important phases that should flush immediately
+const IMMEDIATE_FLUSH_PHASES = [
+  "initializing", "prehistoric_data", "indications", "strategies", 
+  "realtime", "live_trading", "error", "engine_started", "engine_stopped",
+  "engine_starting", "engine_error", "quickstart"
+]
 
 /**
  * Log a progression event for a connection
- * OPTIMIZED: Uses in-memory buffering to batch Redis writes
+ * OPTIMIZED: Uses in-memory buffering with immediate flush for important events
  */
 export async function logProgressionEvent(
   connectionId: string,
@@ -54,17 +61,19 @@ export async function logProgressionEvent(
       setInterval(flushAllLogBuffers, BUFFER_FLUSH_INTERVAL)
     }
     
-    // Flush if buffer is full
-    if (buffer.length >= BUFFER_FLUSH_SIZE) {
+    // Immediate flush for important phases or errors
+    const isImportant = IMMEDIATE_FLUSH_PHASES.some(p => phase.includes(p)) || level === "error" || level === "warning"
+    if (isImportant || buffer.length >= BUFFER_FLUSH_SIZE) {
       await flushLogBuffer(logKey)
     }
 
-    // Skip console.log for debug and info levels to reduce noise
-    if (level === "error" || level === "warning") {
-      console.log(`[v0] [${level.toUpperCase()}] [${phase}] ${message}`, details || "")
+    // Console log for important events (info for important phases, always for errors/warnings)
+    if (level === "error" || level === "warning" || isImportant) {
+      console.log(`[v0] [${level.toUpperCase()}] [${phase}] ${message}`, details ? JSON.stringify(details).slice(0, 200) : "")
     }
   } catch (error) {
     // Silent fail - logging should never block main operations
+    console.error("[v0] [LogError] Failed to log:", error)
   }
 }
 
@@ -75,29 +84,39 @@ async function flushLogBuffer(logKey: string): Promise<void> {
   const buffer = logBuffer.get(logKey)
   if (!buffer || buffer.length === 0) return
   
+  // Copy and clear buffer immediately to prevent duplicate writes
+  const toFlush = [...buffer]
+  logBuffer.set(logKey, [])
+  
   try {
     const client = getRedisClient()
     
     // Use lpush for efficient prepend (native Redis list operation)
-    await client.lpush(logKey, ...buffer.reverse())
+    await client.lpush(logKey, ...toFlush.reverse())
     
     // Trim to max size
     await client.ltrim(logKey, 0, MAX_LOGS_PER_CONNECTION - 1)
-    
-    // Clear buffer
-    logBuffer.set(logKey, [])
   } catch (error) {
-    // Keep buffer for retry on next flush
+    // Put entries back if flush failed
+    const currentBuffer = logBuffer.get(logKey) || []
+    logBuffer.set(logKey, [...toFlush, ...currentBuffer])
   }
 }
 
 /**
  * Flush all log buffers
  */
-async function flushAllLogBuffers(): Promise<void> {
-  for (const logKey of logBuffer.keys()) {
-    await flushLogBuffer(logKey)
-  }
+export async function flushAllLogBuffers(): Promise<void> {
+  const keys = Array.from(logBuffer.keys())
+  await Promise.all(keys.map(key => flushLogBuffer(key).catch(() => {})))
+}
+
+/**
+ * Force flush logs for a specific connection
+ */
+export async function forceFlushLogs(connectionId: string): Promise<void> {
+  const logKey = `engine_logs:${connectionId}`
+  await flushLogBuffer(logKey)
 }
 
 /**

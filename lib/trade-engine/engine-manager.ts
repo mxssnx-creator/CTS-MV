@@ -11,6 +11,7 @@ import { PseudoPositionManager } from "./pseudo-position-manager"
 import { RealtimeProcessor } from "./realtime-processor"
 import { logProgressionEvent } from "@/lib/engine-progression-logs"
 import { loadMarketDataForEngine } from "@/lib/market-data-loader"
+import { ProgressionStateManager } from "@/lib/progression-state-manager"
 
 export interface EngineConfig {
   connectionId: string
@@ -39,6 +40,7 @@ export class TradeEngineManager {
   private strategyProcessor: StrategyProcessor
   private pseudoPositionManager: PseudoPositionManager
   private realtimeProcessor: RealtimeProcessor
+  private startTime?: Date
 
   private componentHealth: {
     indications: ComponentHealth
@@ -114,6 +116,7 @@ export class TradeEngineManager {
       // Phase 6: Live trading ready
       this.startHeartbeat()
       this.isRunning = true
+      this.startTime = new Date()
       await this.updateProgressionPhase("live_trading", 100, "Live trading active")
       console.log(`[v0] [EngineManager] ✓ Phase 6/6: Live trading ACTIVE for ${this.connectionId}`)
       console.log(`[v0] [EngineManager] ✓ Engine fully initialized - monitoring ${symbols.length} symbols`)
@@ -229,6 +232,9 @@ export class TradeEngineManager {
           { current: i + 1, total: symbols.length, item: symbol }
         )
         await this.indicationProcessor.processHistoricalIndications(symbol, prehistoricStart, prehistoricEnd)
+        
+        // Track prehistoric progress
+        await ProgressionStateManager.incrementPrehistoricCycle(this.connectionId, symbol)
 
         // Sub-phase: Calculate strategies
         await this.updateProgressionPhase("prehistoric_data", symbolProgress + 4,
@@ -237,11 +243,19 @@ export class TradeEngineManager {
         )
         // Pass isPrehistoric=true to prevent real trades during this phase
         await this.strategyProcessor.processHistoricalStrategies(symbol, prehistoricStart, prehistoricEnd)
+        
+        // Log progress
+        await logProgressionEvent(this.connectionId, "prehistoric_data", "info", `Processed ${symbol}`, {
+          symbolIndex: i + 1,
+          totalSymbols: symbols.length,
+          progress: symbolProgress + 4,
+        })
       }
 
       // Mark prehistoric data as loaded in Redis
       await setSettings(`trade_engine_state:${this.connectionId}`, {
         ...engineState,
+        connection_id: this.connectionId,
         prehistoric_data_loaded: true,
         prehistoric_data_start: prehistoricStart.toISOString(),
         prehistoric_data_end: prehistoricEnd.toISOString(),
@@ -249,8 +263,13 @@ export class TradeEngineManager {
       })
 
       // Mark prehistoric phase as complete in progression state
-      const ProgressionManager = await import("@/lib/progression-state-manager").then((m) => m.ProgressionStateManager)
-      await ProgressionManager.completePrehistoricPhase(this.connectionId)
+      await ProgressionStateManager.completePrehistoricPhase(this.connectionId)
+      
+      await logProgressionEvent(this.connectionId, "prehistoric_complete", "info", "Prehistoric phase completed", {
+        symbolsProcessed: symbols.length,
+        startDate: prehistoricStart.toISOString(),
+        endDate: prehistoricEnd.toISOString(),
+      })
 
       console.log("[v0] Prehistoric data loaded successfully and phase complete")
     } catch (error) {
@@ -360,6 +379,9 @@ export class TradeEngineManager {
         this.componentHealth.indications.lastCycleDuration = duration
         this.componentHealth.indications.successRate = ((cycleCount - errorCount) / cycleCount) * 100
 
+        // Track progression state (every cycle)
+        await ProgressionStateManager.incrementCycle(this.connectionId, true, 0)
+
         // OPTIMIZED: Only log every 10th cycle to reduce Redis writes
         if (cycleCount % 10 === 0) {
           await logProgressionEvent(this.connectionId, "indications", "info", `Processed ${symbols.length} symbols`, {
@@ -370,7 +392,9 @@ export class TradeEngineManager {
 
           // Update engine state in Redis (batched every 10 cycles)
           await setSettings(`trade_engine_state:${this.connectionId}`, {
+            connection_id: this.connectionId,
             status: "running",
+            started_at: this.startTime?.toISOString() || new Date().toISOString(),
             last_indication_run: new Date().toISOString(),
             indication_cycle_count: cycleCount,
             indication_avg_duration_ms: Math.round(totalDuration / cycleCount),
@@ -388,10 +412,12 @@ export class TradeEngineManager {
       } catch (error) {
         errorCount++
         this.componentHealth.indications.errorCount++
+        await ProgressionStateManager.incrementCycle(this.connectionId, false, 0)
         console.error("[v0] Indication processor error:", error)
         await logProgressionEvent(this.connectionId, "indications", "error", `Processor error: ${error instanceof Error ? error.message : String(error)}`, {
           errorType: error instanceof Error ? error.name : "unknown",
-          stack: error instanceof Error ? error.stack : undefined,
+          cycleCount,
+          errorCount,
         })
       }
     }, intervalSeconds * 1000)
