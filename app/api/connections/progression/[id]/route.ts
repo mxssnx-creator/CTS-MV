@@ -70,38 +70,56 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       strategiesCount = 0
     }
     
-    // Engine is running if: flag is set OR global engine is running with valid connection
-    const engineRunning = isEngineRunning || (isGloballyRunning && (isActiveInserted || isInserted) && isEnabled)
+    // Check for actual running evidence from cycle counts in engine state
+    const indicationCycleCount = engineState?.indication_cycle_count || 0
+    const strategyCycleCount = engineState?.strategy_cycle_count || 0
+    const hasRecentActivity = engineState?.last_indication_run 
+      ? (Date.now() - new Date(engineState.last_indication_run).getTime()) < 60000 // Active in last 60s
+      : false
+    
+    // Engine is running if: flag set, state says running, OR there's recent cycle activity
+    const engineRunning = isEngineRunning || 
+      (isGloballyRunning && (isActiveInserted || isInserted) && isEnabled) ||
+      engineState?.status === "running" ||
+      hasRecentActivity ||
+      indicationCycleCount > 0 ||
+      progressionState.cyclesCompleted > 0
     
     // Phase progression depends on stored phase or derived from state
     let phase = progression?.phase || "idle"
     let progress = Number(progression?.progress) || 0
     let detail = progression?.detail || "Not running"
     
-    // Better phase detection based on engine state
-    if (engineState?.status === "running" || isEngineRunning) {
-      // Engine is actively running
-      if (progression?.phase && progression.phase !== "ready" && progression.phase !== "idle") {
-        // Use stored progression phase
+    // Better phase detection based on actual metrics (most reliable)
+    if (progressionState.cyclesCompleted > 0 || indicationCycleCount > 0 || hasRecentActivity) {
+      // Engine is definitely running - we have cycle evidence
+      if (progression?.phase && !["ready", "idle"].includes(progression.phase)) {
+        // Use stored progression phase if it's meaningful
         phase = progression.phase
         progress = Number(progression.progress) || 85
         detail = progression.detail || "Engine running"
       } else {
-        // Derive from cycle counts
-        if (progressionState.cyclesCompleted > 0) {
+        // Derive from actual cycle counts
+        const totalCycles = Math.max(progressionState.cyclesCompleted, indicationCycleCount)
+        if (totalCycles > 100) {
           phase = "live_trading"
           progress = 100
-          detail = `Live trading active - ${progressionState.cyclesCompleted} cycles completed`
-        } else if (indicationsCount > 0 || strategiesCount > 0) {
+          detail = `Live trading active - ${totalCycles} cycles completed`
+        } else if (totalCycles > 0) {
           phase = "realtime"
-          progress = 85
-          detail = `Processing ${indicationsCount} indications, ${strategiesCount} strategies`
+          progress = 75 + Math.min(25, totalCycles / 4)
+          detail = `Processing realtime data - ${totalCycles} cycles`
         } else {
           phase = "initializing"
           progress = 50
           detail = "Engine initializing..."
         }
       }
+    } else if (engineState?.status === "running" || isEngineRunning) {
+      // Engine state says running but no cycles yet
+      phase = "initializing"
+      progress = 30
+      detail = "Engine starting up..."
     } else if (!isEnabled || (!isActiveInserted && !isInserted)) {
       phase = "idle"
       progress = 0
@@ -189,10 +207,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         strategiesCount,
         engineRunning,
         isEngineRunning,
+        hasRecentActivity,
         globalEngineStatus: globalState?.status || "unknown",
         engineStateStatus: engineState?.status || "unknown",
-        indicationCycleCount: engineState?.indication_cycle_count || 0,
-        strategyCycleCount: engineState?.strategy_cycle_count || 0,
+        indicationCycleCount,
+        strategyCycleCount,
+        progressionCyclesCompleted: progressionState.cyclesCompleted,
         lastIndicationRun: engineState?.last_indication_run || null,
         lastStrategyRun: engineState?.last_strategy_run || null,
       },

@@ -24,10 +24,35 @@ export async function GET() {
     const positions1h = allKeys.filter((k: string) => k.includes("position")).length
     const entries1h = allKeys.filter((k: string) => k.includes("entry") || k.includes("indication")).length
 
-    // Get engine status - define ALL variables BEFORE using them
+    // Get engine status - use Redis state as source of truth (coordinator may not track all engines)
     const coordinatorReady = coordinator?.isReady?.() ?? false
-    const engineRunning = coordinator?.isRunning?.() ?? false
-    const activeEngineCount = coordinator?.getActiveEngineCount?.() ?? 0
+    const coordinatorRunning = coordinator?.isRunning?.() ?? false
+    const coordinatorEngineCount = coordinator?.getActiveEngineCount?.() ?? 0
+    
+    // Check actual Redis state for engine running status (more reliable than in-memory coordinator)
+    let redisEngineRunning = false
+    let redisActiveEngineCount = 0
+    try {
+      const globalEngineStr = await client.get("trade_engine:global")
+      if (globalEngineStr) {
+        const globalEngine = JSON.parse(globalEngineStr)
+        redisEngineRunning = globalEngine.status === "running"
+      }
+      
+      // Count connections with running engines
+      const connectionStateKeys = allKeys.filter((k: string) => k.startsWith("settings:trade_engine_state:"))
+      for (const key of connectionStateKeys) {
+        const stateStr = await client.get(key)
+        if (stateStr) {
+          const state = JSON.parse(stateStr)
+          if (state.status === "running") redisActiveEngineCount++
+        }
+      }
+    } catch { /* ignore */ }
+    
+    // Engine is running if either coordinator OR Redis state says so
+    const engineRunning = coordinatorRunning || redisEngineRunning || indicationsRunning || strategiesRunning
+    const activeEngineCount = Math.max(coordinatorEngineCount, redisActiveEngineCount)
     
     // Count actual indications and strategies in Redis
     const indicationKeys = allKeys.filter((k: string) => 
