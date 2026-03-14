@@ -50,6 +50,16 @@ export class InlineLocalRedis {
    */
   private trackOperation(): void {
     const now = Math.floor(Date.now() / 1000)
+    
+    // Initialize requestStats if it doesn't exist (for existing data without this field)
+    if (!this.data.requestStats) {
+      this.data.requestStats = {
+        lastSecond: now,
+        requestCount: 0,
+        operationsPerSecond: 0,
+      }
+    }
+    
     const stats = this.data.requestStats
     
     if (now > stats.lastSecond) {
