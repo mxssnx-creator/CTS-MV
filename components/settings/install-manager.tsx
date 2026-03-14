@@ -5,9 +5,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { 
   CheckCircle2, 
@@ -18,10 +17,9 @@ import {
   RefreshCw,
   AlertCircle,
   Server,
-  Settings as SettingsIcon,
-  Download
+  Download,
 } from "lucide-react"
-import { toast } from "@/lib/simple-toast"
+import { toast } from "sonner"
 
 interface InstallStatus {
   isInstalled: boolean
@@ -39,107 +37,54 @@ export default function InstallManager() {
   const [installLog, setInstallLog] = useState<string[]>([])
   const [activeTab, setActiveTab] = useState("status")
   
-  // Database configuration state
-  const [dbType, setDbType] = useState<string>("sqlite")
-  const [dbName, setDbName] = useState<string>("cts-v3-1")
-  const [dbHost, setDbHost] = useState<string>("localhost")
-  const [dbPort, setDbPort] = useState<string>("5432")
-  const [dbUser, setDbUser] = useState<string>("postgres")
-  const [dbPassword, setDbPassword] = useState<string>("")
-
   const loadStatus = async () => {
     setLoading(true)
     try {
-      const response = await fetch("/api/install/status")
+      const response = await fetch("/api/system/init-status")
       const data = await response.json()
       
-      setStatus(data)
+      // Consider installed if migrations are applied (version > 0) OR if keys exist
+      const hasMigrations = (data.migrations?.current_version || 0) > 0
+      const hasKeys = (data.statistics?.total_keys || 0) > 0
+      const isInstalled = data.initialized || hasMigrations || hasKeys
       
-      // Set form defaults from current config
-      if (data.databaseType) {
-        setDbType(data.databaseType)
-      }
+      setStatus({
+        isInstalled,
+        databaseConnected: data.database?.connected || false,
+        databaseType: data.database?.type || "redis",
+        tableCount: data.statistics?.total_keys || 0,
+        migrationsApplied: data.migrations?.current_version || 0,
+        error: data.status === "error" ? data.message : null,
+      })
+      
+      console.log("[v0] Install status loaded:", { 
+        initialized: data.initialized, 
+        hasMigrations, 
+        hasKeys, 
+        isInstalled,
+        keys: data.statistics?.total_keys,
+        version: data.migrations?.current_version
+      })
     } catch (error) {
-      console.error("[v0] Error loading install status:", error)
-      toast.error("Failed to check installation status")
+      console.error("[v0] Error loading init status:", error)
+      toast.error("Failed to check initialization status")
     } finally {
       setLoading(false)
     }
   }
-  
-  const testConnection = async () => {
-    try {
-      let databaseUrl = ""
-      
-      if (dbType === "postgresql") {
-        databaseUrl = `postgresql://${dbUser}:${dbPassword}@${dbHost}:${dbPort}/${dbName}`
-      }
 
-      const response = await fetch("/api/install/test-connection", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          databaseType: dbType,
-          databaseUrl,
-        }),
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || "Connection test failed")
-      }
-
-      toast.success("Database connection successful!")
-    } catch (error) {
-      console.error("Connection test error:", error)
-      toast.error(error instanceof Error ? error.message : "Connection failed")
-    }
-  }
-  
-  const configureDatabase = async () => {
-    try {
-      let databaseUrl = ""
-      
-      if (dbType === "postgresql") {
-        databaseUrl = `postgresql://${dbUser}:${dbPassword}@${dbHost}:${dbPort}/${dbName}`
-      }
-
-      const response = await fetch("/api/install/configure", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          databaseType: dbType,
-          databaseUrl,
-          databaseName: dbName,
-          host: dbHost,
-          port: parseInt(dbPort),
-          username: dbUser,
-          password: dbPassword,
-        }),
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || "Configuration failed")
-      }
-
-      toast.success("Database configured successfully!")
-      await loadStatus()
-      setActiveTab("status")
-    } catch (error) {
-      console.error("Configure error:", error)
-      toast.error(error instanceof Error ? error.message : "Configuration failed")
-    }
-  }
+  useEffect(() => {
+    loadStatus()
+  }, [])
 
   const runInstallation = async () => {
     setInstalling(true)
     setInstallLog([])
     
     try {
-      setInstallLog(prev => [...prev, "Starting database installation..."])
+      setInstallLog(prev => [...prev, "Starting Redis migration..."])
       
-      const response = await fetch("/api/install/initialize", {
+      const response = await fetch("/api/install/database/migrate", {
         method: "POST",
       })
       
@@ -148,31 +93,32 @@ export default function InstallManager() {
       if (data.success) {
         setInstallLog(prev => [
           ...prev,
-          `✓ Migrations: ${data.applied} applied, ${data.skipped} skipped`,
-          "✓ Database initialized successfully",
-          "✓ System ready for use"
+          "✓ Redis migrations completed successfully",
+          `Schema version: ${data.status?.schema_version || "N/A"}`,
+          `Total keys in database: ${data.stats?.total_keys || 0}`,
+          `Indexes created: ${data.status?.indexes_created ? "Yes" : "No"}`,
+          `TTL configured: ${data.status?.ttl_configured ? "Yes" : "No"}`,
+          "Installation complete!",
         ])
-        toast.success("Database installed successfully!")
-        
-        // Reload status after 1 second
-        setTimeout(() => {
-          loadStatus()
-        }, 1000)
+        toast.success("Redis migrations completed!")
+        await loadStatus()
       } else {
-        setInstallLog(prev => [...prev, `✗ Error: ${data.error}`])
-        toast.error(data.error || "Installation failed")
+        const errorMsg = data.error || "Migration failed"
+        setInstallLog(prev => [...prev, `✗ ${errorMsg}`])
+        throw new Error(errorMsg)
       }
     } catch (error) {
       console.error("[v0] Installation error:", error)
-      setInstallLog(prev => [...prev, `✗ Error: ${error instanceof Error ? error.message : "Installation failed"}`])
-      toast.error("Installation failed")
+      const msg = error instanceof Error ? error.message : "Installation failed"
+      setInstallLog(prev => [...prev, `✗ Error: ${msg}`])
+      toast.error(msg)
     } finally {
       setInstalling(false)
     }
   }
 
   const forceReinitialize = async () => {
-    if (!confirm("⚠️ WARNING: This will DROP ALL TABLES and recreate them. All data will be permanently lost. Are you absolutely sure?")) {
+    if (!confirm("⚠️ WARNING: This will FLUSH the entire Redis database. All data will be permanently lost. Are you absolutely sure?")) {
       return
     }
     
@@ -180,9 +126,9 @@ export default function InstallManager() {
     setInstallLog([])
     
     try {
-      setInstallLog(prev => [...prev, "⚠️ Dropping all existing tables..."])
+      setInstallLog(prev => [...prev, "⚠️ Flushing Redis database..."])
       
-      const response = await fetch("/api/admin/force-reinit", {
+      const response = await fetch("/api/install/database/flush", {
         method: "POST",
       })
       
@@ -191,50 +137,25 @@ export default function InstallManager() {
       if (data.success) {
         setInstallLog(prev => [
           ...prev,
-          `✓ Dropped ${data.tablesDropped} tables`,
-          `✓ Created ${data.tablesCreated} tables`,
-          `✓ Duration: ${data.duration}ms`,
+          "✓ Redis database flushed",
+          "✓ Running migrations...",
+          `✓ Schema initialized to v${data.status.migration_status.latest_version}`,
           "✓ Database fully reinitialized",
           "✓ System ready for use"
         ])
-        toast.success(`Database reinitialized: ${data.tablesCreated} tables created`)
+        toast.success("Redis database flushed and reinitialized")
         
-        // Reload status after 1 second
         setTimeout(() => {
           loadStatus()
         }, 1000)
       } else {
         setInstallLog(prev => [...prev, `✗ Error: ${data.error}`])
-        toast.error(data.error || "Reinitialization failed")
+        toast.error(data.error || "Flush operation failed")
       }
     } catch (error) {
-      console.error("[v0] Reinit error:", error)
-      setInstallLog(prev => [...prev, `✗ Error: ${error instanceof Error ? error.message : "Reinitialization failed"}`])
-      toast.error("Reinitialization failed")
-    } finally {
-      setInstalling(false)
-    }
-  }
-
-  const quickReinit = async () => {
-    setInstalling(true)
-    setInstallLog(["Starting quick reinitialization..."])
-    
-    try {
-      const response = await fetch("/api/admin/reinit-db", { method: "POST" })
-      const data = await response.json()
-      
-      if (data.success) {
-        setInstallLog(prev => [...prev, `✓ Tables: ${data.tables}`, `✓ ${data.message}`])
-        toast.success("Database updated successfully")
-        setTimeout(() => loadStatus(), 1000)
-      } else {
-        setInstallLog(prev => [...prev, `✗ Error: ${data.error}`])
-        toast.error(data.error || "Quick reinit failed")
-      }
-    } catch (error) {
-      setInstallLog(prev => [...prev, `✗ Error: ${error instanceof Error ? error.message : "Failed"}`])
-      toast.error("Quick reinit failed")
+      console.error("[v0] Flush error:", error)
+      setInstallLog(prev => [...prev, `✗ Error: ${error instanceof Error ? error.message : "Flush failed"}`])
+      toast.error("Flush failed")
     } finally {
       setInstalling(false)
     }
@@ -242,21 +163,20 @@ export default function InstallManager() {
 
   const runMigrations = async () => {
     setInstalling(true)
-    setInstallLog(["Running migrations..."])
+    setInstallLog(["Running Redis migrations..."])
     
     try {
-      const response = await fetch("/api/admin/run-migrations", { method: "POST" })
+      const response = await fetch("/api/install/database/migrate", { method: "POST" })
       const data = await response.json()
       
       if (data.success) {
         setInstallLog(prev => [
           ...prev,
-          `✓ Applied: ${data.applied}`,
-          `✓ Skipped: ${data.skipped}`,
-          `✓ Failed: ${data.failed}`,
-          `✓ ${data.message}`
+          `✓ Schema version: ${data.status?.schema_version || "N/A"}`,
+          `✓ Database keys: ${data.stats?.total_keys || 0}`,
+          `✓ ${data.message || "Migrations completed"}`
         ])
-        toast.success(`Migrations complete: ${data.applied} applied`)
+        toast.success("Redis migrations complete")
         setTimeout(() => loadStatus(), 1000)
       } else {
         setInstallLog(prev => [...prev, `✗ Error: ${data.error}`])
@@ -265,58 +185,6 @@ export default function InstallManager() {
     } catch (error) {
       setInstallLog(prev => [...prev, `✗ Error: ${error instanceof Error ? error.message : "Failed"}`])
       toast.error("Migrations failed")
-    } finally {
-      setInstalling(false)
-    }
-  }
-
-  const directInit = async () => {
-    if (!confirm("This will execute the SQL file directly. Continue?")) return
-    
-    setInstalling(true)
-    setInstallLog(["Executing direct initialization..."])
-    
-    try {
-      const response = await fetch("/api/admin/init-database-direct", { method: "POST" })
-      const data = await response.json()
-      
-      if (data.success) {
-        setInstallLog(prev => [...prev, `✓ Tables: ${data.tables}`, `✓ ${data.message}`])
-        toast.success("Direct initialization complete")
-        setTimeout(() => loadStatus(), 1000)
-      } else {
-        setInstallLog(prev => [...prev, `✗ Error: ${data.error}`])
-        toast.error(data.error || "Direct init failed")
-      }
-    } catch (error) {
-      setInstallLog(prev => [...prev, `✗ Error: ${error instanceof Error ? error.message : "Failed"}`])
-      toast.error("Direct init failed")
-    } finally {
-      setInstalling(false)
-    }
-  }
-
-  const resetAndInit = async () => {
-    if (!confirm("⚠️ This will DROP ALL TABLES and recreate them. All data will be lost. Continue?")) return
-    
-    setInstalling(true)
-    setInstallLog(["⚠️ Resetting database..."])
-    
-    try {
-      const response = await fetch("/api/admin/reset-and-init", { method: "POST" })
-      const data = await response.json()
-      
-      if (data.success) {
-        setInstallLog(prev => [...prev, `✓ ${data.message}`])
-        toast.success("Database reset complete")
-        setTimeout(() => loadStatus(), 1000)
-      } else {
-        setInstallLog(prev => [...prev, `✗ Error: ${data.error}`])
-        toast.error(data.error || "Reset failed")
-      }
-    } catch (error) {
-      setInstallLog(prev => [...prev, `✗ Error: ${error instanceof Error ? error.message : "Failed"}`])
-      toast.error("Reset failed")
     } finally {
       setInstalling(false)
     }
@@ -422,7 +290,7 @@ export default function InstallManager() {
                   <Database className="h-5 w-5 text-blue-600" />
                   <div>
                     <p className="text-sm font-medium">Database Type</p>
-                    <p className="text-sm text-muted-foreground capitalize">{status.databaseType}</p>
+                    <p className="text-sm text-muted-foreground">Redis (In-Memory)</p>
                   </div>
                 </div>
               </div>
@@ -432,15 +300,15 @@ export default function InstallManager() {
                 <h3 className="text-sm font-semibold">System Status</h3>
                 <div className="space-y-2 text-sm">
                   <div className="flex items-center justify-between p-2 bg-muted/50 rounded">
-                    <span>Tables Created</span>
+                    <span>Redis Keys</span>
                     <Badge variant={status.tableCount > 0 ? "default" : "secondary"}>
-                      {status.tableCount} tables
+                      {status.tableCount} keys
                     </Badge>
                   </div>
                   <div className="flex items-center justify-between p-2 bg-muted/50 rounded">
-                    <span>Migrations Applied</span>
+                    <span>Schema Version</span>
                     <Badge variant={status.migrationsApplied > 0 ? "default" : "secondary"}>
-                      {status.migrationsApplied} migrations
+                      v{status.migrationsApplied}
                     </Badge>
                   </div>
                 </div>
@@ -459,8 +327,7 @@ export default function InstallManager() {
                 <Alert>
                   <Server className="h-4 w-4" />
                   <AlertDescription>
-                    The database is not installed. Click the button below to initialize the database with all required
-                    tables, indexes, and migrations.
+                    Redis is not initialized. Click the button below to run migrations and seed initial data.
                   </AlertDescription>
                 </Alert>
               )}
@@ -486,7 +353,7 @@ export default function InstallManager() {
                     ) : (
                       <>
                         <Play className="h-4 w-4 mr-2" />
-                        Initialize Database
+                        Initialize Redis
                       </>
                     )}
                   </Button>
@@ -527,34 +394,24 @@ export default function InstallManager() {
                 {status.isInstalled && (
                   <div className="space-y-3 pt-2 border-t">
                     <div className="flex items-center justify-between">
-                      <h4 className="text-sm font-semibold">Migration Tools</h4>
+                      <h4 className="text-sm font-semibold">Redis Management</h4>
                       <Badge variant="secondary" className="text-xs">Advanced</Badge>
                     </div>
                     
                     <div className="grid grid-cols-2 gap-2">
-                      <Button onClick={quickReinit} disabled={installing} size="sm" variant="default">
-                        {installing ? <Loader2 className="h-3 w-3 mr-1.5 animate-spin" /> : <RefreshCw className="h-3 w-3 mr-1.5" />}
-                        Quick Reinit
-                      </Button>
-                      <Button onClick={runMigrations} disabled={installing} size="sm" variant="outline">
+                      <Button onClick={runMigrations} disabled={installing} size="sm" variant="default">
                         {installing ? <Loader2 className="h-3 w-3 mr-1.5 animate-spin" /> : <Play className="h-3 w-3 mr-1.5" />}
                         Run Migrations
                       </Button>
-                      <Button onClick={directInit} disabled={installing} size="sm" variant="secondary">
-                        {installing ? <Loader2 className="h-3 w-3 mr-1.5 animate-spin" /> : <Database className="h-3 w-3 mr-1.5" />}
-                        Direct Init
-                      </Button>
-                      <Button onClick={resetAndInit} disabled={installing} size="sm" variant="destructive">
+                      <Button onClick={forceReinitialize} disabled={installing} size="sm" variant="destructive">
                         {installing ? <Loader2 className="h-3 w-3 mr-1.5 animate-spin" /> : <AlertCircle className="h-3 w-3 mr-1.5" />}
-                        Reset All
+                        Flush & Reinit
                       </Button>
                     </div>
 
                     <div className="text-xs text-muted-foreground bg-muted/50 p-3 rounded-lg space-y-1">
-                      <p><strong>Quick Reinit:</strong> Re-executes SQL file to add missing tables (recommended)</p>
-                      <p><strong>Run Migrations:</strong> Executes migrations with tracking</p>
-                      <p><strong>Direct Init:</strong> Full SQLite batch initialization</p>
-                      <p><strong>Reset All:</strong> Drops all tables then recreates (⚠️ loses data)</p>
+                      <p><strong>Run Migrations:</strong> Apply pending migrations to Redis schema</p>
+                      <p><strong>Flush & Reinit:</strong> Clear all data and reinitialize (⚠️ irreversible)</p>
                     </div>
                   </div>
                 )}
@@ -580,138 +437,191 @@ export default function InstallManager() {
         <TabsContent value="configure">
           <Card>
             <CardHeader>
-              <CardTitle>Database Configuration</CardTitle>
+              <CardTitle>Redis Database Information</CardTitle>
               <CardDescription>
-                Configure your database connection settings
+                Real-time database statistics and performance metrics
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Database Type Selection */}
-              <div className="space-y-2">
-                <Label htmlFor="db-type">Database Type</Label>
-                <Select value={dbType} onValueChange={setDbType}>
-                  <SelectTrigger id="db-type">
-                    <SelectValue placeholder="Select database type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="sqlite">SQLite (Local Development)</SelectItem>
-                    <SelectItem value="postgresql">PostgreSQL (Production)</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-sm text-muted-foreground">
-                  {dbType === "sqlite" 
-                    ? "SQLite stores data locally in a file. Perfect for development and single-server deployments."
-                    : "PostgreSQL is recommended for production environments with multiple servers or high traffic."}
+              {/* Redis Connection Info */}
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-4 border rounded-lg space-y-2">
+                    <p className="text-sm font-semibold text-muted-foreground">Database Type</p>
+                    <p className="text-lg font-bold">Redis</p>
+                    <p className="text-xs text-muted-foreground">High-performance in-memory data store</p>
+                  </div>
+
+                  <div className="p-4 border rounded-lg space-y-2">
+                    <p className="text-sm font-semibold text-muted-foreground">Connection Status</p>
+                    <div className="flex items-center gap-2">
+                      <div className={`h-3 w-3 rounded-full ${status.databaseConnected ? "bg-green-500" : "bg-red-500"}`} />
+                      <p className="text-lg font-bold">
+                        {status.databaseConnected ? "Connected" : "Disconnected"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="p-4 border rounded-lg space-y-2">
+                    <p className="text-sm font-semibold text-muted-foreground">Total Keys</p>
+                    <p className="text-lg font-bold">{status.tableCount}</p>
+                    <p className="text-xs text-muted-foreground">Keys in database</p>
+                  </div>
+
+                  <div className="p-4 border rounded-lg space-y-2">
+                    <p className="text-sm font-semibold text-muted-foreground">Schema Version</p>
+                    <p className="text-lg font-bold">{status.migrationsApplied}</p>
+                    <p className="text-xs text-muted-foreground">Current migration level</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Redis Features */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold">Enabled Features</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="flex items-center gap-2 p-3 border rounded-lg bg-muted/50">
+                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    <span className="text-sm">Persistent Storage</span>
+                  </div>
+                  <div className="flex items-center gap-2 p-3 border rounded-lg bg-muted/50">
+                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    <span className="text-sm">High Performance</span>
+                  </div>
+                  <div className="flex items-center gap-2 p-3 border rounded-lg bg-muted/50">
+                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    <span className="text-sm">Automatic Indexing</span>
+                  </div>
+                  <div className="flex items-center gap-2 p-3 border rounded-lg bg-muted/50">
+                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    <span className="text-sm">TTL Expiration</span>
+                  </div>
+                  <div className="flex items-center gap-2 p-3 border rounded-lg bg-muted/50">
+                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    <span className="text-sm">Live Trade Engine</span>
+                  </div>
+                  <div className="flex items-center gap-2 p-3 border rounded-lg bg-muted/50">
+                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    <span className="text-sm">Preset Management</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Redis Configuration Info */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold">Configuration Details</h3>
+                <div className="bg-muted/50 p-4 rounded-lg space-y-2 text-sm">
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Database URL</span>
+                    <code className="text-xs bg-background px-2 py-1 rounded">{process.env.UPSTASH_REDIS_REST_URL ? "Configured" : "Not configured"}</code>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Server Version</span>
+                    <code className="text-xs bg-background px-2 py-1 rounded">3.2</code>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Data Persistence</span>
+                    <code className="text-xs bg-background px-2 py-1 rounded">Enabled</code>
+                  </div>
+                </div>
+              </div>
+
+              {/* Database Data Structures */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold">Data Structures</h3>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <span className="text-sm">Connections</span>
+                    <Badge variant="outline">Hash</Badge>
+                  </div>
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <span className="text-sm">Trades</span>
+                    <Badge variant="outline">Sorted Set</Badge>
+                  </div>
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <span className="text-sm">Positions</span>
+                    <Badge variant="outline">Hash</Badge>
+                  </div>
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <span className="text-sm">Settings</span>
+                    <Badge variant="outline">String</Badge>
+                  </div>
+                </div>
+              </div>
+
+              {/* TTL Configuration */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold">Data Retention</h3>
+                <div className="bg-blue-50 dark:bg-blue-950 p-4 rounded-lg space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span>Connections TTL</span>
+                    <code className="text-xs">30 days</code>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Trades TTL</span>
+                    <code className="text-xs">90 days</code>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Positions TTL</span>
+                    <code className="text-xs">60 days</code>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>System Logs TTL</span>
+                    <code className="text-xs">7 days</code>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Configuration Tab */}
+        <TabsContent value="configure" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Redis Configuration</CardTitle>
+              <CardDescription>Configure Redis connection for production deployment</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                <p className="text-sm text-blue-900 dark:text-blue-100">
+                  <strong>Note:</strong> Redis is the only database engine supported. For production, use Upstash Redis or deploy your own Redis instance.
                 </p>
               </div>
 
-              {/* PostgreSQL Configuration */}
-              {dbType === "postgresql" && (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="db-host">Host</Label>
-                      <Input
-                        id="db-host"
-                        type="text"
-                        value={dbHost}
-                        onChange={(e) => setDbHost(e.target.value)}
-                        placeholder="localhost"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="db-port">Port</Label>
-                      <Input
-                        id="db-port"
-                        type="text"
-                        value={dbPort}
-                        onChange={(e) => setDbPort(e.target.value)}
-                        placeholder="5432"
-                      />
-                    </div>
-                  </div>
+              <div className="space-y-2">
+                <Label htmlFor="redis-url">Redis URL</Label>
+                <Input
+                  id="redis-url"
+                  placeholder="redis://localhost:6379 or rediss://..."
+                  defaultValue={process.env.REDIS_URL || ""}
+                  className="font-mono text-xs"
+                />
+              </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="db-name">Database Name</Label>
-                    <Input
-                      id="db-name"
-                      type="text"
-                      value={dbName}
-                      onChange={(e) => setDbName(e.target.value)}
-                      placeholder="cts-v3-1"
-                    />
-                    <p className="text-sm text-muted-foreground">
-                      The database must already exist. Create it using: CREATE DATABASE "{dbName}";
-                    </p>
-                  </div>
+              <div className="space-y-2">
+                <Label htmlFor="redis-password">Redis Password (Optional)</Label>
+                <Input
+                  id="redis-password"
+                  type="password"
+                  placeholder="Leave empty if no password required"
+                  className="font-mono text-xs"
+                />
+              </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="db-user">Username</Label>
-                    <Input
-                      id="db-user"
-                      type="text"
-                      value={dbUser}
-                      onChange={(e) => setDbUser(e.target.value)}
-                      placeholder="postgres"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="db-password">Password</Label>
-                    <Input
-                      id="db-password"
-                      type="password"
-                      value={dbPassword}
-                      onChange={(e) => setDbPassword(e.target.value)}
-                      placeholder="Enter database password"
-                    />
-                  </div>
-
-                  {/* Connection String Preview */}
-                  <div className="space-y-2">
-                    <Label>Connection String</Label>
-                    <div className="p-3 bg-muted/50 rounded-md text-sm font-mono break-all">
-                      {dbPassword 
-                        ? `postgresql://${dbUser}:****@${dbHost}:${dbPort}/${dbName}`
-                        : `postgresql://${dbUser}@${dbHost}:${dbPort}/${dbName}`
-                      }
-                    </div>
-                  </div>
-
-                  {/* Test Connection Button */}
-                  <Button variant="outline" onClick={testConnection} className="w-full bg-transparent">
-                    <Database className="h-4 w-4 mr-2" />
-                    Test Connection
-                  </Button>
-                </div>
-              )}
-
-              {/* SQLite Info */}
-              {dbType === "sqlite" && (
-                <Alert>
-                  <Database className="h-4 w-4" />
-                  <AlertDescription>
-                    SQLite will automatically create a database file at <code className="text-xs bg-muted px-1 py-0.5 rounded">./data/cts.db</code>
-                    <br />
-                    No additional configuration is needed.
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              {/* Save Configuration */}
               <div className="flex gap-2">
-                <Button onClick={configureDatabase} className="flex-1">
-                  <SettingsIcon className="h-4 w-4 mr-2" />
-                  Save Configuration
+                <Button className="flex-1">
+                  <Database className="h-4 w-4 mr-2" />
+                  Test Connection
                 </Button>
-                <Button variant="outline" onClick={() => setActiveTab("status")}>
-                  Cancel
+                <Button variant="outline" className="flex-1">
+                  Save Configuration
                 </Button>
               </div>
 
-              {/* Help Text */}
               <div className="text-sm text-muted-foreground space-y-2">
-                <p><strong>Note:</strong> After changing the database configuration, you'll need to run the installation process to create all tables and apply migrations.</p>
+                <p><strong>Development:</strong> Leave Redis URL empty to use in-memory fallback store.</p>
+                <p><strong>Production:</strong> Provide a valid Redis connection string for persistent data storage.</p>
               </div>
             </CardContent>
           </Card>

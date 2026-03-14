@@ -1,27 +1,29 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { sql } from "@/lib/db"
+import { getAllConnections, getSettings } from "@/lib/redis-db"
 
 export async function POST(request: NextRequest) {
   try {
     console.log("[v0] Preparing deployment package...")
 
-    // Get all system data
-    const connections = await sql`SELECT * FROM exchange_connections`
-    const settings = await sql`SELECT * FROM system_settings`
-    const strategies = await sql`SELECT * FROM indications`
+    // Get all system data from Redis
+    const connections = await getAllConnections()
+    const systemSettings = await getSettings("system_settings")
+    const indicators = await getSettings("indicators")
 
     // Create deployment package data
     const deploymentData = {
       version: "3.0.0",
       timestamp: new Date().toISOString(),
-      connections: connections.length,
-      settings: settings.length,
-      strategies: strategies.length,
-      database_schema: "included",
-      dependencies: "included",
+      connections: Array.isArray(connections) ? connections.length : 0,
+      settings: systemSettings ? Object.keys(systemSettings).length : 0,
+      indicators: Array.isArray(indicators) ? indicators.length : 0,
+      storage: "Redis",
+      backup_ready: true,
     }
 
-    // Return as JSON for now (in production, this would create a ZIP file)
+    console.log("[v0] Deployment package prepared:", deploymentData)
+
+    // Return as JSON
     return NextResponse.json({
       success: true,
       message: "Deployment package prepared",

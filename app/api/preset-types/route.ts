@@ -1,21 +1,36 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { query, execute, queryOne } from "@/lib/db"
+import { getRedisClient, initRedis } from "@/lib/redis-db"
 import { nanoid } from "nanoid"
 
-// GET /api/preset-types - Get all preset types
+// GET /api/preset-types - Get all preset types from Redis
 export async function GET(request: NextRequest) {
   try {
     console.log("[v0] GET /api/preset-types - Fetching preset types...")
 
-    const types = await query(`
-      SELECT 
-        pt.*,
-        COUNT(DISTINCT pts.configuration_set_id) as sets_count
-      FROM preset_types pt
-      LEFT JOIN preset_type_sets pts ON pt.id = pts.preset_type_id AND pts.is_active = true
-      GROUP BY pt.id
-      ORDER BY pt.created_at DESC
-    `)
+    await initRedis()
+    const client = getRedisClient()
+
+    // Get all preset type IDs from the index set
+    const typeIds = await (client as any).smembers("preset_types:all")
+    const types = []
+
+    for (const id of typeIds) {
+      if (!id) continue
+      const data = await (client as any).hgetall(`preset_type:${id}`)
+      if (data && Object.keys(data).length > 0) {
+        types.push({
+          id,
+          ...data,
+        })
+      }
+    }
+
+    // Sort by created_at descending
+    types.sort((a, b) => {
+      const dateA = new Date(a.created_at || 0)
+      const dateB = new Date(b.created_at || 0)
+      return dateB.getTime() - dateA.getTime()
+    })
 
     console.log("[v0] Successfully fetched", types.length, "preset types")
     return NextResponse.json(types)
@@ -39,45 +54,43 @@ export async function POST(request: NextRequest) {
 
     const id = nanoid()
 
-    await execute(
-      `
-      INSERT INTO preset_types (
-        id, name, description, preset_trade_type,
-        max_positions_per_indication, max_positions_per_direction, max_positions_per_range,
-        timeout_per_indication, timeout_after_position,
-        block_enabled, block_only, dca_enabled, dca_only,
-        auto_evaluate, evaluation_interval_hours,
-        is_active, created_at, updated_at
-      ) VALUES (
-        $1, $2, $3, $4,
-        $5, $6, $7,
-        $8, $9,
-        $10, $11, $12, $13,
-        $14, $15,
-        $16, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-      )
-    `,
-      [
-        id,
-        body.name,
-        body.description || null,
-        body.preset_trade_type || "automatic",
-        body.max_positions_per_indication || 1,
-        body.max_positions_per_direction || 1,
-        body.max_positions_per_range || 1,
-        body.timeout_per_indication || 5,
-        body.timeout_after_position || 10,
-        body.block_enabled || false,
-        body.block_only || false,
-        body.dca_enabled || false,
-        body.dca_only || false,
-        body.auto_evaluate !== false,
-        body.evaluation_interval_hours || 3,
-        body.is_active !== false,
-      ],
-    )
+    await initRedis()
+    const client = getRedisClient()
 
-    const presetType = await queryOne("SELECT * FROM preset_types WHERE id = $1", [id])
+    const presetType = {
+      id,
+      name: body.name,
+      description: body.description || null,
+      preset_trade_type: body.preset_trade_type || "automatic",
+      max_positions_per_indication: body.max_positions_per_indication || 1,
+      max_positions_per_direction: body.max_positions_per_direction || 1,
+      max_positions_per_range: body.max_positions_per_range || 1,
+      timeout_per_indication: body.timeout_per_indication || 5,
+      timeout_after_position: body.timeout_after_position || 10,
+      block_enabled: body.block_enabled || false,
+      block_only: body.block_only || false,
+      dca_enabled: body.dca_enabled || false,
+      dca_only: body.dca_only || false,
+      auto_evaluate: body.auto_evaluate !== false,
+      evaluation_interval_hours: body.evaluation_interval_hours || 3,
+      is_active: body.is_active !== false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+
+    // Store in Redis as a hash
+    const key = `preset_type:${id}`
+    const hashData: Record<string, string> = {}
+    for (const [k, v] of Object.entries(presetType)) {
+      hashData[k] = String(v ?? "")
+    }
+    await (client as any).hset(key, hashData)
+
+    // Add to index
+    await (client as any).sadd("preset_types:all", id)
+    
+    // Set TTL (30 days)
+    await (client as any).expire(key, 30 * 24 * 60 * 60)
 
     console.log("[v0] Preset type created successfully:", id)
     return NextResponse.json(presetType, { status: 201 })

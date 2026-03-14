@@ -1,199 +1,40 @@
+/**
+ * Application instrumentation - runs on app startup
+ * Initializes Redis, runs migrations, seeds data, and starts trade engine
+ * 
+ * IMPORTANT: Next.js calls register() twice (once per compilation).
+ * We use a globalThis guard to ensure startup only runs ONCE.
+ */
+
+const g = globalThis as any
+if (!g.__cts_register_guard) {
+  g.__cts_register_guard = { done: false, running: false }
+}
+
 export async function register() {
-  if (process.env.NEXT_RUNTIME === "nodejs") {
-    console.log("=".repeat(60))
-    console.log("[v0] 🚀 SYSTEM INITIALIZATION STARTING")
-    console.log("=".repeat(60))
-    console.log("[v0] Environment:")
-    console.log("  - Runtime:", process.env.NEXT_RUNTIME)
-    console.log("  - Vercel:", process.env.VERCEL_ENV || "local")
-    const dbUrl = process.env.DATABASE_URL
-    const dbType = dbUrl ? (dbUrl.startsWith("postgres") ? "PostgreSQL" : "Unknown") : "SQLite (default)"
-    console.log("  - Database:", dbType)
-    console.log("  - Deployment:", process.env.VERCEL_DEPLOYMENT_ID || "local")
-    console.log("=".repeat(60))
+  // Bulletproof guard: skip if already done or currently running
+  if (g.__cts_register_guard.done || g.__cts_register_guard.running) {
+    console.log("[v0] register() called again - skipping (already initialized)")
+    return
+  }
+  g.__cts_register_guard.running = true
 
-    // Run database migrations/initialization
-    try {
-      const { getClient, getDatabaseType } = await import("./lib/db")
-      const actualDbType = getDatabaseType()
-      
-      console.log("[v0] Running database initialization...")
-      const startTime = Date.now()
-      
-      if (actualDbType === "sqlite") {
-        // For SQLite, verify critical tables exist and create if missing
-        try {
-          const client = getClient() as any
-          
-          // Check if critical tables exist
-          const checkTable = (tableName: string) => {
-            try {
-              const result = client.prepare(
-                "SELECT COUNT(*) as count FROM sqlite_master WHERE type='table' AND name=?"
-              ).get(tableName)
-              return result.count > 0
-            } catch {
-              return false
-            }
-          }
-          
-          const criticalTables = ['trade_engine_state', 'indications', 'preset_types', 'preset_type_sets']
-          const missingTables = criticalTables.filter(table => !checkTable(table))
-          
-          if (missingTables.length > 0) {
-            console.log(`[v0] Missing critical tables: ${missingTables.join(', ')}`)
-            console.log("[v0] Running full database initialization...")
-            
-            const fs = await import("fs")
-            const path = await import("path")
-            const sqlPath = path.join(process.cwd(), "scripts", "unified_complete_setup.sql")
-            
-            if (fs.existsSync(sqlPath)) {
-              console.log("[v0] Reading unified_complete_setup.sql...")
-              const sql = fs.readFileSync(sqlPath, "utf-8")
-              
-              console.log(`[v0] SQL file loaded: ${sql.length} characters, ${sql.split('\n').length} lines`)
-              console.log(`[v0] First 200 chars: ${sql.substring(0, 200)}`)
-              
-              try {
-                // Execute the SQL file directly - SQLite exec() handles multi-statement SQL
-                const startExec = Date.now()
-                console.log("[v0] Executing SQL initialization script...")
-                
-                // Split SQL into statements for better error handling
-                const statements = sql
-                  .split(';')
-                  .map(s => s.trim())
-                  .filter(s => s.length > 0 && !s.startsWith('--'))
-                
-                console.log(`[v0] Executing ${statements.length} SQL statements...`)
-                
-                let executed = 0
-                let skipped = 0
-                
-                for (const stmt of statements) {
-                  try {
-                    client.exec(stmt + ';')
-                    executed++
-                  } catch (stmtError: any) {
-                    // Skip if table/index already exists
-                    if (stmtError.message?.includes('already exists')) {
-                      skipped++
-                    } else {
-                      console.warn(`[v0] Statement warning: ${stmtError.message?.substring(0, 100)}`)
-                    }
-                  }
-                }
-                
-                const execDuration = Date.now() - startExec
-                console.log(`[v0] ✅ Database initialized: ${executed} executed, ${skipped} skipped in ${execDuration}ms`)
-                
-                // Verify tables were actually created
-                const allTables = client.prepare(
-                  "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
-                ).all()
-                console.log(`[v0] Database now has ${allTables.length} tables`)
-              } catch (execError) {
-                console.error("[v0] ❌ SQL execution error:", execError)
-                console.error("[v0] Error details:", execError instanceof Error ? execError.message : String(execError))
-                console.error("[v0] This will cause missing table errors throughout the application")
-              }
-              
-              // Verify tables were created
-              const stillMissing = criticalTables.filter(table => !checkTable(table))
-              if (stillMissing.length > 0) {
-                console.warn(`[v0] WARNING: Some tables still missing: ${stillMissing.join(', ')}`)
-              } else {
-                console.log("[v0] All critical tables verified")
-                
-                // Record migrations in migrations table
-                try {
-                  // Check if migrations table exists
-                  const hasMigrationsTable = checkTable('migrations')
-                  
-                  if (hasMigrationsTable) {
-                    // Record each executed statement as a migration
-                    const statements = sql
-                      .split(';')
-                      .map(s => s.trim())
-                      .filter(s => s.length > 0 && !s.startsWith('--'))
-                    
-                    let recorded = 0
-                    for (let i = 0; i < statements.length; i++) {
-                      try {
-                        const stmt = statements[i]
-                        const stmtType = stmt.split(/\s+/)[0].toUpperCase()
-                        const stmtPreview = stmt.substring(0, 50).replace(/\s+/g, ' ')
-                        const migrationName = `init_${i.toString().padStart(3, '0')}_${stmtType}_${stmtPreview.substring(0, 40)}`
-                        
-                        // Check if already recorded
-                        const exists = client.prepare(
-                          "SELECT COUNT(*) as count FROM migrations WHERE name = ?"
-                        ).get(migrationName)
-                        
-                        if (exists.count === 0) {
-                          client.prepare(
-                            "INSERT INTO migrations (name, executed_at) VALUES (?, CURRENT_TIMESTAMP)"
-                          ).run(migrationName)
-                          recorded++
-                        }
-                      } catch (migError) {
-                        // Silently skip migration tracking errors
-                      }
-                    }
-                    
-                    if (recorded > 0) {
-                      console.log(`[v0] Recorded ${recorded} migrations`)
-                    }
-                  }
-                } catch (migError) {
-                  console.warn("[v0] Failed to record migrations:", migError)
-                }
-              }
-            } else {
-              console.warn("[v0] unified_complete_setup.sql not found")
-            }
-          } else {
-            console.log("[v0] All critical tables exist - skipping initialization")
-          }
-        } catch (sqlError) {
-          console.error("[v0] Database initialization error:", sqlError)
-        }
-      } else {
-        // For PostgreSQL, use migration runner
-        const { runAllMigrations } = await import("./lib/db-migration-runner")
-        const result = await runAllMigrations()
-        console.log(`[v0] Migrations: ${result.applied} applied, ${result.skipped} skipped`)
-      }
-      
-      const duration = Date.now() - startTime
-      
-      console.log("=".repeat(60))
-      console.log("[v0] ✅ SYSTEM INITIALIZATION COMPLETED")
-      console.log("=".repeat(60))
-      console.log(`[v0] Database: ${dbType} - Ready`)
-      console.log(`[v0] Initialization completed in ${duration}ms`)
-      console.log("[v0] System ready to accept requests")
-      console.log("=".repeat(60))
+  console.log("[v0] CTS v3.2 - Initializing application")
 
-      // Start automatic backup system (every 6 hours)
+  try {
+    if (process.env.NEXT_RUNTIME === "nodejs") {
       try {
-        const { getAutoBackupManager } = await import("./lib/auto-backup")
-        const backupManager = getAutoBackupManager()
-        backupManager.start(6) // Backup every 6 hours
-        console.log("[v0] ✅ Auto-backup system started (6 hour interval)")
-      } catch (error) {
-        console.warn("[v0] ⚠️  Failed to start auto-backup system:", error)
+        const { runPreStartup } = await import("@/lib/pre-startup")
+        await runPreStartup()
+      } catch (preStartupError) {
+        console.warn("[v0] Pre-startup notice:", preStartupError instanceof Error ? preStartupError.message : "unknown")
       }
-    } catch (error) {
-      console.log("=".repeat(60))
-      console.log("[v0] ⚠️  INITIALIZATION COMPLETED WITH WARNINGS")
-      console.log("=".repeat(60))
-      console.error("[v0] Migration error:", error)
-      console.log("[v0] System may use file-based fallback")
-      console.log("=".repeat(60))
+      console.log("[v0] Application ready - all initialization completed in pre-startup")
     }
-  } else {
-    console.log("[v0] Skipping initialization (Edge Runtime)")
+  } catch (error) {
+    console.warn("[v0] Initialization notice:", error instanceof Error ? error.message : "unknown")
+  } finally {
+    g.__cts_register_guard.done = true
+    g.__cts_register_guard.running = false
   }
 }

@@ -1,5 +1,5 @@
-import { sql } from "@/lib/db"
 import { TradeEngineManager, type EngineConfig } from "./trade-engine/engine-manager"
+import { getSettings, setSettings } from "./redis-db"
 
 // Re-export TradeEngine class and config from subdirectory for convenient imports
 export { TradeEngine, type TradeEngineConfig, TRADE_SERVICE_NAME } from "./trade-engine/trade-engine"
@@ -122,80 +122,201 @@ export class GlobalTradeEngineCoordinator {
   }
 
   /**
-   * Start all engines (for all active connections)
+   * Start all engines for enabled connections (modern Redis-based)
    */
-  async startAllEngines(): Promise<void> {
-    console.log("[v0] Starting all TradeEngines with optimized coordination...")
-
+  async startAll(): Promise<void> {
     try {
-      let connections: any[] = []
-
-      try {
-        const { loadConnections } = await import("@/lib/file-storage")
-        const allConnections = loadConnections()
-        connections = allConnections.filter((c) => c.is_active && c.is_enabled)
-        console.log(`[v0] Loaded ${connections.length} active connections from file storage`)
-      } catch (fileError) {
-        console.log("[v0] File storage not available, trying database:", fileError)
-        try {
-          connections = await sql<any>`
-            SELECT id, exchange, api_key, api_secret 
-            FROM exchange_connections 
-            WHERE (is_enabled = 1 OR is_enabled = true)
-              AND (is_active = 1 OR is_active = true)
-          `
-          console.log(`[v0] Loaded ${connections.length} active connections from database`)
-        } catch (dbError) {
-          console.error("[v0] Database also failed:", dbError)
-          console.warn("[v0] No connections available to start")
-          return
-        }
+      console.log("[v0] [Coordinator] Starting global trade engine...")
+      
+      // Import Redis functions
+      const { initRedis, getInsertedAndEnabledConnections } = await import("@/lib/redis-db")
+      const { loadSettingsAsync } = await import("@/lib/settings-storage")
+      
+      // Initialize Redis and get ONLY inserted + enabled connections
+      await initRedis()
+      const allConnections = await import("@/lib/redis-db").then(m => m.getAllConnections())
+      const connections = await getInsertedAndEnabledConnections()
+      
+      console.log(`[v0] [Coordinator] Connection audit: total=${allConnections.length}, inserted+enabled=${connections.length}`)
+      
+      // Show which connections would be processed
+      if (connections.length > 0) {
+        connections.slice(0, 5).forEach((c: any) => {
+          console.log(`  - ${c.name || c.id}: exchange=${c.exchange}, inserted=${c.is_inserted}, enabled=${c.is_enabled}`)
+        })
       }
-
-      console.log(`[v0] Found ${connections.length} active connections`)
-
-      const engineStarts = connections.map(async (connection) => {
+      
+      if (!Array.isArray(connections)) {
+        console.error("[v0] [Coordinator] ERROR: connections is not an array")
+        return
+      }
+      
+      // Only process connections that are inserted, enabled, AND have credentials
+      const validConnections = connections.filter((c) => {
+        const hasCredentials = (c.api_key || c.apiKey) && (c.api_secret || c.apiSecret)
+        return hasCredentials
+      })
+      
+      console.log(`[v0] [Coordinator] Filtered to ${validConnections.length} connections with valid credentials`)
+      
+      if (validConnections.length === 0) {
+        console.log("[v0] [Coordinator] ⚠ No eligible connections to process. Waiting for user to insert and enable connections.")
+        console.log(`[v0] [Coordinator] Help: Use quick-start endpoint or manually add connections via Settings > Active`)
+        this.isGloballyRunning = true // Mark as running, ready for connections
+        return
+      }
+      
+      const settings = await loadSettingsAsync()
+      let successCount = 0
+      
+      for (const connection of validConnections) {
         try {
           const config: EngineConfig = {
             connectionId: connection.id,
-            indicationInterval: 5,
-            strategyInterval: 10,
-            realtimeInterval: 3,
+            indicationInterval: settings.mainEngineIntervalMs ? settings.mainEngineIntervalMs / 1000 : 5,
+            strategyInterval: settings.strategyUpdateIntervalMs ? settings.strategyUpdateIntervalMs / 1000 : 10,
+            realtimeInterval: settings.realtimeIntervalMs ? settings.realtimeIntervalMs / 1000 : 3,
           }
-
+          
           await this.startEngine(connection.id, config)
+          successCount++
+          console.log(`[v0] [Coordinator] ✓ Started: ${connection.name}`)
         } catch (error) {
-          console.error(`[v0] Failed to start engine for connection ${connection.id}:`, error)
+          console.error(`[v0] [Coordinator] ✗ Failed to start ${connection.name}:`, error)
         }
-      })
-
-      await Promise.allSettled(engineStarts)
-
+      }
+      
       this.isGloballyRunning = true
-      this.startGlobalHealthMonitoring()
-      this.startCoordinationMetricsTracking()
-
-      console.log("[v0] All TradeEngines started with advanced coordination")
+      console.log(`[v0] [Coordinator] ✓ Global engine started: ${successCount}/${validConnections.length} connections active`)
     } catch (error) {
-      console.error("[v0] Failed to start all engines:", error)
-      throw error
+      console.error("[v0] [Coordinator] Failed to start global engine:", error)
     }
+  }
+
+  /**
+   * Refresh engines - detect and start/stop engines based on current enabled connections
+   * Called periodically or when connections toggle
+   */
+  async refreshEngines(): Promise<void> {
+    try {
+      console.log("[v0] [Coordinator] === REFRESH ENGINES START ===")
+      
+      const { initRedis, getInsertedAndEnabledConnections, getAllConnections } = await import("@/lib/redis-db")
+      const { logProgressionEvent } = await import("@/lib/engine-progression-logs")
+      
+      await initRedis()
+      const enabledConnections = await getInsertedAndEnabledConnections()
+      const allConnections = await getAllConnections()
+      
+      const enabledIds = new Set(enabledConnections.map(c => c.id))
+      const runningIds = new Set(this.engineManagers.keys())
+      
+      console.log(`[v0] [Coordinator] State: enabled=${enabledConnections.length}, running=${runningIds.size}`)
+      
+      // Start engines for newly enabled connections
+      let started = 0
+      let skipped = 0
+      for (const connection of enabledConnections) {
+        if (!runningIds.has(connection.id)) {
+          try {
+            const hasCredentials = (connection.api_key || connection.apiKey) && (connection.api_secret || connection.apiSecret)
+            if (!hasCredentials) {
+              console.log(`[v0] [Coordinator] SKIP: ${connection.name} - no credentials`)
+              await logProgressionEvent(connection.id, "engine_skip", "warning", "Engine start skipped - missing credentials", {
+                connectionId: connection.id,
+                connectionName: connection.name,
+              })
+              skipped++
+              continue
+            }
+            
+            console.log(`[v0] [Coordinator] START: ${connection.name} (${connection.exchange})`)
+            await logProgressionEvent(connection.id, "engine_starting", "info", "Coordinator starting engine", {
+              connectionId: connection.id,
+              connectionName: connection.name,
+              exchange: connection.exchange,
+            })
+            
+            const { loadSettingsAsync } = await import("@/lib/settings-storage")
+            const settings = await loadSettingsAsync()
+            
+            const config: EngineConfig = {
+              connectionId: connection.id,
+              indicationInterval: settings.mainEngineIntervalMs ? settings.mainEngineIntervalMs / 1000 : 5,
+              strategyInterval: settings.strategyUpdateIntervalMs ? settings.strategyUpdateIntervalMs / 1000 : 10,
+              realtimeInterval: settings.realtimeIntervalMs ? settings.realtimeIntervalMs / 1000 : 3,
+            }
+            
+            await this.startEngine(connection.id, config)
+            started++
+            
+            await logProgressionEvent(connection.id, "engine_started", "info", "Engine started by coordinator", {
+              connectionId: connection.id,
+              config,
+            })
+          } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error)
+            console.error(`[v0] [Coordinator] ERROR starting ${connection.name}:`, errorMsg)
+            await logProgressionEvent(connection.id, "engine_start_error", "error", "Coordinator failed to start engine", {
+              error: errorMsg,
+            })
+          }
+        }
+      }
+      
+      // Stop engines for disabled connections
+      let stopped = 0
+      for (const connectionId of runningIds) {
+        if (!enabledIds.has(connectionId)) {
+          try {
+            const conn = allConnections.find(c => c.id === connectionId)
+            console.log(`[v0] [Coordinator] STOP: ${conn?.name || connectionId}`)
+            
+            await logProgressionEvent(connectionId, "engine_stopping", "info", "Coordinator stopping engine", {
+              connectionId,
+              connectionName: conn?.name,
+            })
+            
+            await this.stopEngine(connectionId)
+            stopped++
+            
+            await logProgressionEvent(connectionId, "engine_stopped", "info", "Engine stopped by coordinator", {
+              connectionId,
+            })
+          } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error)
+            console.error(`[v0] [Coordinator] ERROR stopping ${connectionId}:`, errorMsg)
+          }
+        }
+      }
+      
+      console.log(`[v0] [Coordinator] === REFRESH COMPLETE: started=${started}, stopped=${stopped}, skipped=${skipped} ===`)
+    } catch (error) {
+      console.error("[v0] [Coordinator] Error refreshing engines:", error)
+    }
+  }
+
+  /**
+   * Start all engines - alias for startAll()
+   */
+  async startAllEngines(): Promise<void> {
+    return this.startAll()
   }
 
   /**
    * Stop all engines
    */
-  async stopAllEngines(): Promise<void> {
+  async stopAll(): Promise<void> {
     console.log("[v0] Stopping all TradeEngines...")
 
     if (this.healthCheckTimer) {
       clearInterval(this.healthCheckTimer)
     }
 
-    // Stop all engine managers
     for (const [connectionId, manager] of this.engineManagers.entries()) {
       try {
         await manager.stop()
+        console.log(`[v0] Stopped engine: ${connectionId}`)
       } catch (error) {
         console.error(`[v0] Failed to stop engine for connection ${connectionId}:`, error)
       }
@@ -203,80 +324,102 @@ export class GlobalTradeEngineCoordinator {
 
     this.engineManagers.clear()
     this.isGloballyRunning = false
+    this.isPaused = false
 
     console.log("[v0] All TradeEngines stopped")
+  }
+
+  // Alias for backward compat
+  async stopAllEngines(): Promise<void> {
+    return this.stopAll()
   }
 
   /**
    * Pause all engines
    */
   async pause(): Promise<void> {
-    console.log("[v0] Pausing all TradeEngines...")
+    console.log("[v0] [Coordinator] PAUSING global trade engine - stopping ALL engines...")
 
     this.isPaused = true
+    this.isGloballyRunning = false
 
-    // Pause all engine managers
-    for (const [connectionId, manager] of this.engineManagers.entries()) {
+    // Stop ALL engine managers immediately
+    const allConnectionIds = Array.from(this.engineManagers.keys())
+    console.log(`[v0] [Coordinator] Stopping ${allConnectionIds.length} trade engine(s)...`)
+
+    for (const connectionId of allConnectionIds) {
       try {
-        await manager.stop()
-        console.log(`[v0] Paused engine for connection: ${connectionId}`)
+        const manager = this.engineManagers.get(connectionId)
+        if (manager) {
+          await manager.stop()
+          console.log(`[v0] [Coordinator] ✓ Stopped engine for connection: ${connectionId}`)
+        }
       } catch (error) {
-        console.error(`[v0] Failed to pause engine for connection ${connectionId}:`, error)
+        console.error(`[v0] [Coordinator] Failed to stop engine for connection ${connectionId}:`, error)
       }
     }
 
-    console.log("[v0] All TradeEngines paused")
+    console.log("[v0] [Coordinator] ✓ Global trade engine PAUSED - all engines stopped")
   }
 
   /**
    * Resume all engines
    */
   async resume(): Promise<void> {
-    console.log("[v0] Resuming all TradeEngines...")
+    console.log("[v0] [Coordinator] RESUMING global trade engine - restarting all engines...")
 
     if (!this.isPaused) {
-      console.log("[v0] TradeEngines are not paused, nothing to resume")
+      console.log("[v0] [Coordinator] TradeEngines are not paused, nothing to resume")
       return
     }
 
     this.isPaused = false
+    this.isGloballyRunning = true
 
     try {
-      let connections: any[] = []
-      try {
-        const { loadConnections } = await import("@/lib/file-storage")
-        connections = loadConnections().filter((c) => c.is_active)
-      } catch (fileError) {
-        console.error("[v0] Failed to load connections from file, trying database:", fileError)
-        // Fallback to database if file loading fails
-        connections = await sql<any>`
-          SELECT id, exchange, api_key, api_secret 
-          FROM exchange_connections 
-          WHERE is_active = true
-        `
+      const { initRedis, getAllConnections } = await import("@/lib/redis-db")
+      const { loadSettingsAsync } = await import("@/lib/settings-storage")
+
+      await initRedis()
+      const connections = await getAllConnections()
+      
+      if (!Array.isArray(connections)) {
+        console.error("[v0] [Coordinator] ERROR: connections is not an array during resume")
+        return
       }
 
-      console.log(`[v0] Found ${connections.length} active connections to resume`)
+      // Get all connections with valid credentials
+      const validConnections = connections.filter((c) => {
+        const hasCredentials = (c.api_key || c.apiKey) && (c.api_secret || c.apiSecret)
+        return hasCredentials
+      })
+
+      console.log(`[v0] [Coordinator] Found ${validConnections.length} connections to resume`)
+
+      const settings = await loadSettingsAsync()
+      let resumedCount = 0
 
       // Restart engine for each connection
-      for (const connection of connections) {
+      for (const connection of validConnections) {
         try {
           const config: EngineConfig = {
             connectionId: connection.id,
-            indicationInterval: 5,
-            strategyInterval: 10,
-            realtimeInterval: 3,
+            indicationInterval: settings.mainEngineIntervalMs ? settings.mainEngineIntervalMs / 1000 : 5,
+            strategyInterval: settings.strategyUpdateIntervalMs ? settings.strategyUpdateIntervalMs / 1000 : 10,
+            realtimeInterval: settings.realtimeIntervalMs ? settings.realtimeIntervalMs / 1000 : 3,
           }
 
           await this.startEngine(connection.id, config)
+          resumedCount++
+          console.log(`[v0] [Coordinator] ✓ Resumed: ${connection.name}`)
         } catch (error) {
-          console.error(`[v0] Failed to resume engine for connection ${connection.id}:`, error)
+          console.error(`[v0] [Coordinator] Failed to resume engine for connection ${connection.id}:`, error)
         }
       }
 
-      console.log("[v0] All TradeEngines resumed")
+      console.log(`[v0] [Coordinator] ✓ Global trade engine RESUMED: ${resumedCount} engines restarted`)
     } catch (error) {
-      console.error("[v0] Failed to resume engines:", error)
+      console.error("[v0] [Coordinator] Failed to resume engines:", error)
       throw error
     }
   }
@@ -353,32 +496,24 @@ export class GlobalTradeEngineCoordinator {
   }
 
   /**
-   * Ensure engine state exists in database
+   * Ensure engine state exists in Redis
    */
   private async ensureEngineState(connectionId: string): Promise<void> {
     try {
-      // Check if state exists
-      const [existing] = await sql`
-        SELECT id FROM trade_engine_state WHERE connection_id = ${connectionId}
-      `
+      // Check if state exists in Redis (consistent with engine-manager's updateEngineState)
+      const stateKey = `trade_engine_state:${connectionId}`
+      const existing = await getSettings(stateKey)
 
       if (!existing) {
-        // Create initial state
-        await sql`
-          INSERT INTO trade_engine_state (
-            connection_id, 
-            status, 
-            prehistoric_data_loaded,
-            created_at,
-            updated_at
-          ) VALUES (
-            ${connectionId}, 
-            'idle', 
-            false,
-            CURRENT_TIMESTAMP,
-            CURRENT_TIMESTAMP
-          )
-        `
+        // Create initial state in Redis
+        const initialState = {
+          connection_id: connectionId,
+          status: "idle",
+          prehistoric_data_loaded: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }
+        await setSettings(stateKey, initialState)
         console.log(`[v0] Created engine state for connection: ${connectionId}`)
       }
     } catch (error) {
@@ -387,17 +522,41 @@ export class GlobalTradeEngineCoordinator {
   }
 
   /**
-   * Start global health monitoring
+   * Start global health monitoring with connection refresh detection
    */
   private startGlobalHealthMonitoring(): void {
-    const healthCheckInterval = 30000 // Check every 30 seconds
+    const healthCheckInterval = 10000 // Check every 10 seconds for faster response
 
-    console.log("[v0] Starting global trade engine health monitoring")
+    console.log("[v0] Starting global trade engine health monitoring with refresh detection")
 
     this.healthCheckTimer = setInterval(async () => {
-      if (!this.isGloballyRunning) return
-
       try {
+        // Check for refresh requests from toggle-dashboard
+        const refreshRequest = await getSettings("engine_coordinator:refresh_requested")
+        
+        if (refreshRequest && refreshRequest.timestamp) {
+          const requestTime = new Date(refreshRequest.timestamp).getTime()
+          const now = Date.now()
+          
+          // Process refresh requests within the last 30 seconds
+          if (now - requestTime < 30000) {
+            console.log(`[v0] [Coordinator] Refresh requested for ${refreshRequest.connectionId}: ${refreshRequest.action}`)
+            
+            // Clear the request to prevent duplicate processing
+            await setSettings("engine_coordinator:refresh_requested", {
+              timestamp: null,
+              connectionId: null,
+              action: null,
+              processed_at: new Date().toISOString(),
+            })
+            
+            // Trigger engine refresh
+            await this.refreshEngines()
+          }
+        }
+        
+        if (!this.isGloballyRunning) return
+
         const health = await this.getGlobalHealth()
 
         if (health.overall !== "healthy") {
@@ -508,7 +667,7 @@ export function initializeGlobalCoordinator(): GlobalTradeEngineCoordinator {
 }
 
 export function getGlobalCoordinator(): GlobalTradeEngineCoordinator | null {
-  return getTradeEngine()
+  return globalCoordinator
 }
 
 export function getGlobalTradeEngineCoordinator(): GlobalTradeEngineCoordinator {

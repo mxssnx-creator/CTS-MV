@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { verifyPassword, createToken, setSession } from "@/lib/auth"
-import { query } from "@/lib/db"
+import { initRedis, getRedisClient } from "@/lib/redis-db"
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,20 +11,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Missing email or password" }, { status: 400 })
     }
 
-    // Find user
-    const users = await query(
-      "SELECT id, username, email, password_hash, role, is_active FROM users WHERE email = $1",
-      [email],
-    )
+    // Initialize Redis and find user
+    await initRedis()
+    const client = getRedisClient()
+    
+    // Find user in Redis
+    const userKeys = await (client as any).keys("user:*")
+    let user = null
+    
+    for (const key of userKeys) {
+      const userData = await (client as any).hgetall(key)
+      if (userData?.email === email) {
+        user = userData
+        break
+      }
+    }
 
-    if (users.length === 0) {
+    if (!user) {
       return NextResponse.json({ success: false, error: "Invalid credentials" }, { status: 401 })
     }
 
-    const user = users[0]
-
     // Check if user is active
-    if (!user.is_active) {
+    if (user.is_active === "false" || user.is_active === false || user.is_active === "0") {
       return NextResponse.json({ success: false, error: "Account is disabled" }, { status: 403 })
     }
 
@@ -40,7 +48,7 @@ export async function POST(request: NextRequest) {
       id: user.id,
       username: user.username,
       email: user.email,
-      role: user.role,
+      role: user.role || "user",
     })
 
     // Set session cookie
@@ -53,7 +61,7 @@ export async function POST(request: NextRequest) {
           id: user.id,
           username: user.username,
           email: user.email,
-          role: user.role,
+          role: user.role || "user",
         },
         token,
       },

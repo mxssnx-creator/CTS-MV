@@ -1,0 +1,13 @@
+export default function TestPage() {
+  return (
+    <html>
+      <head>
+        <title>Test</title>
+      </head>
+      <body>
+        <h1>Server is working</h1>
+        <p>This is a minimal test page</p>
+      </body>
+    </html>
+  )
+}

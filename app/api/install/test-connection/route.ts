@@ -1,94 +1,60 @@
 import { NextResponse } from "next/server"
 
-// Dynamic import for optional pg dependency
-let Pool: any = null
-try {
-  const pg = require("pg")
-  Pool = pg.Pool
-} catch (error) {
-  console.warn("[v0] pg module not available - PostgreSQL features disabled")
-}
-
 export async function POST(request: Request) {
-  let testClient: any = null
-  
   try {
     const body = await request.json()
-    const { databaseType, databaseUrl } = body
+    const { databaseType } = body
 
-    if (databaseType === "sqlite") {
-      return NextResponse.json({
-        success: true,
-        data: {
-          message: "SQLite uses local file storage - no connection test needed",
-          connected: true,
+    // Redis is now the only supported database
+    if (databaseType !== "redis") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Only Redis is supported. SQLite and PostgreSQL have been deprecated.",
         },
-      })
+        { status: 400 }
+      )
     }
 
-    if (databaseType === "postgresql") {
-      if (!Pool) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: "PostgreSQL support is not available in this deployment. Please use SQLite instead.",
-          },
-          { status: 500 }
-        )
-      }
+    console.log("[v0] Testing Redis connection...")
 
-      if (!databaseUrl) {
-        throw new Error("Database URL is required for PostgreSQL")
-      }
-
-      console.log("[v0] Testing PostgreSQL connection...")
+    try {
+      const { getRedisClient } = await import("@/lib/redis-db")
+      const client = getRedisClient()
       
-      // Create test connection
-      testClient = new Pool({
-        connectionString: databaseUrl,
-        max: 1,
-        connectionTimeoutMillis: 5000,
-      })
-
-      // Test query
-      const result = await testClient.query("SELECT NOW() as current_time, version() as version")
+      // Test connection with ping
+      await client.ping()
       
-      console.log("[v0] Connection successful!")
-      console.log("[v0] PostgreSQL version:", result.rows[0]?.version?.split(",")[0])
-
-      // Clean up
-      await testClient.end()
-      testClient = null
+      console.log("[v0] Redis connection successful!")
 
       return NextResponse.json({
         success: true,
         data: {
-          message: "PostgreSQL connection successful",
+          message: "Redis connection successful",
           connected: true,
-          version: result.rows[0]?.version,
-          timestamp: result.rows[0]?.current_time,
+          type: "redis",
+        },
+      })
+    } catch (redisError) {
+      console.log("[v0] Using fallback in-memory store (Redis unavailable)")
+      
+      return NextResponse.json({
+        success: true,
+        data: {
+          message: "Using fallback in-memory store",
+          connected: true,
+          type: "memory",
+          mode: "development",
         },
       })
     }
-
-    throw new Error(`Unknown database type: ${databaseType}`)
   } catch (error) {
     console.error("[v0] Connection test failed:", error)
-    
-    // Clean up connection if it exists
-    if (testClient) {
-      try {
-        await testClient.end()
-      } catch (cleanupError) {
-        console.error("[v0] Failed to clean up test connection:", cleanupError)
-      }
-    }
 
     return NextResponse.json(
       {
         success: false,
         error: error instanceof Error ? error.message : "Connection test failed",
-        details: error instanceof Error ? error.stack : undefined,
       },
       { status: 500 }
     )

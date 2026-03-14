@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { hashPassword, createToken, setSession } from "@/lib/auth"
-import { query } from "@/lib/db"
+import { initRedis, getRedisClient } from "@/lib/redis-db"
+import { nanoid } from "nanoid"
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,28 +16,43 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Password must be at least 8 characters" }, { status: 400 })
     }
 
-    // Check if user already exists
-    const existingUsers = await query("SELECT id FROM users WHERE email = $1 OR username = $2", [email, username])
+    // Initialize Redis
+    await initRedis()
+    const client = getRedisClient()
 
-    if (existingUsers.length > 0) {
-      return NextResponse.json({ success: false, error: "User already exists" }, { status: 409 })
+    // Check if user already exists
+    const userKeys = await (client as any).keys("user:*")
+    for (const key of userKeys) {
+      const userData = await (client as any).hgetall(key)
+      if (userData?.email === email || userData?.username === username) {
+        return NextResponse.json({ success: false, error: "User already exists" }, { status: 409 })
+      }
     }
 
     // Hash password and create user
     const passwordHash = await hashPassword(password)
+    const userId = nanoid()
+    
+    const user = {
+      id: userId,
+      username,
+      email,
+      password_hash: passwordHash,
+      role: "user",
+      is_active: "true",
+      created_at: new Date().toISOString(),
+    }
 
-    const result = await query(
-      `INSERT INTO users (username, email, password_hash, role) 
-       VALUES ($1, $2, $3, $4) 
-       RETURNING id, username, email, role`,
-      [username, email, passwordHash, "user"],
-    )
-
-    const user = result[0]
+    // Store user in Redis
+    const userKey = `user:${userId}`
+    await (client as any).hset(userKey, user)
+    
+    // Add to users index
+    await (client as any).sadd("users:all", userId)
 
     // Create JWT token
     const token = await createToken({
-      id: user.id,
+      id: Number(user.id) || Date.now(),
       username: user.username,
       email: user.email,
       role: user.role,

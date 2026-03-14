@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { sql } from "@/lib/db"
+import { initRedis, getRedisClient } from "@/lib/redis-db"
 
 export async function GET(request: NextRequest) {
   try {
@@ -8,27 +8,32 @@ export async function GET(request: NextRequest) {
     const connectionId = searchParams.get("connectionId")
     const status = searchParams.get("status")
 
-    let query = sql`SELECT * FROM backtest_results WHERE 1=1`
+    await initRedis()
+    const client = getRedisClient()
 
-    if (presetId) {
-      query = sql`${query} AND preset_id = ${presetId}`
+    // Get all backtest result keys from Redis
+    const keys = await (client as any).keys("backtest_result:*")
+    const results = []
+
+    for (const key of keys) {
+      const data = await (client as any).hgetall(key)
+      if (data && Object.keys(data).length > 0) {
+        // Apply filters
+        if (presetId && data.preset_id !== presetId) continue
+        if (connectionId && data.connection_id !== connectionId) continue
+        if (status && data.status !== status) continue
+        results.push(data)
+      }
     }
 
-    if (connectionId) {
-      query = sql`${query} AND connection_id = ${connectionId}`
-    }
+    // Sort by created_at descending and limit to 100
+    results.sort((a, b) => {
+      const dateA = new Date(a.created_at || 0)
+      const dateB = new Date(b.created_at || 0)
+      return dateB.getTime() - dateA.getTime()
+    })
 
-    if (status) {
-      query = sql`${query} AND status = ${status}`
-    }
-
-    const results = await sql`
-      ${query}
-      ORDER BY created_at DESC
-      LIMIT 100
-    `
-
-    return NextResponse.json(results)
+    return NextResponse.json(results.slice(0, 100))
   } catch (error) {
     console.error("[v0] Failed to fetch backtest results:", error)
     return NextResponse.json({ error: "Failed to fetch backtest results" }, { status: 500 })

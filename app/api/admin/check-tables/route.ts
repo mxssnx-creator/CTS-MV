@@ -1,34 +1,25 @@
 import { NextResponse } from "next/server"
-import { query } from "@/lib/db"
+import { getRedisClient } from "@/lib/redis-db"
 
 export async function GET() {
   try {
-    // Check which tables exist
-    const tables = await query(
-      `SELECT name FROM sqlite_master WHERE type='table' ORDER BY name`,
-      []
-    )
-
-    // For each table, get column info
-    const tableInfo: Record<string, any> = {}
+    const client = getRedisClient()
     
-    for (const table of tables.rows) {
-      const tableName = table.name
-      const columns = await query(`PRAGMA table_info(${tableName})`, [])
-      tableInfo[tableName] = {
-        columns: columns.rows,
-        count: (await query(`SELECT COUNT(*) as count FROM ${tableName}`, [])).rows[0].count
-      }
-    }
-
+    // Get all Redis keys
+    const keys = await client.keys("*")
+    const keyCount = keys ? keys.length : 0
+    
+    // Get Redis info
+    const info = await client.info()
+    
     return NextResponse.json({
       success: true,
-      tableCount: tables.rows.length,
-      tables: tables.rows.map((t: any) => t.name),
-      details: tableInfo
+      database_type: "redis",
+      key_count: keyCount,
+      keys_sample: keys ? keys.slice(0, 50) : [],
+      info: info
     })
   } catch (error: any) {
-    console.error("[v0] Failed to check tables:", error)
     return NextResponse.json(
       { success: false, error: error.message },
       { status: 500 }

@@ -23,7 +23,7 @@ export async function POST() {
 
     // Stop the global coordinator
     if (coordinator) {
-      await coordinator.stopAll()
+      await coordinator.stopAllEngines()
       await coordinator.pause()
       console.log("[v0] Global Trade Engine Coordinator stopped")
     }

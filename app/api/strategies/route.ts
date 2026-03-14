@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
-import { query, insertReturning, getDatabaseType } from "@/lib/db"
+import { getSettings, setSettings } from "@/lib/redis-db"
 
 export async function GET(request: NextRequest) {
   try {
@@ -9,11 +9,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 })
     }
 
-    const strategies = await query("SELECT * FROM strategies WHERE user_id = $1 ORDER BY created_at DESC", [user.id])
+    const strategies = await getSettings("strategies")
 
     return NextResponse.json({
       success: true,
-      data: strategies,
+      data: strategies || [],
     })
   } catch (error) {
     console.error("[v0] Get strategies error:", error)
@@ -34,22 +34,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Name and strategy type are required" }, { status: 400 })
     }
 
-    const isPostgres = getDatabaseType() === "postgresql" || getDatabaseType() === "remote"
-    const queryText = isPostgres
-      ? `INSERT INTO strategies (user_id, name, description, strategy_type, parameters) VALUES ($1, $2, $3, $4, $5) RETURNING *`
-      : `INSERT INTO strategies (user_id, name, description, strategy_type, parameters) VALUES (?, ?, ?, ?, ?)`
-
-    const result = await insertReturning(queryText, [
-      user.id,
+    const existing = (await getSettings("strategies")) || []
+    const newStrategy = {
+      id: `strategy:${Date.now()}:${Math.random().toString(36).substr(2, 9)}`,
+      user_id: user.id,
       name,
-      description || null,
+      description: description || null,
       strategy_type,
-      JSON.stringify(parameters || {}),
-    ])
+      parameters: parameters || {},
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+
+    existing.push(newStrategy)
+    await setSettings("strategies", existing)
 
     return NextResponse.json({
       success: true,
-      data: result,
+      data: newStrategy,
     })
   } catch (error) {
     console.error("[v0] Create strategy error:", error)

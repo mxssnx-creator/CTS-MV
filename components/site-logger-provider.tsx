@@ -6,6 +6,11 @@ import { SiteLogger } from "@/lib/site-logger"
 
 export function SiteLoggerProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
+    // Only run on client side
+    if (typeof window === "undefined") {
+      return
+    }
+
     const timer = setTimeout(() => {
       try {
         console.log("[v0] Initializing site logger...")

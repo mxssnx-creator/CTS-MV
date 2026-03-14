@@ -19,9 +19,9 @@ export async function insertReturning<T = any>(
 
     const result = await execute(insertQuery, values)
 
-    if (result.lastInsertRowid) {
+    if (result && (result as any).lastInsertRowid) {
       const selectQuery = `SELECT ${returningColumns.join(", ")} FROM ${table} WHERE rowid = ?`
-      return await queryOne<T>(selectQuery, [result.lastInsertRowid])
+      return await queryOne<T>(selectQuery, [(result as any).lastInsertRowid])
     }
 
     return null

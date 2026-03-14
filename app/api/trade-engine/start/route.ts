@@ -1,106 +1,154 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { loadConnections, loadSettings } from "@/lib/file-storage"
-import { TradeEngine, type TradeEngineConfig } from "@/lib/trade-engine/"
+import { initRedis, getRedisClient } from "@/lib/redis-db"
+import { getGlobalTradeEngineCoordinator } from "@/lib/trade-engine"
 import { SystemLogger } from "@/lib/system-logger"
 
-const activeEngines = new Map<string, TradeEngine>()
+export const dynamic = "force-dynamic"
 
+/**
+ * POST /api/trade-engine/start
+ * Start the Global Trade Engine Coordinator (independent of any connections)
+ * 
+ * The Global Coordinator is the overall control system.
+ * Individual connection engines (Main and Preset) are controlled separately via:
+ * - /api/settings/connections/[id]/live-trade (Main Engine)
+ * - /api/settings/connections/[id]/preset-toggle (Preset Engine)
+ */
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { connectionId } = body
+    console.log("[v0] [Trade Engine] Starting Global Trade Engine Coordinator (independent of connections)")
+    await SystemLogger.logTradeEngine(`Starting Global Coordinator`, "info")
 
-    console.log("[v0] [Trade Engine] Starting trade engine for connection:", connectionId)
-    await SystemLogger.logTradeEngine(`Starting trade engine for connection: ${connectionId}`, "info", { connectionId })
-
-    if (activeEngines.has(connectionId)) {
-      console.log("[v0] [Trade Engine] Already running for connection:", connectionId)
-      return NextResponse.json({
-        success: true,
-        message: "Trade engine already running for this connection",
-      })
+    const coordinator = getGlobalTradeEngineCoordinator()
+    
+    if (!coordinator) {
+      return NextResponse.json({ error: "Coordinator not initialized" }, { status: 503 })
     }
 
-    // Load connection from file storage
-    let connection
-    try {
-      const connections = loadConnections()
-      connection = connections.find((c) => c.id === connectionId && c.is_enabled)
+    // Initialize Redis
+    await initRedis()
+    const client = getRedisClient()
+    
+    // Set global state in Redis (write-through to Upstash via persistent key prefix)
+    await client.hset("trade_engine:global", { 
+      status: "running", 
+      started_at: new Date().toISOString(),
+      coordinator_ready: "true"
+    })
+    
+    console.log("[v0] [Trade Engine] Global Coordinator state saved to Redis + Upstash: status=running")
 
-      if (!connection) {
-        console.error("[v0] [Trade Engine] Connection not found or not enabled:", connectionId)
-        await SystemLogger.logTradeEngine(`Connection not found or not enabled: ${connectionId}`, "error", {
-          connectionId,
-        })
-        return NextResponse.json({ error: "Connection not found or not enabled" }, { status: 404 })
+    // Auto-resume connections that were paused when global engine was stopped
+    let resumedConnections: string[] = []
+    try {
+      const pausedRaw = await client.get("trade_engine:paused_connections")
+      if (pausedRaw) {
+        const pausedIds: string[] = JSON.parse(String(pausedRaw))
+        const { getConnection, updateConnection } = await import("@/lib/redis-db")
+        const { loadSettingsAsync } = await import("@/lib/settings-storage")
+        const settings = await loadSettingsAsync()
+        
+        for (const connId of pausedIds) {
+          try {
+            const conn = await getConnection(connId)
+            if (conn && conn.paused_by_global === "1") {
+              // Re-enable live trade
+              await updateConnection(connId, {
+                ...conn,
+                is_live_trade: "1",
+                paused_by_global: "0",
+                updated_at: new Date().toISOString(),
+              })
+              
+              // Restart the engine
+              await coordinator.startEngine(connId, {
+                connectionId: connId,
+                connection_name: conn.name,
+                exchange: conn.exchange,
+                indicationInterval: settings?.mainEngineIntervalMs ? settings.mainEngineIntervalMs / 1000 : 1,
+                strategyInterval: settings?.strategyUpdateIntervalMs ? settings.strategyUpdateIntervalMs / 1000 : 1,
+                realtimeInterval: settings?.realtimeIntervalMs ? settings.realtimeIntervalMs / 1000 : 0.2,
+              })
+              
+              resumedConnections.push(connId)
+              console.log("[v0] [Trade Engine] Resumed paused connection:", connId, conn.name)
+            }
+          } catch (resumeErr) {
+            console.warn("[v0] [Trade Engine] Failed to resume connection:", connId, resumeErr)
+          }
+        }
+        
+        // Clear the paused main list
+        await client.del("trade_engine:paused_connections")
       }
-
-      console.log("[v0] [Trade Engine] Loaded connection from file storage:", connection.name)
-    } catch (fileError) {
-      console.error("[v0] [Trade Engine] Failed to load connection from file:", fileError)
-      return NextResponse.json({ error: "Failed to load connection configuration" }, { status: 500 })
+      
+      // Also resume preset engines that were paused
+      const pausedPresetRaw = await client.get("trade_engine:paused_preset_connections")
+      if (pausedPresetRaw) {
+        const pausedPresetIds: string[] = JSON.parse(String(pausedPresetRaw))
+        const { getConnection: getConn2, updateConnection: updateConn2 } = await import("@/lib/redis-db")
+        
+        for (const connId of pausedPresetIds) {
+          try {
+            const conn = await getConn2(connId)
+            if (conn && conn.paused_preset_by_global === "1") {
+              await updateConn2(connId, {
+                ...conn,
+                is_preset_trade: "1",
+                paused_preset_by_global: "0",
+                updated_at: new Date().toISOString(),
+              })
+              
+              // Update preset engine state in Redis
+              if (conn.preset_type_id) {
+                await client.hset(`preset_engine:${connId}:${conn.preset_type_id}`, {
+                  status: "running",
+                  updated_at: new Date().toISOString(),
+                })
+              }
+              
+              resumedConnections.push(connId + " (preset)")
+              console.log("[v0] [Trade Engine] Resumed paused preset connection:", connId, conn.name)
+            }
+          } catch (resumeErr) {
+            console.warn("[v0] [Trade Engine] Failed to resume preset connection:", connId, resumeErr)
+          }
+        }
+        
+        await client.del("trade_engine:paused_preset_connections")
+      }
+    } catch (resumeError) {
+      console.warn("[v0] [Trade Engine] Failed to check paused connections:", resumeError)
     }
 
-    // Load settings from file storage
-    let tradeInterval = 1.0
-    let realInterval = 0.3
-
-    try {
-      const settings = loadSettings()
-      tradeInterval = settings.mainEngineIntervalMs ? settings.mainEngineIntervalMs / 1000 : 1.0
-      realInterval = settings.strategyUpdateIntervalMs ? settings.strategyUpdateIntervalMs / 1000 : 0.3
-      console.log("[v0] [Trade Engine] Loaded settings - tradeInterval:", tradeInterval, "realInterval:", realInterval)
-    } catch (settingsError) {
-      console.warn("[v0] [Trade Engine] Could not load settings from file, using defaults:", settingsError)
-    }
-
-    const config: TradeEngineConfig = {
-      connectionId: connectionId,
-      tradeInterval: tradeInterval,
-      realInterval: realInterval,
-      maxConcurrency: 10,
-    }
-
-    console.log("[v0] [Trade Engine] Creating trade engine with config:", config)
-
-    const tradeEngine = new TradeEngine(config)
-
-    try {
-      await tradeEngine.start(config)
-      activeEngines.set(connectionId, tradeEngine)
-      console.log("[v0] [Trade Engine] Trade engine started successfully")
-      await SystemLogger.logTradeEngine(`Trade engine started successfully for connection: ${connection.name}`, "info", {
-        connectionId,
-        connectionName: connection.name,
-      })
-    } catch (startError) {
-      console.error("[v0] [Trade Engine] Failed to start trade engine:", startError)
-      await SystemLogger.logTradeEngine(`Failed to start trade engine: ${startError}`, "error", { connectionId })
-      return NextResponse.json(
-        {
-          error: "Failed to start trade engine",
-          details: startError instanceof Error ? startError.message : "Unknown error",
-        },
-        { status: 500 },
-      )
-    }
+    const resumeMsg = resumedConnections.length > 0
+      ? ` Resumed ${resumedConnections.length} previously paused connection(s).`
+      : ""
+    
+    console.log("[v0] [Trade Engine] Global Coordinator is running and ready." + resumeMsg)
+    await SystemLogger.logTradeEngine(
+      `Global Coordinator started.${resumeMsg}`,
+      "info",
+      { resumedConnections }
+    )
 
     return NextResponse.json({
       success: true,
-      message: "Trade engine started successfully",
-      connectionId,
-      connectionName: connection.name,
+      message: `Global Trade Engine Coordinator started and ready.${resumeMsg}`,
+      coordinator_status: "running",
+      resumedConnections,
     })
+
   } catch (error) {
-    console.error("[v0] [Trade Engine] Failed to start:", error)
+    console.error("[v0] Failed to start Global Coordinator:", error)
     await SystemLogger.logError(error, "trade-engine", "POST /api/trade-engine/start")
 
     return NextResponse.json(
       {
-        error: "Failed to start trade engine",
+        error: "Failed to start Global Coordinator",
         details: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 500 },
+      { status: 500 }
     )
   }
 }

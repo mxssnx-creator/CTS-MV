@@ -1,39 +1,42 @@
 "use client"
 
+// Settings Overall Tab - manages main configuration, connections, install, logs
 import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
-import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import ExchangeConnectionManager from "@/components/settings/exchange-connection-manager-v2"
-import InstallManager from "@/components/settings/install-manager"
-import { X, Plus } from "lucide-react"
-import type { ExchangeConnection } from "@/lib/types"
-import { LogsViewer } from "@/components/settings/logs-viewer"
-import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import { Badge } from "@/components/ui/badge"
+import { Plus, Settings as SettingsIcon, RefreshCw, Download, Upload, X } from "lucide-react"
+import type { ExchangeConnection } from "@/lib/types"
+import type { Settings as AppSettings } from "@/lib/file-storage"
+import ExchangeConnectionManager from "@/components/settings/exchange-connection-manager"
+import InstallManager from "@/components/settings/install-manager"
+import { LogsViewer } from "@/components/settings/logs-viewer"
 import { StatisticsOverview } from "@/components/settings/statistics-overview"
-import { Settings } from "../types"
+import { SettingsEditorDialog } from "@/components/settings/settings-editor-dialog"
 
 interface OverallTabProps {
-  settings: Settings
-  handleSettingChange: (key: keyof Settings, value: any) => void
+  settings: AppSettings
+  handleSettingChange: (key: keyof AppSettings, value: any) => void
   addMainSymbol: () => void
   removeMainSymbol: (symbol: string) => void
   addForcedSymbol: () => void
   removeForcedSymbol: (symbol: string) => void
   newMainSymbol: string
   setNewMainSymbol: (value: string) => void
+  exportSettings: () => void
+  importSettings: () => void
+  exporting: boolean
+  importing: boolean
   newForcedSymbol: string
   setNewForcedSymbol: (value: string) => void
   connections: ExchangeConnection[]
-  databaseType: "sqlite" | "postgresql" | "remote"
-  setDatabaseType: (value: "sqlite" | "postgresql" | "remote") => void
-  databaseChanged: boolean
 }
 
 export function OverallTab({
@@ -48,11 +51,13 @@ export function OverallTab({
   newForcedSymbol,
   setNewForcedSymbol,
   connections,
-  databaseType,
-  setDatabaseType,
-  databaseChanged,
+  exportSettings,
+  importSettings,
+  exporting,
+  importing,
 }: OverallTabProps) {
   const [overallSubTab, setOverallSubTab] = useState("main")
+  const [isSettingsDialogOpen, setIsSettingsDialogOpen] = useState(false)
 
   return (
     <TabsContent value="overall" className="space-y-6 animate-in fade-in duration-300">
@@ -443,19 +448,260 @@ export function OverallTab({
           </Card>
         </TabsContent>
 
-        <TabsContent value="connection" className="space-y-4">
-          <ExchangeConnectionManager connections={connections} />
+        <TabsContent value="connection" className="space-y-6">
+          <div className="grid md:grid-cols-2 gap-4">
+            {/* Settings Editor Card */}
+            <Card className="settings-card border-2 hover:border-primary/50 transition-colors cursor-pointer"
+              onClick={() => setIsSettingsDialogOpen(true)}>
+              <CardHeader className="settings-card-header">
+                <div className="flex items-center gap-2">
+                  <SettingsIcon className="w-5 h-5 text-primary" />
+                  <CardTitle>Edit Settings</CardTitle>
+                </div>
+                <CardDescription>Manage core trading and system parameters</CardDescription>
+              </CardHeader>
+              <CardContent className="text-sm text-muted-foreground">
+                <p>Click to open settings editor with organized sections for:</p>
+                <ul className="list-disc list-inside mt-2 space-y-1">
+                  <li>Core Engine Configuration</li>
+                  <li>Data & Historical Settings</li>
+                  <li>Trade Engine Parameters</li>
+                  <li>System & UI Options</li>
+                </ul>
+              </CardContent>
+            </Card>
+
+            {/* Connection Manager Card */}
+            <Card className="settings-card border-2">
+              <CardHeader className="settings-card-header">
+                <CardTitle>Exchange Connections</CardTitle>
+                <CardDescription>Configure and manage exchange API connections</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button 
+                  variant="outline" 
+                  className="w-full"
+                  onClick={() => document.dispatchEvent(new CustomEvent('open-add-connection'))}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add New Connection
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Exchange Connection Manager */}
+          <ExchangeConnectionManager />
+
+          {/* API Rate Limiting Settings */}
+          <Card className="settings-card border-2">
+            <CardHeader className="settings-card-header">
+              <CardTitle>API Rate Limiting</CardTitle>
+              <CardDescription>Configure request delays to respect exchange rate limits</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded p-3 text-sm">
+                <p className="text-blue-900 dark:text-blue-200">
+                  Rate limiting ensures all API requests to exchanges comply with their rate limits. Set minimum delays between requests to avoid getting blocked.
+                </p>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>REST API Request Delay</Label>
+                    <span className="text-sm font-medium">{settings.restApiDelayMs || 50}ms</span>
+                  </div>
+                  <Slider
+                    min={10}
+                    max={500}
+                    step={10}
+                    value={[settings.restApiDelayMs || 50]}
+                    onValueChange={([value]) => handleSettingChange("restApiDelayMs", value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Minimum delay between REST API requests (10-500ms). Higher values reduce rate limit violations.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Public Request Delay</Label>
+                    <span className="text-sm font-medium">{settings.publicRequestDelayMs || 20}ms</span>
+                  </div>
+                  <Slider
+                    min={10}
+                    max={200}
+                    step={10}
+                    value={[settings.publicRequestDelayMs || 20]}
+                    onValueChange={([value]) => handleSettingChange("publicRequestDelayMs", value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Minimum delay for public/read-only requests (market data, ticker, etc.)
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Private Request Delay</Label>
+                    <span className="text-sm font-medium">{settings.privateRequestDelayMs || 100}ms</span>
+                  </div>
+                  <Slider
+                    min={50}
+                    max={1000}
+                    step={50}
+                    value={[settings.privateRequestDelayMs || 100]}
+                    onValueChange={([value]) => handleSettingChange("privateRequestDelayMs", value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Minimum delay for private/write requests (place orders, get balance, etc.)
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>WebSocket Connection Timeout</Label>
+                    <span className="text-sm font-medium">{settings.websocketTimeoutMs || 30000}ms</span>
+                  </div>
+                  <Slider
+                    min={5000}
+                    max={60000}
+                    step={5000}
+                    value={[settings.websocketTimeoutMs || 30000]}
+                    onValueChange={([value]) => handleSettingChange("websocketTimeoutMs", value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Timeout for WebSocket connections (5-60 seconds)
+                  </p>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="space-y-4">
+                <h4 className="text-sm font-semibold">Rate Limit Statistics</h4>
+                <div className="grid md:grid-cols-3 gap-4">
+                  <div className="p-3 border rounded-lg bg-muted/30">
+                    <p className="text-xs text-muted-foreground">Rest API Requests/Day</p>
+                    <p className="text-lg font-semibold">{Math.floor((86400000 / (settings.restApiDelayMs || 50))).toLocaleString()}</p>
+                    <p className="text-xs text-muted-foreground mt-1">at {settings.restApiDelayMs || 50}ms delay</p>
+                  </div>
+                  <div className="p-3 border rounded-lg bg-muted/30">
+                    <p className="text-xs text-muted-foreground">Public Requests/Day</p>
+                    <p className="text-lg font-semibold">{Math.floor((86400000 / (settings.publicRequestDelayMs || 20))).toLocaleString()}</p>
+                    <p className="text-xs text-muted-foreground mt-1">at {settings.publicRequestDelayMs || 20}ms delay</p>
+                  </div>
+                  <div className="p-3 border rounded-lg bg-muted/30">
+                    <p className="text-xs text-muted-foreground">Private Requests/Day</p>
+                    <p className="text-lg font-semibold">{Math.floor((86400000 / (settings.privateRequestDelayMs || 100))).toLocaleString()}</p>
+                    <p className="text-xs text-muted-foreground mt-1">at {settings.privateRequestDelayMs || 100}ms delay</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded p-3 text-sm">
+                <p className="text-amber-900 dark:text-amber-200 font-semibold mb-2">Exchange-Specific Rate Limits</p>
+                <ul className="text-amber-800 dark:text-amber-300 space-y-1 text-xs">
+                  <li>• <strong>Bybit:</strong> 100 req/sec for public, 50 req/sec for private</li>
+                  <li>• <strong>BingX:</strong> 1000 req/10sec for public, 200 req/10sec for private</li>
+                  <li>• <strong>Pionex:</strong> 100 req/sec for public, 50 req/sec for private</li>
+                  <li>• <strong>OKX:</strong> 40 req/sec for public, 40 req/sec for private</li>
+                </ul>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Settings Editor Dialog */}
+          <SettingsEditorDialog
+            isOpen={isSettingsDialogOpen}
+            onOpenChange={setIsSettingsDialogOpen}
+            settings={settings}
+            onSave={async (updatedSettings) => {
+              // Save settings via API or parent handler
+              Object.entries(updatedSettings).forEach(([key, value]) => {
+                handleSettingChange(key as keyof AppSettings, value)
+              })
+            }}
+            onSettingChange={handleSettingChange}
+          />
         </TabsContent>
 
         <TabsContent value="monitoring" className="space-y-4">
-          <StatisticsOverview />
+          <StatisticsOverview settings={settings} />
         </TabsContent>
 
-        <TabsContent value="install" className="space-y-4">
+        <TabsContent value="install" className="space-y-6 mt-6">
           <InstallManager />
+          
+          <Card>
+            <CardHeader>
+              <CardTitle>Database Migrations</CardTitle>
+              <CardDescription>Run Redis migrations to update schema</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Button 
+                onClick={async () => {
+                  try {
+                    const { toast } = await import("sonner")
+                    toast.info("Running migrations...")
+                    const response = await fetch("/api/install/database/migrate", { method: "POST" })
+                    const data = await response.json()
+                    if (response.ok) {
+                      toast.success("Migrations completed successfully")
+                    } else {
+                      toast.error(data.error || "Migration failed")
+                    }
+                  } catch (error) {
+                    const { toast } = await import("sonner")
+                    toast.error("Failed to run migrations")
+                  }
+                }} 
+                variant="default"
+                className="w-full"
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Run Migrations
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Runs all pending Redis migrations to ensure your database schema is up to date.
+              </p>
+            </CardContent>
+          </Card>
         </TabsContent>
 
-        <TabsContent value="backup" className="space-y-4">
+        <TabsContent value="backup" className="space-y-6 mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Export & Import Settings</CardTitle>
+              <CardDescription>
+                Back up your configuration or restore from a previous backup file.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium">Export Configuration</h4>
+                  <p className="text-xs text-muted-foreground">
+                    Download all settings, connections, and strategies as a JSON file.
+                  </p>
+                  <Button onClick={exportSettings} disabled={exporting} variant="outline" className="w-full">
+                    <Download className="h-4 w-4 mr-2" />
+                    {exporting ? "Exporting..." : "Export Settings"}
+                  </Button>
+                </div>
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium">Import Configuration</h4>
+                  <p className="text-xs text-muted-foreground">
+                    Restore settings from a previously exported JSON backup file.
+                  </p>
+                  <Button onClick={importSettings} disabled={importing} variant="outline" className="w-full">
+                    <Upload className="h-4 w-4 mr-2" />
+                    {importing ? "Importing..." : "Import Settings"}
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
           <LogsViewer />
         </TabsContent>
       </Tabs>

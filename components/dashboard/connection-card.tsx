@@ -17,9 +17,10 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ExchangeConnectionSettingsDialog } from "@/components/settings/exchange-connection-settings-dialog"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ConnectionStateTabs } from "@/components/dashboard/connection-state-tabs"
 import { Input } from "@/components/ui/input"
-import { toast } from "@/lib/simple-toast"
+import { toast } from "sonner"
 import type { ExchangeConnection } from "@/lib/types"
 import { Activity, AlertCircle, CheckCircle, Trash2, Settings, Info } from "lucide-react"
 
@@ -27,7 +28,10 @@ interface ConnectionCardProps {
   connection: ExchangeConnection
   onToggleEnable: (id: string, enabled: boolean) => void
   onToggleLiveTrade: (id: string, enabled: boolean) => void
+  onTogglePresetTrade: (id: string, enabled: boolean) => void
   onDelete: (id: string) => void
+  isActive?: boolean // Independent active status for dashboard
+  onToggleActive?: () => void
   balance?: number
   status: "connected" | "connecting" | "error" | "disabled"
   progress?: number
@@ -59,15 +63,24 @@ export function ConnectionCard({
   connection,
   onToggleEnable,
   onToggleLiveTrade,
+  onTogglePresetTrade,
   onDelete,
+  isActive = false,
+  onToggleActive,
   balance = 0,
   status,
   progress = 0,
 }: ConnectionCardProps) {
+  const [expanded, setExpanded] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<any>(null)
+  const [autoTested, setAutoTested] = useState(false)
   const [showLogs, setShowLogs] = useState(false)
   const [showInfo, setShowInfo] = useState(false)
-  const [showSettings, setShowSettings] = useState(false)
   const [showPresetConfig, setShowPresetConfig] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false)
+  const [advancedTab, setAdvancedTab] = useState("risk")
   const [showPresetDialog, setShowPresetDialog] = useState(false)
   const [showStrategyDialog, setShowStrategyDialog] = useState(false)
   const [showActivateTradeDialog, setShowActivateTradeDialog] = useState(false)
@@ -120,6 +133,18 @@ export function ConnectionCard({
   })
 
   const [logs, setLogs] = useState<Array<{ timestamp: string; level: string; message: string }>>([])
+
+  // Auto-test on mount if not tested
+  useEffect(() => {
+    if (!autoTested && !connection.last_test_status && connection.is_enabled) {
+      console.log("[v0] Auto-testing connection:", connection.name)
+      setAutoTested(true)
+      // Delay auto-test by 2 seconds to avoid overwhelming the API
+      setTimeout(() => {
+        handleTestConnection()
+      }, 2000)
+    }
+  }, [connection.id])
 
   const addLog = (level: string, message: string) => {
     const timestamp = new Date().toISOString()
@@ -261,10 +286,10 @@ export function ConnectionCard({
       }
     }
 
-    if (showPresetConfig) {
+    if (showSettings || showPresetConfig) {
       loadPresetConfig()
     }
-  }, [showPresetConfig, selectedPresetType])
+  }, [showSettings, showPresetConfig, selectedPresetType])
 
   useEffect(() => {
     const loadVolumeFactors = async () => {
@@ -354,38 +379,6 @@ export function ConnectionCard({
   //   console.log(`[${level.toUpperCase()}] ${message}`)
   //   // In a real app, you'd add this to a log state or send it to a logging service
   // }
-
-  const handleTestConnection = async () => {
-    console.log("[v0] Testing connection:", connection.id, connection.name)
-    addLog("info", `Testing connection to ${connection.exchange}...`)
-
-    try {
-      const response = await fetch(`/api/settings/connections/${connection.id}/test`, {
-        method: "POST",
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: "Unknown error" }))
-        throw new Error(errorData.details || errorData.error || "Connection test failed")
-      }
-
-      const data = await response.json()
-
-      console.log("[v0] Connection test result:", data)
-
-      if (data.success || data.balance !== undefined) {
-        addLog("success", `Connection test successful! Balance: $${data.balance.toFixed(2)}`)
-        toast.success(`Connection successful! Balance: $${data.balance.toFixed(2)}`)
-      } else {
-        throw new Error(data.error || "Unknown error")
-      }
-    } catch (error) {
-      console.error("[v0] Connection test error:", error)
-      const errorMessage = error instanceof Error ? error.message : "Connection test failed"
-      addLog("error", `Connection test error: ${errorMessage}`)
-      toast.error(errorMessage)
-    }
-  }
 
   const handlePresetTypeChange = async (presetTypeId: string) => {
     try {
@@ -493,6 +486,9 @@ export function ConnectionCard({
     }
 
     setPresetTradeEnabled(enabled)
+
+    // Call the parent handler to update the connection's is_preset_trade field
+    onTogglePresetTrade(connection.id, enabled)
 
     if (enabled && selectedPresetType) {
       try {
@@ -642,28 +638,80 @@ export function ConnectionCard({
     }
   }
 
+  const handleTestConnection = async () => {
+    setTesting(true)
+    setTestResult(null)
+    toast.info("Testing connection...")
+
+    try {
+      const response = await fetch(`/api/settings/connections/${connection.id}/test`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          api_type: connection.api_type || "perpetual_futures",
+          api_key: connection.api_key,
+          api_secret: connection.api_secret,
+          api_passphrase: connection.api_passphrase || "",
+          is_testnet: connection.is_testnet || false,
+          connection_method: connection.connection_method,
+          connection_library: connection.connection_library,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setTestResult({ success: true, ...data })
+        toast.success(`Connection successful! Balance: ${data.balance?.toFixed(2)} USDT (${data.apiType || connection.api_type || "futures"})`)
+      } else {
+        setTestResult({ success: false, error: data.details || data.error })
+        toast.error(data.details || data.error || "Connection test failed")
+      }
+    } catch (error) {
+      console.error("[v0] Connection test error:", error)
+      setTestResult({ success: false, error: "Network error" })
+      toast.error("Failed to test connection")
+    } finally {
+      setTesting(false)
+    }
+  }
+
   return (
     <Card className="relative overflow-hidden hover:shadow-lg transition-shadow">
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0 flex-1">
+          <div className="flex items-center gap-2 min-w-0 flex-1 cursor-pointer" onClick={() => setExpanded(!expanded)}>
             <CardTitle className="text-base font-semibold truncate">
               {connection.name} ({connection.exchange})
             </CardTitle>
             <div className="h-4 w-4 shrink-0">{getStatusIcon()}</div>
           </div>
-          <div className="flex gap-1.5 shrink-0">
+          <div className="flex gap-1.5 items-center shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              onClick={() => setShowLogs(true)}
+              title="View connection progression logs and errors"
+            >
+              Logs
+            </Button>
+            {connection.last_test_status && (
+              <Badge 
+                variant={connection.last_test_status === "success" ? "default" : "destructive"}
+                className="text-xs px-1.5 py-0"
+              >
+                {connection.last_test_status === "success" ? "✓ Tested" : "✗ Failed"}
+              </Badge>
+            )}
             <Badge variant="outline" className="text-xs px-1.5 py-0">
               {connection.api_type}
-            </Badge>
-            <Badge variant="outline" className="text-xs px-1.5 py-0">
-              {connection.connection_method}
             </Badge>
           </div>
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-3 pt-2">
+      <CardContent className={`space-y-3 pt-2 ${!expanded ? "hidden" : ""}`}>
         {status === "connecting" && (
           <div className="space-y-2">
             <div className="flex justify-between text-xs">
@@ -703,7 +751,7 @@ export function ConnectionCard({
             </div>
 
             <div className="flex items-center gap-2">
-              <span className="text-xs font-medium whitespace-nowrap">Preset Trade</span>
+              <span className="text-xs font-medium whitespace-nowrap">Preset Mode</span>
               <Switch
                 checked={presetTradeEnabled}
                 onCheckedChange={handlePresetTradeToggle}
@@ -714,21 +762,60 @@ export function ConnectionCard({
 
           <div className="text-center shrink-0">
             <div className="text-xs text-muted-foreground">Balance</div>
-            <div className="text-sm font-bold">${balance.toFixed(2)}</div>
+            <div className="text-sm font-bold">
+              {"$"}{(() => {
+                const bal = testResult?.balance ?? (balance || 0);
+                const parsed = typeof bal === "number" ? bal : (parseFloat(String(connection.last_test_balance)) || 0);
+                return parsed.toFixed(2);
+              })()}
+            </div>
+            {connection.api_type && (
+              <div className="text-[10px] text-muted-foreground uppercase">{String(connection.api_type).replace(/_/g, " ")}</div>
+            )}
           </div>
 
           <div className="flex gap-1 shrink-0">
+            {/* Info Button - shows connection details */}
             <Dialog open={showInfo} onOpenChange={setShowInfo}>
               <DialogTrigger asChild>
-                <Button variant="outline" size="sm" className="h-8 w-8 p-0 bg-transparent">
-                  <Info className="h-3.5 w-3.5" />
+                <Button variant="outline" size="sm" className="h-8 w-8 p-0 bg-transparent" title="Connection Info">
+                  <Info className="h-3.5 w-3.5 text-muted-foreground" />
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-md">
+              <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle className="text-base">Connection Information - {connection.name}</DialogTitle>
+                  <DialogTitle className="text-base">Connection Info - {connection.name}</DialogTitle>
+                  <DialogDescription>Connection parameters and current trading configuration.</DialogDescription>
                 </DialogHeader>
-                <div className="space-y-3">
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-0.5">
+                      <div className="text-xs font-medium text-muted-foreground">Connection ID</div>
+                      <div className="text-sm font-mono bg-muted p-1.5 rounded truncate">{connection.id}</div>
+                    </div>
+                    <div className="space-y-0.5">
+                      <div className="text-xs font-medium text-muted-foreground">Exchange</div>
+                      <div className="text-sm font-semibold capitalize">{connection.exchange}</div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-0.5">
+                      <div className="text-xs font-medium text-muted-foreground">Connection Method</div>
+                      <div className="text-sm capitalize">{connection.connection_method || 'REST'}</div>
+                    </div>
+                    <div className="space-y-0.5">
+                      <div className="text-xs font-medium text-muted-foreground">Status</div>
+                      <div className="text-sm">
+                        {connection.is_enabled ? (
+                          <Badge variant="default">Enabled</Badge>
+                        ) : (
+                          <Badge variant="secondary">Disabled</Badge>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-0.5">
                       <div className="text-xs font-medium text-muted-foreground">Margin Mode</div>
@@ -751,23 +838,21 @@ export function ConnectionCard({
 
                   <div className="space-y-1.5">
                     <div className="text-xs font-medium text-muted-foreground">Volume Factors</div>
-                    <div className="space-y-1">
+                    <div className="grid grid-cols-2 gap-2">
                       <div className="flex items-center justify-between p-1.5 bg-muted rounded">
                         <span className="text-xs">Live Trade</span>
                         <span className="text-xs font-semibold">{connectionInfo.liveTradeVolumeFactor.toFixed(1)}</span>
                       </div>
                       <div className="flex items-center justify-between p-1.5 bg-muted rounded">
-                        <span className="text-xs">Preset Trade</span>
-                        <span className="text-xs font-semibold">
-                          {connectionInfo.presetTradeVolumeFactor.toFixed(1)}
-                        </span>
+                        <span className="text-xs">Preset Mode</span>
+                        <span className="text-xs font-semibold">{connectionInfo.presetTradeVolumeFactor.toFixed(1)}</span>
                       </div>
                     </div>
                   </div>
 
                   <div className="space-y-1.5">
                     <div className="text-xs font-medium text-muted-foreground">Profit Factor Minimums</div>
-                    <div className="space-y-1">
+                    <div className="grid grid-cols-3 gap-2">
                       <div className="flex items-center justify-between p-1.5 bg-muted rounded">
                         <span className="text-xs">Base</span>
                         <span className="text-xs font-semibold">{connectionInfo.profitFactorBase.toFixed(2)}</span>
@@ -790,103 +875,104 @@ export function ConnectionCard({
 
                   <div className="space-y-1.5">
                     <div className="text-xs font-medium text-muted-foreground">Strategy States</div>
-                    <div className="space-y-1.5">
+                    <div className="grid grid-cols-3 gap-2">
                       <div className="flex items-center justify-between p-1.5 bg-muted rounded">
                         <span className="text-xs">Trailing</span>
-                        <Badge
-                          variant={connectionInfo.strategyStates.trailing ? "default" : "secondary"}
-                          className="text-xs px-1.5 py-0"
-                        >
+                        <Badge variant={connectionInfo.strategyStates.trailing ? "default" : "secondary"} className="text-xs px-1.5 py-0">
                           {connectionInfo.strategyStates.trailing ? "On" : "Off"}
                         </Badge>
                       </div>
                       <div className="flex items-center justify-between p-1.5 bg-muted rounded">
                         <span className="text-xs">Block</span>
-                        <Badge
-                          variant={connectionInfo.strategyStates.block ? "default" : "secondary"}
-                          className="text-xs px-1.5 py-0"
-                        >
+                        <Badge variant={connectionInfo.strategyStates.block ? "default" : "secondary"} className="text-xs px-1.5 py-0">
                           {connectionInfo.strategyStates.block ? "On" : "Off"}
                         </Badge>
                       </div>
                       <div className="flex items-center justify-between p-1.5 bg-muted rounded">
                         <span className="text-xs">DCA</span>
-                        <Badge
-                          variant={connectionInfo.strategyStates.dca ? "default" : "secondary"}
-                          className="text-xs px-1.5 py-0"
-                        >
+                        <Badge variant={connectionInfo.strategyStates.dca ? "default" : "secondary"} className="text-xs px-1.5 py-0">
                           {connectionInfo.strategyStates.dca ? "On" : "Off"}
                         </Badge>
                       </div>
                     </div>
                   </div>
                 </div>
+                <div className="flex gap-2 mt-4">
+                  <Button variant="outline" className="flex-1" onClick={() => setShowInfo(false)}>
+                    Close
+                  </Button>
+                </div>
               </DialogContent>
             </Dialog>
 
-            <Dialog open={showPresetConfig} onOpenChange={setShowPresetConfig}>
+            {/* Settings Button - configurable parameters */}
+            <Dialog open={showSettings} onOpenChange={setShowSettings}>
               <DialogTrigger asChild>
-                <Button variant="outline" size="sm" className="h-8 w-8 p-0 bg-transparent">
+                <Button variant="outline" size="sm" className="h-8 w-8 p-0 bg-transparent" title="Quick Settings">
                   <Settings className="h-3.5 w-3.5 text-blue-600" />
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-md">
+              <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle className="text-base">Preset Configuration</DialogTitle>
+                  <DialogTitle className="text-base">Settings - {connection.name}</DialogTitle>
+                  <DialogDescription>Configure volume factor, risk level, and trading parameters.</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Volume Factor</label>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      min="0.1"
-                      max="10"
-                      value={presetConfig.volumeFactor}
-                      onChange={(e) =>
-                        setPresetConfig({ ...presetConfig, volumeFactor: Number.parseFloat(e.target.value) })
-                      }
-                      className="h-9"
-                    />
-                    <p className="text-xs text-muted-foreground">Multiplier for trade volume (0.1 - 10.0)</p>
-                  </div>
+                  {/* Preset Configuration Section (when preset is active) */}
+                  {presetTradeEnabled && (
+                    <div className="space-y-3 p-3 border rounded-lg bg-muted/30">
+                      <div className="text-sm font-medium">Preset Mode Configuration</div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium">Volume Factor</label>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          min="0.1"
+                          max="10"
+                          value={presetConfig.volumeFactor}
+                          onChange={(e) =>
+                            setPresetConfig({ ...presetConfig, volumeFactor: Number.parseFloat(e.target.value) })
+                          }
+                          className="h-9"
+                        />
+                        <p className="text-[10px] text-muted-foreground">Multiplier for trade volume (0.1 - 10.0)</p>
+                      </div>
 
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Profit Factor Minimum</label>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      min="0.1"
-                      max="5"
-                      value={presetConfig.profitFactorMin}
-                      onChange={(e) =>
-                        setPresetConfig({ ...presetConfig, profitFactorMin: Number.parseFloat(e.target.value) })
-                      }
-                      className="h-9"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Minimum profit factor required for trades (0.1 - 5.0)
-                    </p>
-                  </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium">Profit Factor Minimum</label>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          min="0.1"
+                          max="5"
+                          value={presetConfig.profitFactorMin}
+                          onChange={(e) =>
+                            setPresetConfig({ ...presetConfig, profitFactorMin: Number.parseFloat(e.target.value) })
+                          }
+                          className="h-9"
+                        />
+                      </div>
 
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Max Drawdown Time (hours)</label>
-                    <Input
-                      type="number"
-                      step="1"
-                      min="1"
-                      max="168"
-                      value={presetConfig.maxDrawdownTime}
-                      onChange={(e) =>
-                        setPresetConfig({ ...presetConfig, maxDrawdownTime: Number.parseInt(e.target.value) })
-                      }
-                      className="h-9"
-                    />
-                    <p className="text-xs text-muted-foreground">Maximum time allowed in drawdown (1 - 168 hours)</p>
-                  </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium">Max Drawdown Time (hours)</label>
+                        <Input
+                          type="number"
+                          step="1"
+                          min="1"
+                          max="168"
+                          value={presetConfig.maxDrawdownTime}
+                          onChange={(e) =>
+                            setPresetConfig({ ...presetConfig, maxDrawdownTime: Number.parseInt(e.target.value) })
+                          }
+                          className="h-9"
+                        />
+                      </div>
+                    </div>
+                  )}
 
+                  {/* Strategy Toggles */}
                   <div className="space-y-3">
-                    <label className="text-sm font-medium">Strategy Toggles</label>
+                    <div className="text-sm font-medium">Strategy Toggles</div>
 
                     <div className="flex items-center justify-between p-2 bg-muted rounded">
                       <span className="text-sm">Trailing Stop</span>
@@ -917,32 +1003,199 @@ export function ConnectionCard({
                     <Button
                       variant="outline"
                       className="flex-1 bg-transparent"
-                      onClick={() => setShowPresetConfig(false)}
+                      onClick={() => setShowSettings(false)}
                     >
                       Cancel
                     </Button>
-                    <Button className="flex-1" onClick={savePresetConfig}>
-                      Save Configuration
+                    <Button className="flex-1" onClick={() => { savePresetConfig(); setShowSettings(false) }}>
+                      Save Settings
                     </Button>
                   </div>
                 </div>
               </DialogContent>
             </Dialog>
 
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 w-8 p-0 bg-transparent"
-              onClick={() => setShowSettings(true)}
-            >
-              <Settings className="h-3.5 w-3.5" />
-            </Button>
+            {/* Advanced Settings Button - with tabs for Risk, Trading, Strategy */}
+            <Dialog open={showAdvancedSettings} onOpenChange={setShowAdvancedSettings}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" className="h-8 w-8 p-0 bg-transparent" title="Advanced Settings">
+                  <Settings className="h-3.5 w-3.5 text-purple-600" />
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+                <DialogHeader>
+                  <DialogTitle className="text-base">Advanced Settings - {connection.name}</DialogTitle>
+                  <DialogDescription>Configure risk management, trading parameters, and strategy options.</DialogDescription>
+                </DialogHeader>
+                
+                <Tabs value={advancedTab} onValueChange={setAdvancedTab} className="flex-1 flex flex-col overflow-hidden">
+                  <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="risk">Risk Management</TabsTrigger>
+                    <TabsTrigger value="trading">Trading Parameters</TabsTrigger>
+                    <TabsTrigger value="strategy">Strategy Config</TabsTrigger>
+                  </TabsList>
+
+                  <div className="flex-1 overflow-y-auto mt-4">
+                    <TabsContent value="risk" className="space-y-4 m-0">
+                      <div className="space-y-3">
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Max Position Size</label>
+                          <Input type="number" step="0.01" placeholder="e.g., 10000" className="h-9" />
+                          <p className="text-xs text-muted-foreground">Maximum position size in quote currency</p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Stop Loss Percentage</label>
+                          <Input type="number" step="0.1" placeholder="e.g., 2.5" className="h-9" />
+                          <p className="text-xs text-muted-foreground">Automatic stop loss trigger (% from entry)</p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Take Profit Percentage</label>
+                          <Input type="number" step="0.1" placeholder="e.g., 5.0" className="h-9" />
+                          <p className="text-xs text-muted-foreground">Automatic take profit trigger (% from entry)</p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Max Daily Loss</label>
+                          <Input type="number" step="0.01" placeholder="e.g., 500" className="h-9" />
+                          <p className="text-xs text-muted-foreground">Stop trading if daily loss exceeds this amount</p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Max Concurrent Positions</label>
+                          <Input type="number" step="1" min="1" placeholder="e.g., 5" className="h-9" />
+                          <p className="text-xs text-muted-foreground">Maximum number of open positions at once</p>
+                        </div>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="trading" className="space-y-4 m-0">
+                      <div className="space-y-3">
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Order Type</label>
+                          <select className="w-full h-9 px-3 rounded-md border border-input bg-background">
+                            <option value="market">Market</option>
+                            <option value="limit">Limit</option>
+                            <option value="stop-market">Stop Market</option>
+                            <option value="stop-limit">Stop Limit</option>
+                          </select>
+                          <p className="text-xs text-muted-foreground">Default order type for new trades</p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Time in Force</label>
+                          <select className="w-full h-9 px-3 rounded-md border border-input bg-background">
+                            <option value="GTC">Good Till Cancel (GTC)</option>
+                            <option value="IOC">Immediate or Cancel (IOC)</option>
+                            <option value="FOK">Fill or Kill (FOK)</option>
+                          </select>
+                          <p className="text-xs text-muted-foreground">Order execution timing preference</p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Slippage Tolerance (%)</label>
+                          <Input type="number" step="0.1" placeholder="e.g., 0.5" className="h-9" />
+                          <p className="text-xs text-muted-foreground">Maximum acceptable price slippage</p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Reduce Only Mode</label>
+                          <div className="flex items-center justify-between p-2 bg-muted rounded">
+                            <span className="text-sm">Enable Reduce Only</span>
+                            <Switch />
+                          </div>
+                          <p className="text-xs text-muted-foreground">Only allow orders that reduce position size</p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Post Only Mode</label>
+                          <div className="flex items-center justify-between p-2 bg-muted rounded">
+                            <span className="text-sm">Enable Post Only</span>
+                            <Switch />
+                          </div>
+                          <p className="text-xs text-muted-foreground">Only submit maker orders (no taker fees)</p>
+                        </div>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="strategy" className="space-y-4 m-0">
+                      <div className="space-y-3">
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Entry Strategy</label>
+                          <select className="w-full h-9 px-3 rounded-md border border-input bg-background">
+                            <option value="signal">Signal Based</option>
+                            <option value="breakout">Breakout</option>
+                            <option value="mean-reversion">Mean Reversion</option>
+                            <option value="grid">Grid Trading</option>
+                          </select>
+                          <p className="text-xs text-muted-foreground">Strategy for entering new positions</p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Exit Strategy</label>
+                          <select className="w-full h-9 px-3 rounded-md border border-input bg-background">
+                            <option value="target">Target Price</option>
+                            <option value="trailing">Trailing Stop</option>
+                            <option value="time">Time Based</option>
+                            <option value="signal">Signal Based</option>
+                          </select>
+                          <p className="text-xs text-muted-foreground">Strategy for exiting positions</p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Position Sizing Method</label>
+                          <select className="w-full h-9 px-3 rounded-md border border-input bg-background">
+                            <option value="fixed">Fixed Size</option>
+                            <option value="percent-balance">Percent of Balance</option>
+                            <option value="kelly">Kelly Criterion</option>
+                            <option value="risk-parity">Risk Parity</option>
+                          </select>
+                          <p className="text-xs text-muted-foreground">How to calculate position sizes</p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Rebalance Interval</label>
+                          <Input type="number" step="1" min="0" placeholder="e.g., 60" className="h-9" />
+                          <p className="text-xs text-muted-foreground">Minutes between position rebalancing (0 = disabled)</p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Pyramid Positions</label>
+                          <div className="flex items-center justify-between p-2 bg-muted rounded">
+                            <span className="text-sm">Allow Pyramiding</span>
+                            <Switch />
+                          </div>
+                          <p className="text-xs text-muted-foreground">Add to winning positions at better prices</p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Max Pyramid Levels</label>
+                          <Input type="number" step="1" min="1" max="10" placeholder="e.g., 3" className="h-9" />
+                          <p className="text-xs text-muted-foreground">Maximum times to add to a position</p>
+                        </div>
+                      </div>
+                    </TabsContent>
+                  </div>
+
+                  <div className="flex gap-2 pt-4 mt-4 border-t">
+                    <Button variant="outline" className="flex-1" onClick={() => setShowAdvancedSettings(false)}>
+                      Cancel
+                    </Button>
+                    <Button className="flex-1" onClick={() => { toast.success("Advanced settings saved"); setShowAdvancedSettings(false) }}>
+                      Save Advanced Settings
+                    </Button>
+                  </div>
+                </Tabs>
+              </DialogContent>
+            </Dialog>
 
             <Button
               variant="outline"
               size="sm"
               onClick={() => onDelete(connection.id)}
               className="text-red-600 hover:text-red-700 h-8 w-8 p-0"
+              title="Delete connection"
             >
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
@@ -971,7 +1224,7 @@ export function ConnectionCard({
 
             <div className="space-y-2">
               <Label htmlFor={`volume-preset-${connection.id}`} className="text-xs font-medium">
-                Preset Trade Volume Factor
+                Preset Mode Volume Factor
               </Label>
               <div className="flex items-center gap-3">
                 <Slider
@@ -1054,12 +1307,7 @@ export function ConnectionCard({
         )}
       </CardContent>
 
-      <ExchangeConnectionSettingsDialog
-        open={showSettings}
-        onOpenChange={setShowSettings}
-        connectionId={connection.id}
-        connectionName={connection.name}
-      />
+      {/* Settings handled in Settings > Overall > Connection tab */}
 
       <Dialog open={showPresetDialog} onOpenChange={setShowPresetDialog}>
         <DialogContent className="max-w-md">
@@ -1120,13 +1368,13 @@ export function ConnectionCard({
             <DialogTitle>Disable Connection?</DialogTitle>
             <DialogDescription>
               This will stop all trading activity on this connection including:
-              <ul className="list-disc list-inside mt-2 space-y-1">
-                <li>Live Trade Engine</li>
-                <li>Preset Trade Engine</li>
-                <li>All active positions monitoring</li>
-              </ul>
             </DialogDescription>
           </DialogHeader>
+          <ul className="list-disc list-inside mt-2 space-y-1 text-sm text-muted-foreground">
+            <li>Live Trade Engine</li>
+            <li>Preset Trade Engine</li>
+            <li>All active positions monitoring</li>
+          </ul>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setShowDisableConfirm(false)}>
               Cancel
@@ -1333,6 +1581,26 @@ export function ConnectionCard({
                 Activate Live Trade
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Connection State Tabs Dialog */}
+      <Dialog open={showLogs} onOpenChange={setShowLogs}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Active Connection - {connection.name}</DialogTitle>
+            <DialogDescription>
+              Monitor connection state, performance, and real-time activity for this actively used trading connection
+            </DialogDescription>
+          </DialogHeader>
+          
+          <ConnectionStateTabs connection={connection} status={status} progress={progress} />
+          
+          <div className="flex justify-end pt-4 border-t">
+            <Button variant="outline" onClick={() => setShowLogs(false)}>
+              Close
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

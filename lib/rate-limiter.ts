@@ -18,15 +18,15 @@ interface QueuedRequest {
 }
 
 export class RateLimiter {
-  private exchange: string
-  private config: RateLimitConfig
-  private queue: QueuedRequest[] = []
-  private processing = false
-  private requestTimestamps: number[] = []
-  private activeRequests = 0
+  exchange: string
+  config: RateLimitConfig
+  queue: QueuedRequest[] = []
+  processing = false
+  requestTimestamps: number[] = []
+  activeRequests = 0
 
   // Exchange-specific rate limits
-  private static readonly EXCHANGE_LIMITS: Record<string, RateLimitConfig> = {
+  static readonly EXCHANGE_LIMITS: Record<string, RateLimitConfig> = {
     bybit: {
       requestsPerSecond: 10,
       requestsPerMinute: 120,
@@ -83,7 +83,7 @@ export class RateLimiter {
     })
   }
 
-  private async processQueue(): Promise<void> {
+  async processQueue(): Promise<void> {
     if (this.processing || this.queue.length === 0) return
 
     this.processing = true
@@ -119,7 +119,7 @@ export class RateLimiter {
     this.processing = false
   }
 
-  private canMakeRequest(): boolean {
+  canMakeRequest(): boolean {
     const now = Date.now()
 
     // Check concurrent limit
@@ -142,7 +142,7 @@ export class RateLimiter {
     return true
   }
 
-  private sleep(ms: number): Promise<void> {
+  sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms))
   }
 

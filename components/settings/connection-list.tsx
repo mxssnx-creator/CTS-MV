@@ -123,19 +123,6 @@ export function ConnectionList({
         </Card>
       )}
 
-      {connections.map((connection) => (
-        <ConnectionCard
-          key={connection.id}
-          connection={connection}
-          onToggle={() => onConnectionToggle(connection.id)}
-          onActivate={() => onConnectionSelect(connection.is_active ? null : connection.id)}
-          onDelete={() => handleDeleteClick(connection.id)}
-          onEdit={() => onConnectionSelect(connection.id)}
-          onShowDetails={() => onConnectionSelect(connection.id)}
-          onShowLogs={() => onConnectionSelect(connection.id)}
-        />
-      ))}
-
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>

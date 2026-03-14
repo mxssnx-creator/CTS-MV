@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
-import { query, insertReturning } from "@/lib/db"
+import { getSettings, setSettings } from "@/lib/redis-db"
 
 export async function GET(request: NextRequest) {
   try {
@@ -9,18 +9,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 })
     }
 
-    const portfolios = await query(
-      `SELECT p.*, 
-        (SELECT COUNT(*) FROM positions WHERE portfolio_id = p.id AND status = 'open') as open_positions
-       FROM portfolios p 
-       WHERE user_id = $1 
-       ORDER BY created_at DESC`,
-      [user.id],
-    )
+    const allPortfolios = (await getSettings("portfolios")) || []
+    const userPortfolios = allPortfolios.filter((p: any) => p.user_id === user.id)
 
     return NextResponse.json({
       success: true,
-      data: portfolios,
+      data: userPortfolios,
     })
   } catch (error) {
     console.error("[v0] Get portfolios error:", error)
@@ -41,16 +35,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Portfolio name is required" }, { status: 400 })
     }
 
-    const result = await insertReturning(
-      `INSERT INTO portfolios (user_id, name, description, initial_value, total_value) 
-       VALUES ($1, $2, $3, $4, $5) 
-       RETURNING *`,
-      [user.id, name, description || null, initial_value || 0, initial_value || 0],
-    )
+    const existing = (await getSettings("portfolios")) || []
+    const newPortfolio = {
+      id: `portfolio:${Date.now()}:${Math.random().toString(36).substr(2, 9)}`,
+      user_id: user.id,
+      name,
+      description: description || null,
+      initial_value: initial_value || 0,
+      total_value: initial_value || 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+
+    existing.push(newPortfolio)
+    await setSettings("portfolios", existing)
 
     return NextResponse.json({
       success: true,
-      data: result,
+      data: newPortfolio,
     })
   } catch (error) {
     console.error("[v0] Create portfolio error:", error)

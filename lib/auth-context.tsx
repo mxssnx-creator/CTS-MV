@@ -1,7 +1,13 @@
 "use client"
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
-import type { User } from "@/lib/auth"
+
+interface User {
+  id: number
+  username: string
+  email: string
+  role: string
+}
 
 interface AuthContextType {
   user: User | null
@@ -22,10 +28,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     role: "admin",
   })
   const [token, setToken] = useState<string | null>("admin-token-disabled")
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(false) // Initialize to false - user is always logged in
 
   useEffect(() => {
-    // Authorization system disabled - user is always logged in as admin
+    // User is pre-initialized as admin, so loading is complete immediately
     setIsLoading(false)
   }, [])
 

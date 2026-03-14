@@ -1,57 +1,38 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { getClient, getDatabaseType } from "@/lib/db"
-import fs from "fs"
-import path from "path"
-import Database from "better-sqlite3"
+import { NextResponse } from "next/server"
 
 export const runtime = "nodejs"
 
-export async function POST(request: NextRequest) {
+export async function POST() {
   try {
-    const dbType = getDatabaseType()
-    
-    if (dbType !== "sqlite") {
-      return NextResponse.json(
-        { error: "This endpoint only works with SQLite" },
-        { status: 400 }
-      )
-    }
+    console.log("[v0] Initializing Redis database with migrations...")
 
-    const scriptPath = path.join(process.cwd(), "scripts", "unified_complete_setup.sql")
-    const sql = fs.readFileSync(scriptPath, "utf-8")
-    
-    const db = getClient() as Database.Database
-    
-    // Execute the entire SQL file as a batch
-    console.log("[v0] Executing unified_complete_setup.sql directly...")
+    const { initRedis } = await import("@/lib/redis-db")
+    const { runMigrations } = await import("@/lib/redis-migrations")
+
     const startTime = Date.now()
-    
-    // SQLite's exec method can run multiple statements at once
-    db.exec(sql)
-    
+
+    // Initialize Redis
+    await initRedis()
+
+    // Run migrations
+    await runMigrations()
+
     const duration = Date.now() - startTime
-    console.log(`[v0] Database initialized successfully in ${duration}ms`)
-    
-    // Verify tables were created
-    const tables = db.prepare(
-      "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-    ).all()
-    
-    console.log(`[v0] Found ${tables.length} tables:`, tables.map((t: any) => t.name).join(", "))
-    
+
+    console.log(`[v0] Redis initialized successfully in ${duration}ms`)
+
     return NextResponse.json({
       success: true,
-      message: `Database initialized successfully with ${tables.length} tables`,
-      tables: tables.map((t: any) => t.name),
+      message: "Redis database initialized successfully",
       duration,
+      mode: "redis",
     })
-  } catch (error: any) {
+  } catch (error) {
     console.error("[v0] Database initialization error:", error)
     return NextResponse.json(
-      { 
+      {
         success: false,
-        error: error.message || "Failed to initialize database",
-        details: error.stack
+        error: error instanceof Error ? error.message : "Failed to initialize database",
       },
       { status: 500 }
     )

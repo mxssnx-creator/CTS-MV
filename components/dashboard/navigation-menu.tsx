@@ -3,9 +3,15 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { Activity, Target, Zap, TrendingUp, PieChart, Cog, Calculator, Layers, Home, Monitor, Bot } from "lucide-react"
+import { Activity, Target, Zap, TrendingUp, PieChart, Cog, Calculator, Layers, Home, Monitor, Bot, Truck } from "lucide-react"
 
 const menuItems = [
+  {
+    title: "Active Exchange",
+    href: "/active-exchange",
+    icon: "Activity",
+    description: "Statistics and prehistoric data for selected active connection",
+  },
   {
     title: "Overview",
     href: "/",
@@ -55,6 +61,12 @@ const menuItems = [
     description: "Analyze pseudo positions and database load per symbol",
   },
   {
+    title: "Logistics",
+    href: "/logistics",
+    icon: "Truck",
+    description: "System logistics, order queue, and processing metrics",
+  },
+  {
     title: "Structure",
     href: "/structure",
     icon: "Layers",
@@ -84,6 +96,7 @@ const iconMap = {
   PieChart,
   Calculator,
   Layers,
+  Truck,
   Monitor,
   Cog,
 }

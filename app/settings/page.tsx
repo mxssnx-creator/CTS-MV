@@ -8,15 +8,14 @@ import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import ExchangeConnectionManager from "@/components/settings/exchange-connection-manager-v2"
+import ExchangeConnectionManager from "@/components/settings/exchange-connection-manager"
 import InstallManager from "@/components/settings/install-manager"
-import { toast } from "@/lib/simple-toast"
-import { Save, Download, Upload, RefreshCw, Activity, Layers, X, Plus, Info } from "lucide-react"
+import { toast } from "sonner"
+import { Save, Download, Upload, RefreshCw, Activity, Layers, X, Plus, Info, Menu, Loader2 } from "lucide-react"
 import type { ExchangeConnection } from "@/lib/types"
 import { LogsViewer } from "@/components/settings/logs-viewer"
 import { Badge } from "@/components/ui/badge"
 import { AuthGuard } from "@/components/auth-guard"
-import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
 import AutoIndicationSettings from "@/components/settings/auto-indication-settings"
 import { StatisticsOverview } from "@/components/settings/statistics-overview"
@@ -25,6 +24,7 @@ import { ExchangeTab } from "@/components/settings/tabs/exchange-tab"
 import { IndicationTab } from "@/components/settings/tabs/indication-tab"
 import { StrategyTab } from "@/components/settings/tabs/strategy-tab"
 import { SystemTab } from "@/components/settings/tabs/system-tab"
+import { PageHeader } from "@/components/page-header"
 
 const EXCHANGE_MAX_POSITIONS: Record<string, number> = {
   bybit: 500,
@@ -82,6 +82,9 @@ interface Settings {
   databaseSizePreset: number
   positionCooldownMs: number
   maxPositionsPerConfigDirection: number
+  maxPositionsLong: number // Max 1 long position per config
+  maxPositionsShort: number // Max 1 short position per config
+  indicationTimeoutMs: number // 100ms to 3000ms, step 100ms
   maxConcurrentOperations: number
   autoRestartOnErrors: boolean
   logLevel: string
@@ -330,9 +333,6 @@ interface Settings {
   activeLastPartFrom: number
   activeLastPartTo: number
   activeLastPartStep: number
-
-  database_type: string
-  database_url: string
 }
 
 const initialSettings: Settings = {
@@ -402,7 +402,10 @@ const initialSettings: Settings = {
 
   // Trade Engine Configuration
   positionCooldownMs: 100, // 50-3000ms, default 100ms
-  maxPositionsPerConfigDirection: 2, // default 2
+  maxPositionsPerConfigDirection: 1, // default 1 (max positions per config per direction)
+  maxPositionsLong: 1, // Max 1 long position per configuration
+  maxPositionsShort: 1, // Max 1 short position per configuration
+  indicationTimeoutMs: 1000, // 100ms to 3000ms, step 100ms, default 1000ms
   maxConcurrentOperations: 100, // 10-250, default 100
 
   // System Configuration
@@ -652,16 +655,12 @@ const initialSettings: Settings = {
   activeLastPartFrom: 1,
   activeLastPartTo: 5,
   activeLastPartStep: 0.1,
-
-  database_type: "sqlite",
-  database_url: "",
 }
 
 export default function SettingsPage() {
   // useToast hook removed, toast from sonner imported and used.
   const [newMainSymbol, setNewMainSymbol] = useState("")
   const [newForcedSymbol, setNewForcedSymbol] = useState("")
-  const [databaseType, setDatabaseType] = useState<"sqlite" | "postgresql" | "remote">("sqlite")
 
   // FIX: positionCost default to 0.001 meaning 0.1% (displayed as 0.1%, not 10%)
   const [settings, setSettings] = useState<Settings>({
@@ -766,9 +765,6 @@ export default function SettingsPage() {
     atrMultiplierStep: initialSettings.atrMultiplierStep ?? 0.1,
   })
 
-  const [originalDatabaseType, setOriginalDatabaseType] = useState<string>("sqlite")
-  const [databaseChanged, setDatabaseChanged] = useState(false)
-
   const [activeTab, setActiveTab] = useState("overall")
   const [indicationSubTab, setIndicationSubTab] = useState("main")
   const [indicationMainSubTab, setIndicationMainSubTab] = useState("main")
@@ -782,6 +778,7 @@ export default function SettingsPage() {
   const [exporting, setExporting] = useState(false)
   const [importing, setImporting] = useState(false)
   const [reorganizing, setReorganizing] = useState(false)
+  const [migrating, setMigrating] = useState(false)
 
   const [isRestarting, setIsRestarting] = useState(false)
   const [restartHistory, setRestartHistory] = useState<
@@ -827,6 +824,35 @@ export default function SettingsPage() {
       })
     } finally {
       setIsRestarting(false)
+    }
+  }
+
+  const handleRunMigrations = async () => {
+    setMigrating(true)
+    try {
+      const response = await fetch("/api/admin/run-migrations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        toast.success("Migrations Completed", {
+          description: `Applied: ${data.applied}, Skipped: ${data.skipped}${data.failed > 0 ? `, Failed: ${data.failed}` : ""}`,
+        })
+      } else {
+        toast.error("Migration Failed", {
+          description: data.error || "Failed to run migrations",
+        })
+      }
+    } catch (error) {
+      console.error("Error running migrations:", error)
+      toast.error("Error", {
+        description: "Failed to run database migrations",
+      })
+    } finally {
+      setMigrating(false)
     }
   }
 
@@ -1109,11 +1135,6 @@ export default function SettingsPage() {
             data.settings.parabolicSARMaximumTo ?? initialSettings.parabolicSARMaximumTo
           updatedSettings.parabolicSARMaximumStep =
             data.settings.parabolicSARMaximumStep ?? initialSettings.parabolicSARMaximumStep
-
-          // Load current database type and URL
-          if (data.settings.database_type !== undefined) {
-            updatedSettings.database_type = data.settings.database_type
-          }
           if (data.settings.database_url !== undefined) {
             updatedSettings.database_url = data.settings.database_url
           }
@@ -1226,21 +1247,12 @@ export default function SettingsPage() {
         prevPresetEngineIntervalMs !== settings.presetEngineIntervalMs ||
         prevActiveOrderHandlingIntervalMs !== settings.activeOrderHandlingIntervalMs
 
-      const databaseTypeChanged = settings.database_type !== originalDatabaseType
-
-      if (databaseSizesChanged || engineIntervalsChanged || databaseTypeChanged) {
+      if (databaseSizesChanged || engineIntervalsChanged) {
         setReorganizing(true)
         console.log("[v0] Critical changes detected, pausing engine...")
-
-        if (databaseTypeChanged) {
-          toast.info("Database type changed", {
-            description: "Switching database requires system restart. Pausing engine...",
-          })
-        } else {
-          toast.info("Pausing trade engine...", {
-            description: "Applying critical configuration changes requires pausing the engine.",
-          })
-        }
+        toast.info("Pausing trade engine...", {
+          description: "Applying critical configuration changes requires pausing the engine.",
+        })
 
         // Step 3a: Pause trade engine
         const pauseResponse = await fetch("/api/trade-engine/pause", { method: "POST" })
@@ -1257,15 +1269,42 @@ export default function SettingsPage() {
       // Step 4: Save settings to database
       console.log("[v0] Saving settings to database...")
       const settingsResponse = await fetch("/api/settings", {
-        method: "PUT", // Changed from POST to PUT as per original logic
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ settings }),
       })
 
-      if (!settingsResponse.ok) {
-        throw new Error("Failed to save settings to database")
+      // Handle potential HTML responses (server errors, gateway timeouts, etc.)
+      const contentType = settingsResponse.headers.get("content-type") || ""
+      let settingsData = null
+      
+      try {
+        if (contentType.includes("application/json")) {
+          settingsData = await settingsResponse.json()
+        } else if (contentType.includes("text/html") || !settingsResponse.ok) {
+          // Server returned HTML or error - likely 500, 502, 503
+          const responseText = await settingsResponse.text()
+          if (responseText.includes("<!DOCTYPE") || responseText.includes("<html")) {
+            console.error("[v0] Server returned HTML error response. Status:", settingsResponse.status)
+            throw new Error(`Server Error (HTTP ${settingsResponse.status}): ${settingsResponse.statusText || "Unknown error"}. Try again in a moment.`)
+          }
+          // Try to extract error message from response
+          settingsData = { error: responseText.substring(0, 200) }
+        }
+      } catch (parseError) {
+        if (parseError instanceof Error && parseError.message.includes("Server Error")) {
+          throw parseError
+        }
+        console.error("[v0] Failed to parse settings response:", parseError)
+        throw new Error("Failed to parse server response. Server may be experiencing issues.")
       }
-      console.log("[v0] Settings saved to database successfully")
+
+      if (!settingsResponse.ok) {
+        const errorMsg = settingsData?.error || settingsData?.message || "Failed to save settings to file"
+        throw new Error(errorMsg)
+      }
+      
+      console.log("[v0] Settings saved to file successfully")
 
       toast.success("Settings saved!", {
         description: "All changes have been applied successfully.",
@@ -1289,59 +1328,39 @@ export default function SettingsPage() {
           }),
         })
 
+        // Handle potential HTML responses
+        const reorganizeContentType = reorganizeResponse.headers.get("content-type") || ""
+        let reorganizeData = null
+        
+        try {
+          if (reorganizeContentType.includes("application/json")) {
+            reorganizeData = await reorganizeResponse.json()
+          } else if (reorganizeContentType.includes("text/html") || !reorganizeResponse.ok) {
+            const responseText = await reorganizeResponse.text()
+            if (responseText.includes("<!DOCTYPE") || responseText.includes("<html")) {
+              console.error("[v0] Database reorganize returned HTML error. Status:", reorganizeResponse.status)
+              throw new Error(`Database reorganize failed: Server error (HTTP ${reorganizeResponse.status})`)
+            }
+          }
+        } catch (parseError) {
+          if (parseError instanceof Error && parseError.message.includes("Database reorganize")) {
+            throw parseError
+          }
+          console.error("[v0] Failed to parse reorganize response:", parseError)
+        }
+
         if (!reorganizeResponse.ok) {
-          const errorData = await reorganizeResponse.json()
-          console.error("[v0] Database reorganization failed:", errorData)
+          const errorMsg = reorganizeData?.error || reorganizeData?.message || "Database reorganization failed"
+          console.error("[v0] Database reorganization failed:", errorMsg)
           toast.error("Database reorganization failed", {
             description: "Settings saved but limits not applied. Please check logs.",
           })
         } else {
-          const reorganizeData = await reorganizeResponse.json()
-          console.log("[v0] Database reorganized successfully:", reorganizeData)
+          console.log("[v0] Database reorganized successfully")
           toast.success("Database reorganized successfully", {
             description: "New size limits have been applied.",
           })
         }
-      }
-
-      if (databaseTypeChanged) {
-        console.log("[v0] Database type changed, applying configuration...")
-        toast.info("Switching database type...", {
-          description: `Changing from ${originalDatabaseType} to ${settings.database_type}`,
-        })
-
-        const dbChangeResponse = await fetch("/api/database/change-type", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            database_type: settings.database_type,
-            database_url: settings.database_url,
-          }),
-        })
-
-        if (!dbChangeResponse.ok) {
-          const errorData = await dbChangeResponse.json()
-          console.error("[v0] Database type change failed:", errorData)
-          toast.error("Database change failed", {
-            description: errorData.error || "Failed to change database type",
-          })
-          throw new Error("Database type change failed")
-        }
-
-        console.log("[v0] Database type changed successfully")
-        setOriginalDatabaseType(settings.database_type)
-        setDatabaseChanged(false)
-
-        toast.success("Database type changed!", {
-          description: "System will restart automatically to apply changes.",
-        })
-
-        // Wait a moment before restarting
-        await new Promise((resolve) => setTimeout(resolve, 2000))
-
-        // Trigger system restart
-        window.location.reload()
-        return
       }
 
       // Step 6: If critical settings changed, resume engine
@@ -1557,13 +1576,16 @@ export default function SettingsPage() {
   useEffect(() => {
     async function loadSettingsAndDB() {
       try {
+        console.log("[v0] Loading settings from API...")
         // Fetch settings
         const settingsResponse = await fetch("/api/settings")
         if (settingsResponse.ok) {
           const data = await settingsResponse.json()
           if (!data.settings) {
             console.error("[v0] No settings found in response")
+            toast.error("Failed to load settings")
           } else {
+            console.log("[v0] Settings loaded:", Object.keys(data.settings).length, "keys")
             setSettings((prevSettings: Settings) => {
               const updatedSettings = { ...prevSettings, ...data.settings }
               // Ensure arrays are not overwritten if empty in the loaded data
@@ -1850,7 +1872,6 @@ export default function SettingsPage() {
             database_type: dbData.database_type || "sqlite",
             database_url: dbData.database_url || "",
           }))
-          setOriginalDatabaseType(dbData.database_type || "sqlite")
         }
 
         loadConnections() // Load connections on initial mount as well
@@ -1862,10 +1883,6 @@ export default function SettingsPage() {
     
     loadSettingsAndDB()
   }, [])
-
-  useEffect(() => {
-    setDatabaseChanged(settings.database_type !== originalDatabaseType)
-  }, [settings.database_type, originalDatabaseType])
 
   const loadDatabaseType = async () => {
     try {
@@ -1891,30 +1908,15 @@ export default function SettingsPage() {
 
   return (
     <AuthGuard>
-      <div className="container mx-auto p-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <SidebarTrigger />
-            <div>
-              <h1 className="text-3xl font-bold">Settings</h1>
-              <p className="text-muted-foreground">Configure system parameters and trading strategies</p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Button onClick={exportSettings} disabled={exporting} variant="outline" size="sm">
-              <Download className="h-4 w-4 mr-2" />
-              Export
-            </Button>
-            <Button onClick={importSettings} disabled={importing} variant="outline" size="sm">
-              <Upload className="h-4 w-4 mr-2" />
-              Import
-            </Button>
-            <Button onClick={saveAllSettings} disabled={saving} size="sm">
-              <Save className="h-4 w-4 mr-2" />
-              {reorganizing ? "Reorganizing..." : saving ? "Saving..." : "Save Changes"}
-            </Button>
-          </div>
-        </div>
+      <div className="flex flex-col h-screen">
+        <PageHeader title="Settings" description="Configure system parameters and trading strategies">
+          <Button onClick={saveAllSettings} disabled={saving} size="sm">
+            <Save className="h-4 w-4 mr-2" />
+            {reorganizing ? "Reorganizing..." : saving ? "Saving..." : "Save Changes"}
+          </Button>
+        </PageHeader>
+        <div className="flex-1 overflow-auto p-6">
+          <div className="max-w-7xl mx-auto space-y-6">
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid w-full grid-cols-5">
@@ -1938,9 +1940,10 @@ export default function SettingsPage() {
               newForcedSymbol={newForcedSymbol}
               setNewForcedSymbol={setNewForcedSymbol}
               connections={connections}
-              databaseType={databaseType}
-              setDatabaseType={setDatabaseType}
-              databaseChanged={databaseChanged}
+              exportSettings={exportSettings}
+              importSettings={importSettings}
+              exporting={exporting}
+              importing={importing}
             />
           </TabsContent>
 
@@ -1976,12 +1979,11 @@ export default function SettingsPage() {
             <SystemTab
               settings={settings}
               handleSettingChange={handleSettingChange}
-              databaseType={databaseType}
-              setDatabaseType={setDatabaseType}
-              databaseChanged={databaseChanged}
             />
           </TabsContent>
         </Tabs>
+          </div>
+        </div>
       </div>
     </AuthGuard>
   )

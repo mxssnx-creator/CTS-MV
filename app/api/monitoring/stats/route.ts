@@ -1,190 +1,83 @@
-import { NextResponse } from "next/server"
-import { query, getDatabaseType } from "@/lib/db"
+import { NextResponse, type NextRequest } from "next/server"
+import { initRedis, getActiveConnectionsForEngine, getRedisClient } from "@/lib/redis-db"
+import { RedisMonitoring, RedisPositions, RedisTrades } from "@/lib/redis-operations"
 
-export async function GET() {
+export const dynamic = "force-dynamic"
+export const fetchCache = "force-no-store"
+
+export async function GET(request: NextRequest) {
   try {
-    const dbType = getDatabaseType()
-    const isPostgreSQL = dbType === "postgresql"
+    const searchParams = request.nextUrl.searchParams
+    const exchangeFilter = searchParams.get("exchange")
 
-    let logStats, errorRate, topErrors, criticalErrors, errorsByCategory, recentActivity
+    await initRedis()
 
-    if (isPostgreSQL) {
-      // PostgreSQL syntax
-      logStats = await query(`
-        SELECT 
-          level,
-          COUNT(*) as count
-        FROM site_logs
-        WHERE timestamp > NOW() - INTERVAL '24 hours'
-        GROUP BY level
-      `)
+    // Get ONLY active connections (is_enabled_dashboard = true) for monitoring
+    let connections = await getActiveConnectionsForEngine()
 
-      errorRate = await query(`
-        SELECT 
-          DATE_TRUNC('hour', timestamp) as hour,
-          COUNT(*) as count
-        FROM site_logs
-        WHERE level = 'error' AND timestamp > NOW() - INTERVAL '24 hours'
-        GROUP BY hour
-        ORDER BY hour DESC
-      `)
-
-      topErrors = await query(`
-        SELECT 
-          message,
-          category,
-          COUNT(*) as count,
-          MAX(timestamp) as last_occurrence
-        FROM site_logs
-        WHERE level = 'error' AND timestamp > NOW() - INTERVAL '24 hours'
-        GROUP BY message, category
-        ORDER BY count DESC
-        LIMIT 10
-      `)
-
-      criticalErrors = await query(`
-        SELECT *
-        FROM site_logs
-        WHERE level = 'error' AND timestamp > NOW() - INTERVAL '1 hour'
-        ORDER BY timestamp DESC
-        LIMIT 20
-      `)
-
-      errorsByCategory = await query(`
-        SELECT 
-          category,
-          COUNT(*) as count
-        FROM site_logs
-        WHERE level = 'error' AND timestamp > NOW() - INTERVAL '24 hours'
-        GROUP BY category
-        ORDER BY count DESC
-      `)
-
-      recentActivity = await query(`
-        SELECT 
-          DATE_TRUNC('minute', timestamp) as minute,
-          level,
-          COUNT(*) as count
-        FROM site_logs
-        WHERE timestamp > NOW() - INTERVAL '1 hour'
-        GROUP BY minute, level
-        ORDER BY minute DESC
-      `)
-    } else {
-      // SQLite syntax
-      logStats = await query(`
-        SELECT 
-          level,
-          COUNT(*) as count
-        FROM site_logs
-        WHERE timestamp > datetime('now', '-24 hours')
-        GROUP BY level
-      `)
-
-      errorRate = await query(`
-        SELECT 
-          strftime('%Y-%m-%d %H:00:00', timestamp) as hour,
-          COUNT(*) as count
-        FROM site_logs
-        WHERE level = 'error' AND timestamp > datetime('now', '-24 hours')
-        GROUP BY hour
-        ORDER BY hour DESC
-      `)
-
-      topErrors = await query(`
-        SELECT 
-          message,
-          category,
-          COUNT(*) as count,
-          MAX(timestamp) as last_occurrence
-        FROM site_logs
-        WHERE level = 'error' AND timestamp > datetime('now', '-24 hours')
-        GROUP BY message, category
-        ORDER BY count DESC
-        LIMIT 10
-      `)
-
-      criticalErrors = await query(`
-        SELECT *
-        FROM site_logs
-        WHERE level = 'error' AND timestamp > datetime('now', '-1 hour')
-        ORDER BY timestamp DESC
-        LIMIT 20
-      `)
-
-      errorsByCategory = await query(`
-        SELECT 
-          category,
-          COUNT(*) as count
-        FROM site_logs
-        WHERE level = 'error' AND timestamp > datetime('now', '-24 hours')
-        GROUP BY category
-        ORDER BY count DESC
-      `)
-
-      recentActivity = await query(`
-        SELECT 
-          strftime('%Y-%m-%d %H:%M:00', timestamp) as minute,
-          level,
-          COUNT(*) as count
-        FROM site_logs
-        WHERE timestamp > datetime('now', '-1 hour')
-        GROUP BY minute, level
-        ORDER BY minute DESC
-      `)
+    if (exchangeFilter) {
+      connections = connections.filter((c: any) => c.exchange === exchangeFilter)
     }
 
-    const totalLogs = logStats.reduce((sum: number, stat: any) => sum + Number.parseInt(stat.count), 0)
-    const errorCount = logStats.find((stat: any) => stat.level === "error")?.count || 0
-    const warningCount = logStats.find((stat: any) => stat.level === "warning")?.count || 0
-    const infoCount = logStats.find((stat: any) => stat.level === "info")?.count || 0
+    const activeConnections = connections.filter(
+      (c: any) => c.is_active === true || c.is_active === "true",
+    )
 
-    const errorPercentage = totalLogs > 0 ? ((errorCount / totalLogs) * 100).toFixed(2) : "0.00"
-    const healthScore = Math.max(0, 100 - Number.parseInt(errorCount) * 2 - Number.parseInt(warningCount) * 0.5)
+    let totalPositions = 0
+    let openPositions = 0
+    let totalTrades = 0
+    let dailyPnL = 0
+    let unrealizedPnL = 0
+
+    for (const conn of connections) {
+      const positions = await RedisPositions.getPositionsByConnection(conn.id)
+      const trades = await RedisTrades.getTradesByConnection(conn.id)
+
+      totalPositions += positions.length
+      totalTrades += trades.length
+
+      const open = positions.filter(
+        (p: any) => p.status !== "closed" && p.status !== "CLOSED",
+      )
+      openPositions += open.length
+
+      positions.forEach((pos: any) => {
+        if (pos.status === "closed" || pos.status === "CLOSED") {
+          dailyPnL += parseFloat(pos.realized_pnl || "0")
+        } else {
+          unrealizedPnL += parseFloat(pos.unrealized_pnl || "0")
+        }
+      })
+    }
+
+    const stats = await RedisMonitoring.getStatistics()
 
     return NextResponse.json({
-      stats: {
-        summary: {
-          totalLogs,
-          errorCount,
-          warningCount,
-          infoCount,
-          errorPercentage,
-          healthScore: healthScore.toFixed(1),
-        },
-        byLevel: logStats,
-        errorRate,
-        topErrors,
-        criticalErrors,
-        errorsByCategory,
-        recentActivity,
-      },
-      generatedAt: new Date().toISOString(),
-      databaseType: dbType,
+      activeConnections: activeConnections.length,
+      totalConnections: connections.length,
+      totalPositions,
+      openPositions,
+      totalTrades,
+      dailyPnL: Number(dailyPnL.toFixed(2)),
+      unrealizedPnL: Number(unrealizedPnL.toFixed(2)),
+      totalBalance: Number((dailyPnL + unrealizedPnL).toFixed(2)),
+      statistics: stats,
+      timestamp: new Date().toISOString(),
     })
   } catch (error) {
     console.error("[v0] Error fetching monitoring stats:", error)
-    console.error("[v0] Error stack:", error instanceof Error ? error.stack : "No stack trace")
     return NextResponse.json(
       {
+        activeConnections: 0,
+        totalConnections: 0,
+        totalPositions: 0,
+        openPositions: 0,
+        totalTrades: 0,
+        dailyPnL: 0,
+        unrealizedPnL: 0,
+        totalBalance: 0,
         error: "Failed to fetch stats",
         details: error instanceof Error ? error.message : "Unknown error",
-        stats: {
-          summary: {
-            totalLogs: 0,
-            errorCount: 0,
-            warningCount: 0,
-            infoCount: 0,
-            errorPercentage: "0.00",
-            healthScore: "0.0",
-          },
-          byLevel: [],
-          errorRate: [],
-          topErrors: [],
-          criticalErrors: [],
-          errorsByCategory: [],
-          recentActivity: [],
-        },
       },
       { status: 500 },
     )

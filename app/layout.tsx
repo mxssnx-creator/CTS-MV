@@ -1,15 +1,19 @@
 import type React from "react"
 import type { Metadata } from "next"
 import "./globals.css"
+import { AuthProvider } from "@/lib/auth-context"
+import { ExchangeProvider } from "@/lib/exchange-context"
+import { ConnectionStateProvider } from "@/lib/connection-state"
 import { SidebarProvider } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
-import { ThemeProvider } from "@/components/theme-provider"
-import { StyleInitializer } from "@/components/style-initializer"
-import { AuthProvider } from "@/lib/auth-context"
+import { SystemInitializer } from "@/components/system-initializer"
 import { Toaster } from "@/components/ui/sonner"
-import { SiteLoggerProvider } from "@/components/site-logger-provider"
-import { DatabaseInitAlert } from "@/components/database-init-alert"
-import { initializeApplication } from "@/lib/init-app"
+import { initializeConsoleLogger } from "@/lib/console-logger"
+
+// Initialize console logger to capture all [v0] logs
+initializeConsoleLogger()
+
+export const dynamic = "force-dynamic"
 
 export const metadata: Metadata = {
   title: "CTS v3 - Crypto Trading System",
@@ -17,35 +21,26 @@ export const metadata: Metadata = {
   generator: "v0.app",
 }
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
-  // Auto-initialize database on first load
-  await initializeApplication()
-  
   return (
-    <html lang="en" className="antialiased style-default" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <body className="min-h-screen bg-background font-sans">
-        <StyleInitializer />
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="white"
-          enableSystem={false}
-          themes={["dark", "white", "grey", "blackwhite"]}
-        >
-          <AuthProvider>
-            <SiteLoggerProvider>
-              <DatabaseInitAlert />
+        <SystemInitializer />
+        <AuthProvider>
+          <ConnectionStateProvider>
+            <ExchangeProvider>
               <SidebarProvider defaultOpen={true}>
                 <AppSidebar />
                 <main className="flex-1 w-full">{children}</main>
               </SidebarProvider>
-            </SiteLoggerProvider>
-          </AuthProvider>
-          <Toaster position="top-right" expand={true} richColors closeButton />
-        </ThemeProvider>
+              <Toaster richColors />
+            </ExchangeProvider>
+          </ConnectionStateProvider>
+        </AuthProvider>
       </body>
     </html>
   )

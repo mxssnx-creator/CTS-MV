@@ -1,19 +1,27 @@
 import { NextResponse } from "next/server"
-import { loadConnections } from "@/lib/file-storage"
+import { getAllConnections, initRedis } from "@/lib/redis-db"
 import { SystemLogger } from "@/lib/system-logger"
 import { getTradeEngineStatus } from "@/lib/trade-engine"
 
 // GET real-time status for all active connections
 export async function GET() {
   try {
-    console.log("[v0] Fetching real connection statuses")
+    console.log("[v0] Fetching real connection statuses from Redis")
 
-    const connections = loadConnections()
-    const activeConnections = connections.filter((c) => c.is_active)
+    await initRedis()
+    const connections = await getAllConnections()
+    
+    // Ensure connections is an array
+    if (!Array.isArray(connections)) {
+      console.error("[v0] Connections is not an array:", typeof connections)
+      return NextResponse.json({ error: "Invalid connections data", statuses: [] }, { status: 500 })
+    }
+
+    const activeConnections = connections.filter((c: any) => c.is_enabled !== false)
 
     // Get real statuses from trade engines
     const statuses = await Promise.all(
-      activeConnections.map(async (connection) => {
+      activeConnections.map(async (connection: any) => {
         try {
           const engineStatus = await getTradeEngineStatus(connection.id)
 
@@ -50,6 +58,6 @@ export async function GET() {
   } catch (error) {
     console.error("[v0] Failed to fetch connection statuses:", error)
     await SystemLogger.logError(error, "api", "GET /api/connections/status")
-    return NextResponse.json({ error: "Failed to fetch connection statuses" }, { status: 500 })
+    return NextResponse.json({ error: "Failed to fetch connection statuses", statuses: [] }, { status: 500 })
   }
 }

@@ -8,37 +8,14 @@ import { TradingOverview } from "@/components/live-trading/trading-overview"
 import { TradeEngineProgression } from "@/components/live-trading/trade-engine-progression"
 import { PositionCard } from "@/components/live-trading/position-card"
 import type { TradingPosition, TradingStats, TimeRangeStats } from "@/lib/trading"
+import { TradingEngine } from "@/lib/trading"
 import { Activity, RefreshCw, BarChart3, History } from "lucide-react"
 import { toast } from "@/lib/simple-toast"
+import { useExchange } from "@/lib/exchange-context"
+import { PageHeader } from "@/components/page-header"
 
 export default function LiveTradingPage() {
-  // ... existing state ...
-  
-  const handleStartEngine = async () => {
-    if (!selectedConnection) {
-      toast.error("Please select a connection")
-      return
-    }
-
-    try {
-      console.log("[v0] Starting trade engine for connection:", selectedConnection)
-      const response = await fetch("/api/trade-engine/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ connectionId: selectedConnection }),
-      })
-
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.error || "Failed to start engine")
-
-      console.log("[v0] Trade engine started successfully")
-      setIsEngineRunning(true)
-      toast.success(`Trade engine started for ${result.connectionName}`)
-    } catch (error) {
-      console.error("[v0] Failed to start trade engine:", error)
-      toast.error(error instanceof Error ? error.message : "Failed to start trade engine")
-    }
-  }
+  const { selectedExchange } = useExchange()
   const [activeTab, setActiveTab] = useState("overview")
   const [selectedConnection, setSelectedConnection] = useState<string>("")
   const [tradingEngine] = useState(() => new TradingEngine())
@@ -76,56 +53,55 @@ export default function LiveTradingPage() {
   const [connections, setConnections] = useState<Array<{ id: string; name: string; is_enabled: boolean }>>([])
   const [isEngineRunning, setIsEngineRunning] = useState(false)
 
-  const loadConnections = async () => {
-    try {
-      console.log("[v0] Loading connections from /api/settings/connections")
-      const response = await fetch("/api/settings/connections")
-      if (!response.ok) throw new Error("Failed to load connections")
-
-      const data = await response.json()
-      console.log("[v0] Loaded connections:", data.length, "total,", data.filter((c: any) => c.is_enabled).length, "enabled")
-
-      const enabledConnections = data.filter((c: any) => c.is_enabled)
-
-      if (enabledConnections.length > 0) {
-        console.log("[v0] Real connections detected - using real data")
-        setHasRealConnections(true)
-        const mappedConnections = enabledConnections.map((c: any) => ({
-          id: c.id,
-          name: `${c.name} (${c.exchange.toUpperCase()})`,
-          is_enabled: true,
-        }))
-        setConnections(mappedConnections)
-        // Set first enabled connection as default
-        if (selectedConnection === "") {
-          setSelectedConnection(mappedConnections[0].id)
-        }
-        return
-      }
-
-      console.log("[v0] No real connections - using mock data")
-      setHasRealConnections(false)
-    } catch (error) {
-      console.error("[v0] Failed to load connections:", error)
-      setHasRealConnections(false)
+  const handleStartEngine = async () => {
+    if (!selectedConnection) {
+      toast.error("Please select a connection")
+      return
     }
 
-    // Default mock connections
-    const mockConnections = [
-      { id: "bybit-x03", name: "Bybit X03 (BYBIT)", is_enabled: false },
-      { id: "bingx-x01", name: "BingX X01 (BINGX)", is_enabled: false },
-      { id: "pionex-x01", name: "Pionex X01 (PIONEX)", is_enabled: false },
-      { id: "orangex-x01", name: "OrangeX X01" },
-    ]
-    setConnections(mockConnections)
-    if (selectedConnection === "") {
-      setSelectedConnection(mockConnections[0].id)
+    try {
+      const response = await fetch("/api/trade-engine/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ connectionId: selectedConnection }),
+      })
+
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || "Failed to start engine")
+
+      setIsEngineRunning(true)
+      toast.success(`Trade engine started for ${result.connectionName}`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to start trade engine")
+    }
+  }
+
+  const loadConnections = async () => {
+    try {
+      const url = selectedExchange 
+        ? `/api/settings/connections?enabled=true&exchange=${selectedExchange}`
+        : "/api/settings/connections?enabled=true"
+      
+      console.log("[v0] [Live Trading] Loading connections for exchange:", selectedExchange || "all")
+      const response = await fetch(url)
+      if (response.ok) {
+        const data = await response.json()
+        const connectionsList = data.connections || []
+        setConnections(connectionsList)
+        setHasRealConnections(connectionsList.length > 0)
+        
+        if (connectionsList.length > 0 && !selectedConnection) {
+          setSelectedConnection(connectionsList[0].id)
+        }
+      }
+    } catch (error) {
+      console.error("[v0] [Live Trading] Failed to load connections:", error)
     }
   }
 
   useEffect(() => {
     loadConnections()
-  }, [])
+  }, [selectedExchange])
 
   useEffect(() => {
     if (!hasRealConnections) {
@@ -146,13 +122,26 @@ export default function LiveTradingPage() {
       return () => clearInterval(interval)
     } else {
       console.log("[v0] Loading real trading data from connected exchanges")
-      refreshData()
       
-      // Poll real data every 5 seconds
-      const interval = setInterval(() => {
-        refreshData()
-      }, 5000)
+      // Load real positions from API
+      const loadRealData = async () => {
+        try {
+          const response = await fetch(`/api/trading/positions?connectionId=${selectedConnection}`)
+          if (response.ok) {
+            const positions = await response.json()
+            console.log("[v0] Loaded", positions.length, "real positions")
+            const connectionPositions = positions.filter((p: any) => 
+              !selectedConnection || p.connection_id === selectedConnection
+            ) as TradingPosition[]
+            setOpenPositions(connectionPositions)
+          }
+        } catch (error) {
+          console.error("[v0] Failed to load real positions:", error)
+        }
+      }
       
+      loadRealData()
+      const interval = setInterval(loadRealData, 5000) // Refresh every 5 seconds
       return () => clearInterval(interval)
     }
   }, [selectedConnection, hasRealConnections])
@@ -185,7 +174,7 @@ export default function LiveTradingPage() {
           // Filter to connection-specific positions if needed
           const connectionPositions = positions.filter((p: any) => 
             !selectedConnection || p.connection_id === selectedConnection
-          )
+          ) as TradingPosition[]
           setOpenPositions(connectionPositions)
         }
         

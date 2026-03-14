@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { db } from "@/lib/database"
+import DatabaseManager from "@/lib/database"
+const db = DatabaseManager.getInstance()
 import { EntityTypes } from "@/lib/core/entity-types"
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {

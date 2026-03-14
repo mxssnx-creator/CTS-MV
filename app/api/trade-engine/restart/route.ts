@@ -12,8 +12,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Trade engine not initialized" }, { status: 503 })
     }
 
-    const body = await request.json()
-    const { force = false, clearCache = false } = body
+    let force = false
+    let clearCache = false
+    try {
+      const text = await request.text()
+      if (text && text.trim()) {
+        const body = JSON.parse(text)
+        force = body.force ?? false
+        clearCache = body.clearCache ?? false
+      }
+    } catch {
+      // Empty body - use defaults
+    }
 
     console.log("[v0] Restarting trade engine...", { force, clearCache })
 

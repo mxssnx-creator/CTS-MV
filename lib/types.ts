@@ -1,23 +1,22 @@
 export interface ExchangeConnection {
   id: string
+  user_id?: number
   name: string
   exchange: string
-  exchange_id?: number // Added exchange_id for consistency with preset connections
+  exchange_id?: number | null
   api_type: string
   connection_method: string
+  connection_library?: string
   api_key: string
   api_secret: string
-  margin_type?: string
-  position_mode?: string
-  is_testnet?: boolean
+  api_passphrase?: string
+  margin_type: string
+  position_mode: string
+  is_testnet: boolean
   volume_factor?: number
   last_test_status?: string
   last_test_balance?: number
-  is_enabled: boolean
-  is_live_trade: boolean
-  created_at: string
-  updated_at?: string // Added updated_at for tracking modifications
-  connection_library?: string
+  last_test_error?: string
   last_test_log?: string[]
   last_test_timestamp?: string
   api_capabilities?: string[]
@@ -25,21 +24,26 @@ export interface ExchangeConnection {
     requests_per_second: number
     requests_per_minute: number
   }
+  is_enabled: boolean // Settings: enabled for trade engine (defaults to true for base, false for new)
+  is_enabled_dashboard: boolean // Dashboard: visibility/enabled state (always defaults to false)
+  is_live_trade: boolean
+  is_preset_trade?: boolean
+  is_active?: boolean
   is_predefined?: boolean
   connection_priority?: string[]
   use_main_symbols?: boolean
   arrangement_type?: "market_cap" | "market_volume" | "market_volatility" | "price_change" | "liquidity"
   arrangement_count?: number
-  is_active?: boolean
   preset_type_id?: string
-  is_preset_trade?: boolean // Added is_preset_trade flag for consistency
+  created_at: string
+  updated_at?: string
 }
 
 export interface PseudoPosition {
   id: string
   connection_id: string
   symbol: string
-  indication_type: "direction" | "move" | "active" | "optimal" | "auto" // Renamed active_advanced to auto
+  indication_type: "direction" | "move" | "active" | "optimal" | "auto" // auto is new advanced type
   takeprofit_factor: number
   stoploss_ratio: number
   trailing_enabled: boolean

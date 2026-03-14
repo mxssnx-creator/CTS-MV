@@ -1,42 +1,45 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { SystemLogger } from "@/lib/system-logger"
-import { loadConnections, saveConnections } from "@/lib/file-storage"
+import { initRedis, getConnection, updateConnection } from "@/lib/redis-db"
 
-// POST - Add connection to active connections
+// POST - Add connection to active connections (set is_enabled_dashboard flag)
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     const connectionId = id
 
-    console.log("[v0] Adding connection to active:", connectionId)
+    await initRedis()
+    const connection = await getConnection(connectionId)
 
-    const connections = loadConnections()
-    const connectionIndex = connections.findIndex((c) => c.id === connectionId)
-
-    if (connectionIndex === -1) {
+    if (!connection) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 })
     }
 
-    // Update connection to be active
-    connections[connectionIndex] = {
-      ...connections[connectionIndex],
-      is_active: true,
+    // Update connection to be active on dashboard
+    const updatedConnection = {
+      ...connection,
+      is_enabled_dashboard: "1",
       updated_at: new Date().toISOString(),
     }
 
-    saveConnections(connections)
+    await updateConnection(connectionId, updatedConnection)
 
-    await SystemLogger.logConnection(
-      `Connection added to active: ${connections[connectionIndex].name}`,
-      connectionId,
-      "info",
-    )
+    const logMsg = `[v0] [ActiveConnection] ✓ ENABLED: ${connection.name} (${connectionId}) | Exchange: ${connection.exchange} | Base: ${["bybit", "bingx", "pionex", "orangex", "binance", "okx"].includes((connection.exchange || "").toLowerCase())}`
+    console.log(logMsg)
+    await SystemLogger.logConnection("Dashboard: Enabled active connection", connectionId, "info")
 
-    return NextResponse.json({ success: true, message: "Connection added to active" })
+    return NextResponse.json({
+      success: true,
+      connection: updatedConnection,
+      message: "Connection enabled on dashboard",
+    })
   } catch (error) {
-    console.error("[v0] Failed to add connection to active:", error)
+    console.error(`[v0] [ActiveConnection] ✗ FAILED to enable: ${error instanceof Error ? error.message : String(error)}`)
     await SystemLogger.logError(error, "api", "POST /api/settings/connections/[id]/active")
-    return NextResponse.json({ error: "Failed to add connection to active" }, { status: 500 })
+    return NextResponse.json(
+      { error: "Failed to enable connection", details: error instanceof Error ? error.message : "Unknown error" },
+      { status: 500 }
+    )
   }
 }
 
@@ -46,36 +49,37 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     const { id } = await params
     const connectionId = id
 
-    console.log("[v0] Removing connection from active:", connectionId)
+    await initRedis()
+    const connection = await getConnection(connectionId)
 
-    const connections = loadConnections()
-    const connectionIndex = connections.findIndex((c) => c.id === connectionId)
-
-    if (connectionIndex === -1) {
+    if (!connection) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 })
     }
 
-    // Update connection to not be active
-    connections[connectionIndex] = {
-      ...connections[connectionIndex],
-      is_active: false,
-      is_enabled: false,
-      is_live_trade: false,
+    // Update connection to remove from active
+    const updatedConnection = {
+      ...connection,
+      is_enabled_dashboard: "0",
       updated_at: new Date().toISOString(),
     }
 
-    saveConnections(connections)
+    await updateConnection(connectionId, updatedConnection)
 
-    await SystemLogger.logConnection(
-      `Connection removed from active: ${connections[connectionIndex].name}`,
-      connectionId,
-      "info",
-    )
+    const logMsg = `[v0] [ActiveConnection] ✗ DISABLED: ${connection.name} (${connectionId}) | Exchange: ${connection.exchange}`
+    console.log(logMsg)
+    await SystemLogger.logConnection("Dashboard: Disabled active connection", connectionId, "info")
 
-    return NextResponse.json({ success: true, message: "Connection removed from active" })
+    return NextResponse.json({
+      success: true,
+      connection: updatedConnection,
+      message: "Connection disabled on dashboard",
+    })
   } catch (error) {
-    console.error("[v0] Failed to remove connection from active:", error)
+    console.error(`[v0] [ActiveConnection] ✗ FAILED to disable: ${error instanceof Error ? error.message : String(error)}`)
     await SystemLogger.logError(error, "api", "DELETE /api/settings/connections/[id]/active")
-    return NextResponse.json({ error: "Failed to remove connection from active" }, { status: 500 })
+    return NextResponse.json(
+      { error: "Failed to disable connection", details: error instanceof Error ? error.message : "Unknown error" },
+      { status: 500 }
+    )
   }
 }

@@ -1,66 +1,67 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { SystemLogger } from "@/lib/system-logger"
-import { loadConnections, saveConnections } from "@/lib/file-storage"
+import { initRedis, getConnection, updateConnection } from "@/lib/redis-db"
 
 // POST toggle connection enabled status
+// NOTE: Trade engines DO NOT start here
+// Main/Preset engines are controlled independently via their toggle endpoints:
+// - /api/settings/connections/[id]/live-trade (controls Main Engine)
+// - /api/settings/connections/[id]/preset-type (controls Preset Engine)
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     const connectionId = id
-    const { is_enabled, is_live_trade, is_preset_trade } = await request.json()
+    const body = await request.json()
+    const { is_enabled } = body
 
-    console.log("[v0] Toggling connection:", connectionId, {
-      is_enabled,
-      is_live_trade,
-      is_preset_trade,
-    })
+    console.log("[v0] [Toggle] Toggling connection enabled:", connectionId, "enabled:", is_enabled)
 
-    const connections = loadConnections()
-    const connectionIndex = connections.findIndex((c) => c.id === connectionId)
+    await initRedis()
+    const connection = await getConnection(connectionId)
 
-    if (connectionIndex === -1) {
-      console.error("[v0] Connection not found:", connectionId)
+    if (!connection) {
+      console.error("[v0] [Toggle] Connection not found:", connectionId)
       return NextResponse.json({ error: "Connection not found" }, { status: 404 })
     }
 
-    const connection = connections[connectionIndex]
-
-    if (is_live_trade && !is_enabled) {
-      console.warn("[v0] Cannot enable live trade without enabling connection first")
-      return NextResponse.json(
-        { error: "Invalid state", details: "Cannot enable live trade without enabling connection first" },
-        { status: 400 },
-      )
-    }
-
-    // Update connection in file storage
+    // Update connection in Redis with updated_at timestamp
     const updatedConnection = {
       ...connection,
-      is_enabled,
-      is_live_trade: is_enabled ? is_live_trade : false, // Disable trading if connection disabled
-      is_preset_trade: is_enabled ? is_preset_trade : false,
+      is_enabled: is_enabled ? "1" : "0",
       updated_at: new Date().toISOString(),
     }
 
-    connections[connectionIndex] = updatedConnection
-    saveConnections(connections)
+    await updateConnection(connectionId, updatedConnection)
+    console.log("[v0] [Toggle] Connection is_enabled updated:", connectionId, "=", is_enabled)
 
+    // Log the change but do NOT start/stop engines here
+    // Engine control is separate via live-trade and preset-type endpoints
     await SystemLogger.logConnection(
-      `Connection toggled: ${connection.name} - enabled: ${is_enabled}, live: ${is_live_trade}`,
+      `Connection toggled: is_enabled=${is_enabled}. Engines controlled separately via live-trade/preset-type endpoints.`,
       connectionId,
       "info",
-      { is_enabled, is_live_trade, is_preset_trade },
+      { is_enabled },
     )
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({
+      success: true,
+      connection: updatedConnection,
+      message: `Connection ${is_enabled ? "enabled" : "disabled"}. Trade engines are controlled separately.`,
+    })
   } catch (error) {
-    console.error("[v0] Failed to toggle connection:", error)
-    await SystemLogger.logError(error, "api", "POST /api/settings/connections/[id]/toggle")
+    console.error("[v0] [Toggle] Exception:", error)
+    const errorMsg = error instanceof Error ? error.message : String(error)
+
+    try {
+      await SystemLogger.logError(error, "api", "POST /api/settings/connections/[id]/toggle")
+    } catch (logError) {
+      console.warn("[v0] [Toggle] Failed to log error:", logError)
+    }
 
     return NextResponse.json(
       {
         error: "Failed to toggle connection",
-        details: error instanceof Error ? error.message : "Unknown error",
+        details: errorMsg,
       },
       { status: 500 },
     )

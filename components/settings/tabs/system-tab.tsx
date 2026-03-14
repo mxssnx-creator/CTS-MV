@@ -3,6 +3,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Slider } from "@/components/ui/slider"
 import { Tabs, TabsContent } from "@/components/ui/tabs"
 import { Info } from "lucide-react"
 import { StatisticsOverview } from "@/components/settings/statistics-overview"
@@ -10,10 +11,9 @@ import { StatisticsOverview } from "@/components/settings/statistics-overview"
 interface SystemTabProps {
   settings: any
   handleSettingChange: (key: string, value: any) => void
-  databaseChanged: boolean
 }
 
-export function SystemTab({ settings, handleSettingChange, databaseChanged }: SystemTabProps) {
+export function SystemTab({ settings, handleSettingChange }: SystemTabProps) {
   return (
     <Tabs defaultValue="system" className="space-y-4">
       <TabsContent value="system" className="space-y-4">
@@ -26,74 +26,97 @@ export function SystemTab({ settings, handleSettingChange, databaseChanged }: Sy
             <div className="space-y-4">
               <h3 className="text-lg font-semibold">Database Configuration</h3>
               <p className="text-xs text-muted-foreground">
-                Select database type and configuration. Changes require system restart.
+                The system uses Redis for high-performance in-memory data storage.
               </p>
-
-              {databaseChanged && (
-                <div className="p-3 border border-orange-500 bg-orange-50 dark:bg-orange-950 rounded-lg">
-                  <p className="text-sm text-orange-700 dark:text-orange-300 flex items-center gap-2">
-                    <Info className="h-4 w-4" />
-                    Database type change detected. Click "Save Changes" to apply and restart system.
-                  </p>
-                </div>
-              )}
 
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Database Type</Label>
-                  <Select
-                    value={settings.database_type}
-                    onValueChange={(value) => handleSettingChange("database_type", value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select database type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="sqlite">
-                        <div className="flex flex-col">
-                          <span>SQLite (Local)</span>
-                          <span className="text-xs text-muted-foreground">File-based, no setup required</span>
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="postgresql">
-                        <div className="flex flex-col">
-                          <span>PostgreSQL (Local)</span>
-                          <span className="text-xs text-muted-foreground">Local PostgreSQL server</span>
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="remote">
-                        <div className="flex flex-col">
-                          <span>PostgreSQL (Remote)</span>
-                          <span className="text-xs text-muted-foreground">Remote PostgreSQL server</span>
-                        </div>
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <div className="flex items-center gap-3 p-4 border rounded-lg bg-primary/5">
+                    <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+                    <div>
+                      <p className="font-semibold text-lg">Redis</p>
+                      <p className="text-xs text-muted-foreground">In-Memory Data Store</p>
+                    </div>
+                  </div>
                   <p className="text-xs text-muted-foreground">
-                    <strong>SQLite:</strong> Default, perfect for development and single server deployments.
-                    <br />
-                    <strong>Local PostgreSQL:</strong> For production use with local PostgreSQL installation.
-                    <br />
-                    <strong>Remote PostgreSQL:</strong> For production use with remote database (e.g., Vercel Postgres).
+                    <strong>Redis</strong> provides high-performance data storage with millisecond latency, 
+                    perfect for real-time trading applications.
                   </p>
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Database Status</Label>
+                  <Label>Connection Status</Label>
                   <div className="p-3 border rounded-lg bg-muted/30">
                     <p className="text-sm">
-                      <strong>Current Type:</strong> {settings.database_type || "sqlite"}
+                      <strong>Mode:</strong> {settings.databaseType === "redis" ? "Persistent Redis" : "In-Memory Fallback"}
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      {settings.database_type === "sqlite" &&
-                        "Using local SQLite database. No additional configuration required."}
-                      {settings.database_type === "postgresql" &&
-                        "Using local PostgreSQL. Ensure PostgreSQL service is running."}
-                      {settings.database_type === "remote" &&
-                        "Using remote PostgreSQL. Ensure REMOTE_POSTGRES_URL environment variable is set."}
+                      Configure REDIS_URL environment variable for persistent storage.
+                      Without it, data will be stored in-memory and lost on restart.
                     </p>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            <div className="space-y-4 border-t pt-4">
+              <h3 className="text-lg font-semibold">Position Limits</h3>
+              <p className="text-xs text-muted-foreground">Maximum positions per configuration per direction</p>
+
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Max Long Positions per Config</Label>
+                    <span className="text-sm font-semibold">{settings.maxPositionsLong ?? 1}</span>
+                  </div>
+                  <Slider
+                    value={[settings.maxPositionsLong ?? 1]}
+                    onValueChange={(v) => handleSettingChange("maxPositionsLong", v[0])}
+                    min={1}
+                    max={5}
+                    step={1}
+                  />
+                  <p className="text-xs text-muted-foreground">Max 1 recommended for independent config processing</p>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Max Short Positions per Config</Label>
+                    <span className="text-sm font-semibold">{settings.maxPositionsShort ?? 1}</span>
+                  </div>
+                  <Slider
+                    value={[settings.maxPositionsShort ?? 1]}
+                    onValueChange={(v) => handleSettingChange("maxPositionsShort", v[0])}
+                    min={1}
+                    max={5}
+                    step={1}
+                  />
+                  <p className="text-xs text-muted-foreground">Max 1 recommended for independent config processing</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4 border-t pt-4">
+              <h3 className="text-lg font-semibold">Indication Timeout</h3>
+              <p className="text-xs text-muted-foreground">Time to wait for valid indication evaluation (100ms - 3000ms)</p>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Indication Timeout</Label>
+                  <span className="text-sm font-semibold">{settings.indicationTimeoutMs ?? 1000}ms</span>
+                </div>
+                <Slider
+                  value={[settings.indicationTimeoutMs ?? 1000]}
+                  onValueChange={(v) => handleSettingChange("indicationTimeoutMs", v[0])}
+                  min={100}
+                  max={3000}
+                  step={100}
+                />
+                <p className="text-xs text-muted-foreground">
+                  After a valid indication evaluation, wait this duration before processing next. 
+                  Lower values = faster but more CPU. Higher values = more reliable but slower response.
+                </p>
               </div>
             </div>
 
@@ -147,7 +170,7 @@ export function SystemTab({ settings, handleSettingChange, databaseChanged }: Sy
 
             <div className="space-y-4 border-t pt-4">
               <h3 className="text-lg font-semibold">Database Statistics</h3>
-              <StatisticsOverview />
+              <StatisticsOverview settings={settings} />
             </div>
           </CardContent>
         </Card>

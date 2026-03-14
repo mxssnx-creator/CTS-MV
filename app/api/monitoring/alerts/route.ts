@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server"
-import { sql } from "@/lib/db"
+import { getAllConnections, getSettings } from "@/lib/redis-db"
 import { SystemLogger } from "@/lib/system-logger"
 
 export const runtime = "nodejs"
@@ -22,57 +22,32 @@ export async function GET() {
   try {
     const alerts: Alert[] = []
 
-    // Check trade engine states for errors
-    const engineStates = await sql`
-      SELECT connection_id, status, error_message, updated_at
-      FROM trade_engine_state
-      WHERE status = 'error' OR error_message IS NOT NULL
-      ORDER BY updated_at DESC
-      LIMIT 10
-    `
+    // Check for failed orders from Redis
+    const orders = (await getSettings("orders")) || []
+    const failedOrders = orders.filter((o: any) => o.status === "failed" && 
+      new Date(o.created_at).getTime() > Date.now() - 3600000) // Last hour
 
-    for (const state of engineStates) {
+    if (failedOrders.length > 5) {
       alerts.push({
-        id: `engine-${state.connection_id}`,
-        level: "critical",
-        category: "Trade Engine",
-        message: `Trade engine error on connection ${state.connection_id}: ${state.error_message || "Unknown error"}`,
-        timestamp: new Date(state.updated_at),
+        id: "orders-failed",
+        level: "warning",
+        category: "Order Execution",
+        message: `${failedOrders.length} orders failed in the last hour`,
+        timestamp: new Date(),
         acknowledged: false
       })
     }
 
-    // Check for failed orders (if orders table exists)
-    try {
-      const failedOrders = await sql`
-        SELECT COUNT(*) as count
-        FROM orders
-        WHERE status = 'failed'
-          AND created_at > NOW() - INTERVAL '1 hour'
-      `
-
-      if (failedOrders[0]?.count > 5) {
-        alerts.push({
-          id: "orders-failed",
-          level: "warning",
-          category: "Order Execution",
-          message: `${failedOrders[0].count} orders failed in the last hour`,
-          timestamp: new Date(),
-          acknowledged: false
-        })
-      }
-    } catch {
-      // Orders table might not exist yet
-    }
-
-    // Check for inactive connections that should be active
-    const inactiveConnections = await sql`
-      SELECT id, name
-      FROM exchange_connections
-      WHERE is_enabled = TRUE
-        AND (is_live_trade = TRUE OR is_preset_trade = TRUE)
-        AND updated_at < NOW() - INTERVAL '5 minutes'
-    `
+    // Check for inactive connections
+    const connections = await getAllConnections()
+    const fiveMinutesAgo = Date.now() - 5 * 60 * 1000
+    
+    const inactiveConnections = connections.filter((conn: any) => {
+      const isActive = (conn.is_enabled === true || conn.is_enabled === "1" || conn.is_enabled === "true") &&
+                      (conn.is_live_trade === true || conn.is_live_trade === "1" || conn.is_preset_trade === true || conn.is_preset_trade === "1")
+      const lastUpdate = new Date(conn.updated_at || 0).getTime()
+      return isActive && lastUpdate < fiveMinutesAgo
+    })
 
     for (const conn of inactiveConnections) {
       alerts.push({
@@ -85,27 +60,38 @@ export async function GET() {
       })
     }
 
-    // Check for high error rate in logs
-    try {
-      const recentErrors = await sql`
-        SELECT COUNT(*) as count
-        FROM site_logs
-        WHERE level = 'error'
-          AND created_at > NOW() - INTERVAL '10 minutes'
-      `
+    // Check for recent errors in logs
+    const logs = (await getSettings("system_logs")) || []
+    const recentErrorLogs = logs.filter((log: any) => 
+      log.level === "error" && 
+      new Date(log.timestamp || 0).getTime() > Date.now() - 10 * 60 * 1000 // Last 10 minutes
+    )
 
-      if (recentErrors[0]?.count > 10) {
-        alerts.push({
-          id: "high-error-rate",
-          level: "critical",
-          category: "System Health",
-          message: `High error rate detected: ${recentErrors[0].count} errors in last 10 minutes`,
-          timestamp: new Date(),
-          acknowledged: false
-        })
-      }
-    } catch {
-      // site_logs table might not exist
+    if (recentErrorLogs.length > 10) {
+      alerts.push({
+        id: "high-error-rate",
+        level: "critical",
+        category: "System Health",
+        message: `High error rate detected: ${recentErrorLogs.length} errors in last 10 minutes`,
+        timestamp: new Date(),
+        acknowledged: false
+      })
+    }
+
+    // Check for empty active connections on dashboard (info level)
+    const dashboardConnections = connections.filter((c: any) => 
+      c.is_enabled_dashboard === "1" || c.is_enabled_dashboard === true
+    )
+    
+    if (dashboardConnections.length === 0 && connections.length > 0) {
+      alerts.push({
+        id: "no-dashboard-connections",
+        level: "info",
+        category: "Configuration",
+        message: "No connections added to dashboard active list yet",
+        timestamp: new Date(),
+        acknowledged: false
+      })
     }
 
     return NextResponse.json({
@@ -113,7 +99,8 @@ export async function GET() {
       alerts,
       count: alerts.length,
       criticalCount: alerts.filter(a => a.level === "critical").length,
-      warningCount: alerts.filter(a => a.level === "warning").length
+      warningCount: alerts.filter(a => a.level === "warning").length,
+      infoCount: alerts.filter(a => a.level === "info").length,
     })
 
   } catch (error) {
@@ -137,6 +124,13 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const { alertId } = body
+
+    if (!alertId) {
+      return NextResponse.json(
+        { success: false, error: "Missing alertId" },
+        { status: 400 }
+      )
+    }
 
     await SystemLogger.logAPI(`Alert acknowledged: ${alertId}`, "info", "POST /api/monitoring/alerts")
 

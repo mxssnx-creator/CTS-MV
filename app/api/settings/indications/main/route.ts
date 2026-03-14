@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server"
-import { loadMainIndicationSettings, saveMainIndicationSettings } from "@/lib/file-storage"
+import { initRedis, getRedisClient } from "@/lib/redis-db"
 
 export async function GET() {
   try {
-    const settings = loadMainIndicationSettings()
-    return NextResponse.json({ success: true, settings })
+    await initRedis()
+    const client = getRedisClient()
+    const settings = await client.get("indications:main")
+    return NextResponse.json({ success: true, settings: settings || {} })
   } catch (error) {
     console.error("[v0] Error loading main indication settings:", error)
     return NextResponse.json({ success: false, error: "Failed to load main indication settings" }, { status: 500 })
@@ -20,7 +22,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: "Settings are required" }, { status: 400 })
     }
 
-    saveMainIndicationSettings(settings)
+    await initRedis()
+    const client = getRedisClient()
+    await client.set("indications:main", settings)
 
     return NextResponse.json({ success: true, message: "Main indication settings saved successfully" })
   } catch (error) {

@@ -1,231 +1,158 @@
-import { execute } from "./db"
+import { getRedisClient } from "./redis-db"
 
-export interface LogEntry {
-  level: "info" | "warn" | "error" | "debug"
-  category: "system" | "trade-engine" | "api" | "database" | "connection" | "toast"
+interface LogEntry {
+  timestamp: string
+  level: "info" | "warn" | "error"
+  category: string
   message: string
-  context?: string
   metadata?: Record<string, any>
-  error?: Error
-  userId?: string
-  connectionId?: string
 }
 
 export class SystemLogger {
-  private static dbLoggingDisabled = false
-
-  /**
-   * Log to database with proper error handling
-   */
-  private static async logToDatabase(entry: LogEntry): Promise<void> {
-    // Skip if database logging was previously disabled
-    if (SystemLogger.dbLoggingDisabled) {
-      return
-    }
-
+  static async logToDatabase(entry: LogEntry): Promise<void> {
     try {
-      const errorMessage = entry.error?.message || null
-      const errorStack = entry.error?.stack || null
+      const client = getRedisClient()
+      const logId = `log:${Date.now()}:${Math.random().toString(36).substr(2, 9)}`
+      const logKey = logId
 
-      // Don't include timestamp - let database handle it with DEFAULT
-      // Use ? placeholders for SQLite (db.ts handles conversion for PostgreSQL)
-      await execute(
-        `INSERT INTO site_logs (
-          level, category, message, context, 
-          user_id, connection_id, error_message, error_stack, metadata
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          entry.level,
-          entry.category,
-          entry.message,
-          entry.context || null,
-          entry.userId || null,
-          entry.connectionId || null,
-          errorMessage,
-          errorStack,
-          JSON.stringify(entry.metadata || {}),
-        ],
-      )
-    } catch (dbError) {
-      // Disable database logging for critical errors to prevent spam
-      if (dbError instanceof Error) {
-        const errorMsg = dbError.message.toLowerCase()
-        const errorCode = (dbError as any).code || ""
-        
-        if (errorMsg.includes("no such table: site_logs")) {
-          console.warn(
-            "[SystemLogger] site_logs table not found - disabling database logging. Please run database initialization."
-          )
-          SystemLogger.dbLoggingDisabled = true
-        } else if (
-          errorMsg.includes("readonly") || 
-          errorMsg.includes("disk i/o error") ||
-          errorCode === "SQLITE_IOERR" ||
-          errorCode.startsWith("SQLITE_IOERR_")
-        ) {
-          // Only log this warning once, then fail silently
-          if (!SystemLogger.dbLoggingDisabled) {
-            console.warn(
-              "[SystemLogger] Database is read-only or has I/O errors - disabling database logging. This is normal in serverless environments."
-            )
-          }
-          SystemLogger.dbLoggingDisabled = true
-        } else {
-          console.error("[SystemLogger] Failed to log to database:", dbError)
-        }
+      const logEntry = {
+        id: logId,
+        timestamp: entry.timestamp,
+        level: entry.level,
+        category: entry.category,
+        message: entry.message,
+        metadata: entry.metadata ? JSON.stringify(entry.metadata) : "",
       }
+
+      // Store log entry using lowercase hset (pass object directly)
+      await client.hset(logKey, logEntry)
+
+      // Add to logs index set
+      await client.sadd("logs:all", logId)
+
+      // Add to category index
+      await client.sadd(`logs:${entry.category}`, logId)
+
+      // Set TTL for logs (7 days = 604800 seconds)
+      await client.expire(logKey, 604800)
+    } catch (error) {
+      console.error("[SystemLogger] Failed to log to database:", error)
     }
   }
 
-  /**
-   * Log system events
-   */
-  static async logSystem(
-    message: string,
-    level: LogEntry["level"] = "info",
-    metadata?: Record<string, any>,
-  ): Promise<void> {
-    const entry: LogEntry = {
-      level,
-      category: "system",
-      message,
-      metadata,
-    }
-
-    console.log(`[System] [${level.toUpperCase()}] ${message}`, metadata || "")
-    await this.logToDatabase(entry)
-  }
-
-  /**
-   * Log trade engine events
-   */
-  static async logTradeEngine(
-    message: string,
-    level: LogEntry["level"] = "info",
-    metadata?: Record<string, any>,
-  ): Promise<void> {
-    const entry: LogEntry = {
-      level,
-      category: "trade-engine",
-      message,
-      metadata,
-    }
-
-    console.log(`[TradeEngine] [${level.toUpperCase()}] ${message}`, metadata || "")
-    await this.logToDatabase(entry)
-  }
-
-  /**
-   * Log API events
-   */
-  static async logAPI(
-    message: string,
-    level: LogEntry["level"] = "info",
-    context?: string,
-    metadata?: Record<string, any>,
-  ): Promise<void> {
-    const entry: LogEntry = {
+  static async logAPI(message: string, level: "info" | "warn" | "error" = "info", endpoint?: string, data?: any): Promise<void> {
+    await this.logToDatabase({
+      timestamp: new Date().toISOString(),
       level,
       category: "api",
       message,
-      context,
-      metadata,
-    }
-
-    console.log(`[API] [${level.toUpperCase()}] ${context || "unknown"}: ${message}`, metadata || "")
-    await this.logToDatabase(entry)
+      metadata: { endpoint, ...data },
+    })
   }
 
-  /**
-   * Log database events
-   */
-  static async logDatabase(
-    message: string,
-    level: LogEntry["level"] = "info",
-    metadata?: Record<string, any>,
-  ): Promise<void> {
-    const entry: LogEntry = {
+  static async logConnection(message: string, connectionId?: string, level: "info" | "warn" | "error" = "info", data?: any): Promise<void> {
+    await this.logToDatabase({
+      timestamp: new Date().toISOString(),
       level,
-      category: "database",
+      category: "connections",
       message,
-      metadata,
-    }
-
-    console.log(`[Database] [${level.toUpperCase()}] ${message}`, metadata || "")
-    await this.logToDatabase(entry)
+      metadata: { connectionId, ...data },
+    })
   }
 
-  /**
-   * Log connection events
-   */
-  static async logConnection(
-    message: string,
-    connectionId: string,
-    level: LogEntry["level"] = "info",
-    metadata?: Record<string, any>,
-  ): Promise<void> {
-    const entry: LogEntry = {
-      level,
-      category: "connection",
+  static async logTradeEngine(message: string, data?: any): Promise<void> {
+    await this.logToDatabase({
+      timestamp: new Date().toISOString(),
+      level: "info",
+      category: "trade_engine",
       message,
-      connectionId,
-      metadata,
-    }
-
-    console.log(`[Connection:${connectionId}] [${level.toUpperCase()}] ${message}`, metadata || "")
-    await this.logToDatabase(entry)
+      metadata: data,
+    })
   }
 
-  /**
-   * Log toast messages for tracking user notifications
-   */
-  static async logToast(
-    message: string,
-    type: "success" | "error" | "info" | "warning",
-    context?: string,
-    userId?: string,
-  ): Promise<void> {
-    const levelMap = {
-      success: "info" as const,
-      error: "error" as const,
-      info: "info" as const,
-      warning: "warn" as const,
-    }
-
-    const entry: LogEntry = {
-      level: levelMap[type],
-      category: "toast",
+  static async logTrade(message: string, tradeData?: any): Promise<void> {
+    await this.logToDatabase({
+      timestamp: new Date().toISOString(),
+      level: "info",
+      category: "trades",
       message,
-      context,
-      userId,
-      metadata: { toastType: type },
-    }
-
-    console.log(`[Toast] [${type.toUpperCase()}] ${message}`)
-    await this.logToDatabase(entry)
+      metadata: tradeData,
+    })
   }
 
-  /**
-   * Log errors with full stack trace
-   */
-  static async logError(
-    error: Error | unknown,
-    category: LogEntry["category"],
-    context?: string,
-    metadata?: Record<string, any>,
-  ): Promise<void> {
-    const errorObj = error instanceof Error ? error : new Error(String(error))
+  static async logPosition(message: string, positionData?: any): Promise<void> {
+    await this.logToDatabase({
+      timestamp: new Date().toISOString(),
+      level: "info",
+      category: "positions",
+      message,
+      metadata: positionData,
+    })
+  }
 
-    const entry: LogEntry = {
+  static async logError(category: string, error: any, context?: any): Promise<void> {
+    await this.logToDatabase({
+      timestamp: new Date().toISOString(),
       level: "error",
       category,
-      message: errorObj.message,
-      context,
-      error: errorObj,
-      metadata,
-    }
+      message: error instanceof Error ? error.message : String(error),
+      metadata: { ...context, stack: error instanceof Error ? error.stack : undefined },
+    })
+  }
 
-    console.error(`[${category}] [ERROR] ${context || "unknown"}:`, errorObj)
-    await this.logToDatabase(entry)
+  static async logWarning(category: string, message: string, data?: any): Promise<void> {
+    await this.logToDatabase({
+      timestamp: new Date().toISOString(),
+      level: "warn",
+      category,
+      message,
+      metadata: data,
+    })
+  }
+
+  static async getLogs(
+    category?: string,
+    limit: number = 100,
+  ): Promise<LogEntry[]> {
+    try {
+      const client = getRedisClient()
+      const key = category ? `logs:${category}` : "logs:all"
+      const logIds = (await client.smembers(key)) || []
+
+      const logs: LogEntry[] = []
+      for (const logId of logIds.slice(-limit)) {
+        const logData = await client.hgetall(logId)
+        if (logData && Object.keys(logData).length > 0) {
+          logs.push({
+            timestamp: logData.timestamp || "",
+            level: (logData.level as any) || "info",
+            category: logData.category || "",
+            message: logData.message || "",
+            metadata: logData.metadata ? JSON.parse(logData.metadata) : undefined,
+          })
+        }
+      }
+      return logs
+    } catch (error) {
+      console.error("[SystemLogger] Failed to retrieve logs:", error)
+      return []
+    }
+  }
+
+  static async clearLogs(category?: string): Promise<void> {
+    try {
+      const client = getRedisClient()
+      const key = category ? `logs:${category}` : "logs:all"
+      const logIds = (await client.smembers(key)) || []
+
+      for (const logId of logIds) {
+        await client.del(logId)
+      }
+
+      await client.del(key)
+      console.log(`[SystemLogger] Cleared logs for category: ${category || "all"}`)
+    } catch (error) {
+      console.error("[SystemLogger] Failed to clear logs:", error)
+    }
   }
 }

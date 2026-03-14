@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { getDatabaseType, execute } from "@/lib/db"
+import { initRedis, getRedisClient } from "@/lib/redis-db"
 
 export async function POST(request: Request) {
   try {
@@ -9,52 +9,73 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "connectionId and hoursToKeep are required" }, { status: 400 })
     }
 
-    const dbType = getDatabaseType()
+    await initRedis()
+    const client = getRedisClient()
 
     // Calculate cutoff timestamp
     const cutoffTime = new Date(Date.now() - hoursToKeep * 60 * 60 * 1000)
+    const cutoffTimeStr = cutoffTime.toISOString()
 
-    // Archive old data first
-    if (dbType === "postgresql" || dbType === "remote") {
-      await execute(
-        `INSERT INTO archived_market_data (connection_id, symbol, timeframe, timestamp, open, high, low, close, volume, archived_at)
-         SELECT connection_id, symbol, timeframe, timestamp, open, high, low, close, volume, NOW()
-         FROM market_data
-         WHERE connection_id = $1 AND timestamp < $2`,
-        [connectionId, cutoffTime.toISOString()],
-      )
-    } else {
-      await execute(
-        `INSERT INTO archived_market_data (connection_id, symbol, timeframe, timestamp, open, high, low, close, volume, archived_at)
-         SELECT connection_id, symbol, timeframe, timestamp, open, high, low, close, volume, datetime('now')
-         FROM market_data
-         WHERE connection_id = ? AND timestamp < ?`,
-        [connectionId, cutoffTime.toISOString()],
-      )
-    }
+    console.log(`[v0] [Cleanup] Starting historical data cleanup for connection: ${connectionId}`)
+    console.log(`[v0] [Cleanup] Keeping data from last ${hoursToKeep} hours (cutoff: ${cutoffTimeStr})`)
 
-    // Delete old records
+    // Get all market data keys for this connection
+    const keys = await (client as any).keys(`market_data:${connectionId}:*`)
+    console.log(`[v0] [Cleanup] Found ${keys.length} market data records to check`)
+
     let deletedCount = 0
-    if (dbType === "postgresql" || dbType === "remote") {
-      const result = await execute(`DELETE FROM market_data WHERE connection_id = $1 AND timestamp < $2`, [
-        connectionId,
-        cutoffTime.toISOString(),
-      ])
-      deletedCount = result.rowCount
-    } else {
-      const result = await execute(`DELETE FROM market_data WHERE connection_id = ? AND timestamp < ?`, [
-        connectionId,
-        cutoffTime.toISOString(),
-      ])
-      deletedCount = result.rowCount
+    let archivedCount = 0
+    let keptCount = 0
+
+    for (const key of keys) {
+      const data = await (client as any).hgetall(key)
+
+      if (!data || !data.timestamp) {
+        console.warn(`[v0] [Cleanup] Record missing timestamp: ${key}`)
+        continue
+      }
+
+      const recordTime = new Date(data.timestamp)
+
+      // Check if this record is older than cutoff
+      if (recordTime < cutoffTime) {
+        try {
+          // Archive to another key first (for audit trail)
+          const archiveKey = `archived_market_data:${connectionId}:${data.symbol || "unknown"}:${Date.now()}`
+          const hashData: Record<string, string> = {}
+          for (const [k, v] of Object.entries(data)) {
+            hashData[k] = String(v ?? "")
+          }
+          await (client as any).hset(archiveKey, hashData)
+          await (client as any).expire(archiveKey, 90 * 24 * 60 * 60) // Keep archived for 90 days
+
+          // Delete original
+          await (client as any).del(key)
+          deletedCount++
+          archivedCount++
+
+          if (deletedCount % 100 === 0) {
+            console.log(`[v0] [Cleanup] Processed ${deletedCount} records...`)
+          }
+        } catch (error) {
+          console.error(`[v0] [Cleanup] Error archiving record ${key}:`, error)
+        }
+      } else {
+        keptCount++
+      }
     }
+
+    console.log(`[v0] [Cleanup] Cleanup complete: Deleted=${deletedCount}, Archived=${archivedCount}, Kept=${keptCount}`)
 
     return NextResponse.json({
       success: true,
       deletedCount,
+      archivedCount,
+      keptCount,
+      totalProcessed: keys.length,
     })
   } catch (error) {
     console.error("[v0] Error cleaning up historical data:", error)
-    return NextResponse.json({ error: "Failed to cleanup historical data" }, { status: 500 })
+    return NextResponse.json({ error: "Failed to cleanup historical data", details: String(error) }, { status: 500 })
   }
 }

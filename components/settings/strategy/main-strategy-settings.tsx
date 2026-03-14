@@ -66,7 +66,51 @@ export default function MainStrategySettings({
           </div>
 
           <div className="border-t pt-6 space-y-4">
-            <h3 className="text-lg font-semibold border-b pb-2">Main Strategy Features</h3>
+            <h3 className="text-lg font-semibold border-b pb-2">Max Pseudo Positions (Per Configuration)</h3>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Max Pseudo Positions (Long)</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  max="10"
+                  value={settings.strategyMainMaxPseudoPositionsLong || 1}
+                  onChange={(e) =>
+                    handleSettingChange("strategyMainMaxPseudoPositionsLong", Number.parseInt(e.target.value))
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  Maximum pseudo positions allowed for long entries per configuration set (default: 1)
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Max Pseudo Positions (Short)</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  max="10"
+                  value={settings.strategyMainMaxPseudoPositionsShort || 1}
+                  onChange={(e) =>
+                    handleSettingChange("strategyMainMaxPseudoPositionsShort", Number.parseInt(e.target.value))
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  Maximum pseudo positions allowed for short entries per configuration set (default: 1)
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800">
+              <p className="font-semibold mb-1">About Max Pseudo Positions:</p>
+              <p>
+                Each configuration possibility set (base, main, real) can independently open up to the specified number of
+                pseudo positions in each direction. Setting both to 1 means each set can have at most 1 long and 1 short
+                position simultaneously, providing controlled risk management.
+              </p>
+            </div>
+          </div>
 
             <div className="grid gap-4">
               <div className="flex items-center justify-between p-3 border rounded-lg bg-card">

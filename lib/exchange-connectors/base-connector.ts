@@ -4,12 +4,35 @@
  */
 
 import { getRateLimiter } from "@/lib/rate-limiter"
+import { EXCHANGE_API_TYPES } from "@/lib/connection-predefinitions"
+import { validateApiType, validateContractType, getApiPath } from "@/lib/api-type-validator"
+
+// Supported API types across all exchanges
+export const VALID_API_TYPES = [
+  "spot",
+  "perpetual_futures",
+  "futures",
+  "unified",
+  "contract",
+  "inverse",
+  "margin",
+  "portfolio",
+  "swap",
+  "standard",
+] as const
+
+export type ValidApiType = typeof VALID_API_TYPES[number]
 
 export interface ExchangeCredentials {
   apiKey: string
   apiSecret: string
   apiPassphrase?: string
   isTestnet: boolean
+  apiType?: string // Contract type: spot, perpetual_futures, futures, unified, etc.
+  marginType?: string
+  positionMode?: string
+  connectionMethod?: string
+  connectionLibrary?: string
 }
 
 export interface ExchangeBalance {
@@ -19,9 +42,40 @@ export interface ExchangeBalance {
   total: number
 }
 
+export interface ExchangePosition {
+  symbol: string
+  side: "long" | "short"
+  contracts: number
+  contractSize: number
+  currentPrice: number
+  markPrice: number
+  entryPrice: number
+  leverage: number
+  marginType: "cross" | "isolated"
+  unrealizedPnl: number
+  realizedPnl: number
+  liquidationPrice: number
+  timestamp: number
+}
+
+export interface ExchangeOrder {
+  orderId: string
+  symbol: string
+  side: "buy" | "sell"
+  type: "limit" | "market"
+  quantity: number
+  price: number
+  status: "pending" | "filled" | "partially_filled" | "cancelled"
+  filledQty: number
+  filledPrice: number
+  timestamp: number
+  updateTime: number
+}
+
 export interface ExchangeConnectorResult {
   success: boolean
   balance: number // USDT balance
+  btcPrice?: number // BTC/USDT price (optional)
   balances?: ExchangeBalance[]
   capabilities: string[]
   error?: string
@@ -37,6 +91,18 @@ export abstract class BaseExchangeConnector {
   constructor(credentials: ExchangeCredentials, exchange: string) {
     this.credentials = credentials
     this.rateLimiter = getRateLimiter(exchange)
+    
+    // Validate API type on construction
+    const apiValidation = validateApiType(exchange, credentials.apiType || "")
+    if (!apiValidation.isValid) {
+      this.log(`WARNING: Invalid API type - ${apiValidation.error}`)
+    }
+    
+    // Validate contract type on construction
+    const contractValidation = validateContractType(exchange, credentials.apiType || "")
+    if (!contractValidation.isValid) {
+      this.log(`WARNING: Invalid contract type - ${contractValidation.error}`)
+    }
   }
 
   protected log(message: string): void {
@@ -46,11 +112,76 @@ export abstract class BaseExchangeConnector {
     console.log(`[v0] ${logMessage}`)
   }
 
+  /**
+   * Get the API path for this connection's contract type
+   * Different exchanges use different paths based on api_type
+   */
+  protected getApiPath(): string {
+    return getApiPath(
+      this.credentials.connectionLibrary || "unknown",
+      this.credentials.apiType || "spot"
+    )
+  }
+
+  /**
+   * Validate that this connection can execute an operation for the given contract type
+   */
+  protected canExecuteOperation(operationType: "trading" | "positions" | "funding"): boolean {
+    const apiType = this.credentials.apiType || "spot"
+    
+    // Spot trading: cannot do positions, limited funding
+    if (apiType === "spot") {
+      if (operationType === "positions") {
+        this.log(`WARNING: Cannot fetch positions for spot trading account`)
+        return false
+      }
+    }
+    
+    // Perpetual: can do all operations
+    if (apiType === "perpetual" || apiType === "perpetual_futures") {
+      return true
+    }
+    
+    // All types: can do trading and funding
+    return true
+  }
+
   protected logError(message: string): void {
     const timestamp = new Date().toISOString()
     const logMessage = `[${timestamp}] ERROR: ${message}`
     this.logs.push(logMessage)
     console.error(`[v0] ${logMessage}`)
+  }
+
+  protected getEffectiveAccountType(): string {
+    // CRITICAL: Contract types vs Account types are DIFFERENT concepts
+    // 
+    // CONTRACT TYPES (what you trade): spot, perpetual_futures, futures, unified
+    //   - Defines the trading section/market you're accessing
+    //   - Independent variable that affects API endpoints and base URLs
+    //   - Examples: BTC/USDT spot, BTC/USDT perpetual futures
+    //
+    // ACCOUNT TYPES (how exchange organizes wallets): UNIFIED, CONTRACT, SPOT
+    //   - Bybit-specific parameter for wallet-level organization
+    //   - UNIFIED = all contract types in one wallet
+    //   - CONTRACT = derivatives/futures only wallet
+    //   - SPOT = spot trading only wallet
+    //
+    // This method maps contract types → Bybit accountType parameter
+    
+    const apiType = this.credentials.apiType || "unified"
+    
+    if (apiType === "unified") {
+      return "UNIFIED"
+    }
+    if (apiType === "perpetual_futures" || apiType === "futures") {
+      return "CONTRACT"
+    }
+    if (apiType === "spot") {
+      return "SPOT"
+    }
+    // Default to UNIFIED for backward compatibility
+    return "UNIFIED"
   }
 
   protected async rateLimitedFetch(url: string, options?: RequestInit): Promise<Response> {
@@ -75,4 +206,80 @@ export abstract class BaseExchangeConnector {
   abstract testConnection(): Promise<ExchangeConnectorResult>
   abstract getBalance(): Promise<ExchangeConnectorResult>
   abstract getCapabilities(): string[]
+
+  // Trading Methods (Order Management)
+  abstract placeOrder(
+    symbol: string,
+    side: "buy" | "sell",
+    quantity: number,
+    price?: number,
+    orderType?: "limit" | "market"
+  ): Promise<{ success: boolean; orderId?: string; error?: string }>
+
+  abstract cancelOrder(symbol: string, orderId: string): Promise<{ success: boolean; error?: string }>
+
+  abstract getOrder(symbol: string, orderId: string): Promise<ExchangeOrder | null>
+
+  abstract getOpenOrders(symbol?: string): Promise<ExchangeOrder[]>
+
+  abstract getOrderHistory(symbol?: string, limit?: number): Promise<ExchangeOrder[]>
+
+  // Position Methods (Perpetual/Futures Only)
+  abstract getPositions(symbol?: string): Promise<ExchangePosition[]>
+
+  abstract getPosition(symbol: string): Promise<ExchangePosition | null>
+
+  abstract modifyPosition(
+    symbol: string,
+    leverage?: number,
+    marginType?: "cross" | "isolated"
+  ): Promise<{ success: boolean; error?: string }>
+
+  abstract closePosition(symbol: string, positionSide?: "long" | "short"): Promise<{ success: boolean; error?: string }>
+
+  // Funding Methods (Deposits/Withdrawals)
+  abstract getDepositAddress(coin: string): Promise<{ address?: string; error?: string }>
+
+  abstract withdraw(coin: string, address: string, amount: number): Promise<{ success: boolean; txId?: string; error?: string }>
+
+  abstract getTransferHistory(limit?: number): Promise<Array<{ type: string; coin: string; amount: number; timestamp: number }>>
+
+  // Risk Management Methods
+  abstract setLeverage(symbol: string, leverage: number): Promise<{ success: boolean; error?: string }>
+
+  abstract setMarginType(symbol: string, marginType: "cross" | "isolated"): Promise<{ success: boolean; error?: string }>
+
+  abstract setPositionMode(hedgeMode: boolean): Promise<{ success: boolean; error?: string }>
+
+  /**
+   * Validate API type is supported for the exchange
+   * @param exchange - Exchange name (e.g., "bybit", "bingx")
+   * @param apiType - API type to validate (e.g., "spot", "perpetual_futures")
+   * @returns true if valid, false if not
+   */
+  static validateApiType(exchange: string, apiType?: string): boolean {
+    if (!apiType) return true // Undefined is OK, will use default
+
+    const supported = EXCHANGE_API_TYPES[exchange.toLowerCase()]
+    if (!supported) {
+      console.warn(`[v0] [Connector] Unknown exchange: ${exchange}`)
+      return false
+    }
+
+    const isValid = supported.includes(apiType)
+    if (!isValid) {
+      console.warn(`[v0] [Connector] Invalid API type '${apiType}' for ${exchange}. Supported: ${supported.join(", ")}`)
+    }
+
+    return isValid
+  }
+
+  /**
+   * Get supported API types for an exchange
+   * @param exchange - Exchange name
+   * @returns Array of supported API types
+   */
+  static getSupportedApiTypes(exchange: string): string[] {
+    return EXCHANGE_API_TYPES[exchange.toLowerCase()] || []
+  }
 }

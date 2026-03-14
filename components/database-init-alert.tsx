@@ -12,32 +12,36 @@ export function DatabaseInitAlert() {
   const router = useRouter()
 
   useEffect(() => {
-    // Check if critical tables exist
+    // Delayed check to not block initial render
     const checkTables = async () => {
       try {
+        if (typeof window === "undefined" || typeof localStorage === "undefined") {
+          return
+        }
+
+        const isDismissed = localStorage.getItem("db-init-alert-dismissed")
+        if (isDismissed) return
+
         // Try to access a critical API that requires tables
         const response = await fetch("/api/preset-types")
         if (!response.ok && response.status === 500) {
-          // Likely missing tables
-          const isDismissed = localStorage.getItem("db-init-alert-dismissed")
-          if (!isDismissed) {
-            setShowAlert(true)
-          }
-        }
-      } catch (error) {
-        // Error likely means tables are missing
-        const isDismissed = localStorage.getItem("db-init-alert-dismissed")
-        if (!isDismissed) {
           setShowAlert(true)
         }
+      } catch (error) {
+        // Silently fail - not critical for preview
+        console.debug("[v0] DatabaseInitAlert check skipped:", error)
       }
     }
 
-    checkTables()
+    // Wait 2 seconds before checking
+    const timer = setTimeout(checkTables, 2000)
+    return () => clearTimeout(timer)
   }, [])
 
   const handleDismiss = () => {
-    localStorage.setItem("db-init-alert-dismissed", "true")
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("db-init-alert-dismissed", "true")
+    }
     setDismissed(true)
     setShowAlert(false)
   }
@@ -62,7 +66,9 @@ export function DatabaseInitAlert() {
       if (data.success) {
         console.log("[v0] Database reinitialized successfully, reloading page...")
         setShowAlert(false)
-        localStorage.removeItem("db-init-alert-dismissed")
+        if (typeof localStorage !== "undefined") {
+          localStorage.removeItem("db-init-alert-dismissed")
+        }
         window.location.reload()
       } else {
         throw new Error(data.error || "Reinitialization failed")

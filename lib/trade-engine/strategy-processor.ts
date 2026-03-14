@@ -1,9 +1,13 @@
 /**
  * Strategy Processor
- * Processes strategies asynchronously for symbols
+ * Coordinates progressive strategy flow: BASE → MAIN → REAL → LIVE
+ * Each stage evaluates strategies with stricter thresholds
  */
 
-import { sql } from "@/lib/db"
+import { initRedis, getSettings } from "@/lib/redis-db"
+import { ProgressionStateManager } from "@/lib/progression-state-manager"
+import { StrategyCoordinator } from "@/lib/strategy-coordinator"
+import { logProgressionEvent } from "@/lib/engine-progression-logs"
 
 export class StrategyProcessor {
   private connectionId: string
@@ -15,68 +19,110 @@ export class StrategyProcessor {
   }
 
   /**
-   * Process strategy for a symbol in real-time
+   * Process strategy - executes complete coordinated flow
+   * BASE → Evaluate BASE → MAIN → REAL → LIVE with detailed calculations
    */
-  async processStrategy(symbol: string): Promise<void> {
+  async processStrategy(symbol: string, indications: any[] = []): Promise<{ strategiesEvaluated: number; liveReady: number }> {
     try {
-      console.log(`[v0] Processing strategy for ${symbol}`)
-
-      const indications = await this.getActiveIndications(symbol)
+      await initRedis()
+      
+      // If no indications passed, retrieve from Redis (populated by indication processor)
+      if (!indications || indications.length === 0) {
+        indications = await this.getActiveIndications(symbol)
+      }
 
       if (indications.length === 0) {
-        return
+        return { strategiesEvaluated: 0, liveReady: 0 }
       }
 
-      const settings = await this.getStrategySettings()
+      console.log(`[v0] [StrategyFlow] ${symbol}: Starting progressive evaluation with ${indications.length} indications`)
 
-      const batchSize = 5
-      for (let i = 0; i < indications.length; i += batchSize) {
-        const batch = indications.slice(i, i + batchSize)
+      // Execute complete strategy coordination flow
+      const coordinator = new StrategyCoordinator(this.connectionId)
+      const results = await coordinator.executeStrategyFlow(symbol, indications, false)
 
-        await Promise.all(
-          batch.map(async (indication) => {
-            const strategySignal = await this.evaluateStrategy(symbol, indication, settings)
+      // Calculate totals across all stages
+      let totalEvaluated = 0
+      let totalLiveReady = 0
+      const stageSummary: Record<string, any> = {}
 
-            if (strategySignal && strategySignal.profit_factor >= settings.minProfitFactor) {
-              await this.createPseudoPosition(symbol, indication, strategySignal)
-            }
-          }),
+      for (const result of results) {
+        totalEvaluated += result.totalCreated
+        totalLiveReady += result.passedEvaluation
+        
+        stageSummary[result.type] = {
+          created: result.totalCreated,
+          passed: result.passedEvaluation,
+          failed: result.failedEvaluation,
+          avgProfitFactor: result.avgProfitFactor.toFixed(2),
+          avgDrawdownTime: `${Math.round(result.avgDrawdownTime)}min`,
+        }
+
+        console.log(
+          `[v0] [StrategyFlow] ${symbol} ${result.type.toUpperCase()}: ${result.passedEvaluation}/${result.totalCreated} passed | ` +
+          `PF=${result.avgProfitFactor.toFixed(2)} | DDT=${Math.round(result.avgDrawdownTime)}min`
         )
       }
+
+      if (totalLiveReady > 0) {
+        console.log(`[v0] [StrategyFlow] ${symbol}: ✅ READY FOR TRADING - ${totalLiveReady} live strategies created`)
+        
+        await logProgressionEvent(this.connectionId, `strategies_realtime`, "info", `Strategy flow completed for ${symbol}`, {
+          stageSummary,
+          totalCreated: totalEvaluated,
+          totalLiveReady,
+          indicationsProcessed: indications.length,
+        })
+      }
+
+      return { strategiesEvaluated: totalEvaluated, liveReady: totalLiveReady }
     } catch (error) {
-      console.error(`[v0] Failed to process strategy for ${symbol}:`, error)
+      console.error(
+        `[v0] [Strategy] Failed for ${symbol}:`,
+        error instanceof Error ? error.message : String(error)
+      )
+      return { strategiesEvaluated: 0, liveReady: 0 }
     }
   }
 
   /**
    * Process historical strategies for prehistoric data
+   * Evaluates strategies through complete flow without execution
    */
   async processHistoricalStrategies(symbol: string, start: Date, end: Date): Promise<void> {
     try {
-      console.log(`[v0] Processing historical strategies for ${symbol}`)
+      console.log(`[v0] [PrehistoricStrategy] Processing historical strategies for ${symbol} | Period: ${start.toISOString()} to ${end.toISOString()}`)
 
-      // Get historical indications
+      await initRedis()
+      
+      // Get indications that were already processed in the prehistoric indication phase
       const indications = await this.getHistoricalIndications(symbol, start, end)
 
-      // Get strategy settings
-      const settings = await this.getStrategySettings()
-
-      let recordsProcessed = 0
-
-      // Evaluate each indication
-      for (const indication of indications) {
-        const strategySignal = await this.evaluateStrategy(symbol, indication, settings)
-
-        if (strategySignal && strategySignal.profit_factor >= settings.minProfitFactor) {
-          // Create historical pseudo position
-          await this.createPseudoPosition(symbol, indication, strategySignal, indication.calculated_at)
-          recordsProcessed++
-        }
+      if (indications.length === 0) {
+        console.log(`[v0] [PrehistoricStrategy] No indications available for ${symbol}`)
+        return
       }
 
-      console.log(`[v0] Processed ${recordsProcessed} historical strategies for ${symbol}`)
+      // Execute complete strategy coordination flow (prehistoric mode)
+      const coordinator = new StrategyCoordinator(this.connectionId)
+      const results = await coordinator.executeStrategyFlow(symbol, indications, true)
+
+      // Track prehistoric progress
+      await ProgressionStateManager.incrementPrehistoricCycle(this.connectionId, symbol)
+      
+      const liveResult = results.find(r => r.type === "live")
+      console.log(
+        `[v0] [PrehistoricStrategy] ${symbol}: Processed ${indications.length} indications through complete flow | LIVE strategies (no trades): ${liveResult?.passedEvaluation || 0}`
+      )
+
+      await logProgressionEvent(this.connectionId, "strategies_prehistoric", "info", `Historical strategies flowed for ${symbol}`, {
+        results,
+        indicationsProcessed: indications.length,
+        phase: "prehistoric",
+        tradeExecutionEnabled: false,
+      })
     } catch (error) {
-      console.error(`[v0] Failed to process historical strategies for ${symbol}:`, error)
+      console.error(`[v0] [PrehistoricStrategy] Failed for ${symbol}:`, error instanceof Error ? error.message : String(error))
     }
   }
 
@@ -84,28 +130,23 @@ export class StrategyProcessor {
    * Evaluate strategy based on indication
    */
   private async evaluateStrategy(symbol: string, indication: any, settings: any): Promise<any> {
-    // Determine which strategies apply based on indication type and settings
     const strategies: any[] = []
 
-    // Trailing strategy (Additional category) - enhances profit taking
     if (settings.trailingEnabled && indication.profit_factor >= 0.8) {
       const trailingSignal = this.evaluateTrailingStrategy(indication, settings)
       if (trailingSignal) strategies.push(trailingSignal)
     }
 
-    // Block strategy (Adjust category) - position sizing adjustment
     if (settings.blockEnabled && indication.confidence >= 60) {
       const blockSignal = this.evaluateBlockStrategy(indication, settings)
       if (blockSignal) strategies.push(blockSignal)
     }
 
-    // DCA strategy (Adjust category) - dollar cost averaging
     if (settings.dcaEnabled && indication.profit_factor >= 0.5) {
       const dcaSignal = this.evaluateDCAStrategy(indication, settings)
       if (dcaSignal) strategies.push(dcaSignal)
     }
 
-    // Return the best strategy based on profit factor
     if (strategies.length === 0) return null
 
     return strategies.sort((a, b) => b.profit_factor - a.profit_factor)[0]
@@ -118,15 +159,15 @@ export class StrategyProcessor {
 
     return {
       strategy: "trailing",
-      category: "additional", // Trailing is in "Additional" category
+      category: "additional",
       side: direction,
       entry_price: indication.value,
       takeprofit_factor: baseTP,
       stoploss_ratio: baseSL,
-      profit_factor: indication.profit_factor * 1.2, // Trailing bonus
+      profit_factor: indication.profit_factor * 1.2,
       trailing_enabled: true,
-      trail_start: 1.0, // Start trailing at 1% profit
-      trail_stop: 0.5, // Trail by 0.5%
+      trail_start: 1.0,
+      trail_stop: 0.5,
     }
   }
 
@@ -134,66 +175,63 @@ export class StrategyProcessor {
     const direction = indication.metadata?.direction || "long"
     const confidenceFactor = indication.confidence / 100
 
-    // Block strategy adjusts position size based on confidence
-    const adjustedTP = 1.2 + confidenceFactor
-    const adjustedSL = 0.8 - confidenceFactor * 0.3
-
     return {
       strategy: "block",
-      category: "adjust", // Block is in "Adjust" category
+      category: "adjust",
       side: direction,
       entry_price: indication.value,
-      takeprofit_factor: adjustedTP,
-      stoploss_ratio: adjustedSL,
+      takeprofit_factor: 1.2 + confidenceFactor,
+      stoploss_ratio: 0.8 - confidenceFactor * 0.3,
       profit_factor: indication.profit_factor * (0.8 + confidenceFactor * 0.4),
       trailing_enabled: false,
-      block_size: Math.ceil(confidenceFactor * 5), // 1-5 blocks based on confidence
+      block_size: Math.ceil(confidenceFactor * 5),
     }
   }
 
   private evaluateDCAStrategy(indication: any, settings: any): any {
     const direction = indication.metadata?.direction || "long"
 
-    // DCA strategy for averaging into positions
     return {
       strategy: "dca",
-      category: "adjust", // DCA is in "Adjust" category
+      category: "adjust",
       side: direction,
       entry_price: indication.value,
-      takeprofit_factor: 2.0, // Higher TP for DCA
-      stoploss_ratio: 1.5, // Wider SL for DCA
+      takeprofit_factor: 2.0,
+      stoploss_ratio: 1.5,
       profit_factor: indication.profit_factor * 0.9,
       trailing_enabled: false,
-      dca_levels: 3, // Number of DCA levels
-      dca_spacing: 2.0, // Percentage between DCA entries
+      dca_levels: 3,
+      dca_spacing: 2.0,
     }
   }
 
   /**
-   * Create pseudo position
+   * Create pseudo position in Redis
    */
   private async createPseudoPosition(
     symbol: string,
     indication: any,
     strategySignal: any,
-    timestamp?: Date,
+    timestamp?: string,
   ): Promise<void> {
     try {
-      await sql`
-        INSERT INTO pseudo_positions (
-          connection_id, symbol, indication_type, side,
-          entry_price, current_price, quantity, position_cost,
-          takeprofit_factor, stoploss_ratio, profit_factor,
-          trailing_enabled, opened_at
-        )
-        VALUES (
-          ${this.connectionId}, ${symbol}, ${indication.indication_type}, ${strategySignal.side},
-          ${strategySignal.entry_price}, ${strategySignal.entry_price}, 1.0, 0.1,
-          ${strategySignal.takeprofit_factor}, ${strategySignal.stoploss_ratio},
-          ${strategySignal.profit_factor}, ${strategySignal.trailing_enabled},
-          ${timestamp ? timestamp.toISOString() : "CURRENT_TIMESTAMP"}
-        )
-      `
+      const { createPosition } = await import("@/lib/redis-db")
+      
+      await createPosition(this.connectionId, {
+        type: "pseudo",
+        symbol,
+        indication_type: indication.indication_type,
+        side: strategySignal.side,
+        entry_price: strategySignal.entry_price,
+        current_price: strategySignal.entry_price,
+        quantity: 1.0,
+        position_cost: 0.1,
+        takeprofit_factor: strategySignal.takeprofit_factor,
+        stoploss_ratio: strategySignal.stoploss_ratio,
+        profit_factor: strategySignal.profit_factor,
+        trailing_enabled: strategySignal.trailing_enabled,
+        opened_at: timestamp || new Date().toISOString(),
+      })
 
       console.log(`[v0] Created pseudo position for ${symbol}`)
     } catch (error) {
@@ -202,63 +240,69 @@ export class StrategyProcessor {
   }
 
   /**
-   * Get active indications
+   * Get active indications from Redis
+   * Indications are saved by the indication processor with key: indications:${connectionId}:${symbol}
    */
   private async getActiveIndications(symbol: string): Promise<any[]> {
     try {
-      // Use indexed query path for maximum performance
-      const indications = await sql`
-        SELECT * FROM indications
-        WHERE connection_id = ${this.connectionId}
-          AND symbol = ${symbol}
-          AND calculated_at > NOW() - INTERVAL '1 hour'
-          AND profit_factor >= 0.5
-        ORDER BY calculated_at DESC, profit_factor DESC
-        LIMIT 10
-      `
-      return indications
+      await initRedis()
+      const { getIndications } = await import("@/lib/redis-db")
+      
+      // Use the same key format as the indication processor saves to
+      const indicationsKey = `${this.connectionId}:${symbol}`
+      const indications = await getIndications(indicationsKey)
+      
+      if (indications && Array.isArray(indications) && indications.length > 0) {
+        console.log(`[v0] [StrategyProcessor] Retrieved ${indications.length} indications for ${symbol} from Redis`)
+        return indications
+      }
+      
+      // No indications yet - normal during startup
+      return []
     } catch (error) {
-      console.error(`[v0] Failed to get active indications for ${symbol}:`, error)
+      console.error(`[v0] [StrategyProcessor] Error retrieving indications for ${symbol}:`, error)
       return []
     }
   }
 
   /**
-   * Get historical indications
+   * Get historical indications from Redis
+   * Retrieved from the prehistoric processing phase that saved them
    */
   private async getHistoricalIndications(symbol: string, start: Date, end: Date): Promise<any[]> {
     try {
-      const indications = await sql`
-        SELECT * FROM indications
-        WHERE connection_id = ${this.connectionId}
-          AND symbol = ${symbol}
-          AND calculated_at BETWEEN ${start.toISOString()} AND ${end.toISOString()}
-        ORDER BY calculated_at ASC
-      `
-      return indications
+      await initRedis()
+      const { getIndications } = await import("@/lib/redis-db")
+      
+      // Retrieve indications saved during prehistoric phase
+      const prehistoricKey = `${this.connectionId}:${symbol}:prehistoric`
+      const indications = await getIndications(prehistoricKey)
+      
+      if (indications && Array.isArray(indications) && indications.length > 0) {
+        console.log(`[v0] [StrategyProcessor] Retrieved ${indications.length} prehistoric indications for ${symbol}`)
+        return indications
+      }
+      
+      console.log(`[v0] [StrategyProcessor] No prehistoric indications found for ${symbol}`)
+      return []
     } catch (error) {
-      console.error(`[v0] Failed to get historical indications for ${symbol}:`, error)
+      console.error(`[v0] [StrategyProcessor] Failed to get historical indications for ${symbol}:`, error)
       return []
     }
   }
 
   /**
-   * Get strategy settings
+   * Get strategy settings from Redis
    */
   private async getStrategySettings(): Promise<any> {
     try {
-      const settings = await sql`
-        SELECT key, value FROM system_settings
-        WHERE category = 'strategy'
-      `
+      const settings = await getSettings("all_settings") || {}
 
       return {
-        minProfitFactor: Number.parseFloat(
-          settings.find((s: any) => s.key === "strategyMinProfitFactor")?.value || "0.5",
-        ),
-        trailingEnabled: settings.find((s: any) => s.key === "trailingEnabled")?.value === "true",
-        dcaEnabled: settings.find((s: any) => s.key === "dcaEnabled")?.value === "true",
-        blockEnabled: settings.find((s: any) => s.key === "blockEnabled")?.value === "true",
+        minProfitFactor: settings.strategyMinProfitFactor || 0.5,
+        trailingEnabled: settings.trailingEnabled !== false,
+        dcaEnabled: settings.dcaEnabled !== false,
+        blockEnabled: settings.blockEnabled !== false,
       }
     } catch (error) {
       console.error("[v0] Failed to get strategy settings:", error)
