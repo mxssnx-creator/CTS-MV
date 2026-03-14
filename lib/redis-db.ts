@@ -297,6 +297,57 @@ export class InlineLocalRedis {
     return 0
   }
 
+  // ========== List Operations ==========
+
+  async lpush(key: string, ...values: string[]): Promise<number> {
+    this.trackOperation()
+    const list = this.data.lists.get(key) || []
+    // lpush adds to the beginning of the list
+    for (let i = values.length - 1; i >= 0; i--) {
+      list.unshift(values[i])
+    }
+    this.data.lists.set(key, list)
+    return list.length
+  }
+
+  async rpush(key: string, ...values: string[]): Promise<number> {
+    this.trackOperation()
+    const list = this.data.lists.get(key) || []
+    // rpush adds to the end of the list
+    list.push(...values)
+    this.data.lists.set(key, list)
+    return list.length
+  }
+
+  async lrange(key: string, start: number, stop: number): Promise<string[]> {
+    this.trackOperation()
+    if (this.isExpired(key)) return []
+    const list = this.data.lists.get(key) || []
+    // Handle negative indices like Redis
+    const len = list.length
+    const normalizedStart = start < 0 ? Math.max(0, len + start) : start
+    const normalizedStop = stop < 0 ? len + stop : stop
+    return list.slice(normalizedStart, normalizedStop + 1)
+  }
+
+  async ltrim(key: string, start: number, stop: number): Promise<void> {
+    this.trackOperation()
+    const list = this.data.lists.get(key)
+    if (!list) return
+    // Handle negative indices like Redis
+    const len = list.length
+    const normalizedStart = start < 0 ? Math.max(0, len + start) : start
+    const normalizedStop = stop < 0 ? len + stop : stop
+    const trimmed = list.slice(normalizedStart, normalizedStop + 1)
+    this.data.lists.set(key, trimmed)
+  }
+
+  async llen(key: string): Promise<number> {
+    this.trackOperation()
+    if (this.isExpired(key)) return 0
+    return this.data.lists.get(key)?.length ?? 0
+  }
+
   async dbSize(): Promise<number> {
     this.trackOperation()
     // Clean up expired keys first for accurate count
