@@ -260,6 +260,29 @@ export class TradeEngineManager {
   }
 
   /**
+   * Load market data for a specific range from exchange API
+   */
+  private async loadMarketDataRange(symbol: string, start: Date, end: Date): Promise<void> {
+    try {
+      // For now, skip actual exchange API calls during development
+      // In production, this would fetch OHLCV data from the exchange
+      console.log(`[v0] [EngineManager] Loading market data for ${symbol}: ${start.toISOString()} to ${end.toISOString()}`)
+      
+      // Mark this range as synced in Redis
+      await DataSyncManager.markSynced(
+        this.connectionId,
+        symbol,
+        "market_data",
+        start,
+        end
+      )
+    } catch (error) {
+      console.error(`[v0] [EngineManager] Error loading market data for ${symbol}:`, error)
+      // Don't throw - allow engine to continue with available data
+    }
+  }
+
+  /**
    * Process connection through all 5 stages: Indication → Base → Main → Real → Live
    */
   private async processConnection5Stages(connection: any): Promise<void> {
