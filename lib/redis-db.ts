@@ -13,6 +13,11 @@ interface RedisData {
   sets: Map<string, Set<string>>
   lists: Map<string, string[]>
   sorted_sets: Map<string, Array<{ score: number; member: string }>>
+  requestStats: {
+    lastSecond: number
+    requestCount: number
+    operationsPerSecond: number
+  }
 }
 
 // Global storage for persistence across hot reloads
@@ -30,9 +35,32 @@ export class InlineLocalRedis {
         sets: new Map(),
         lists: new Map(),
         sorted_sets: new Map(),
+        requestStats: {
+          lastSecond: Math.floor(Date.now() / 1000),
+          requestCount: 0,
+          operationsPerSecond: 0,
+        },
       }
     }
     this.data = globalForRedis.__redis_data
+  }
+
+  /**
+   * Track a Redis operation for accurate requests per second calculation
+   */
+  private trackOperation(): void {
+    const now = Math.floor(Date.now() / 1000)
+    const stats = this.data.requestStats
+    
+    if (now > stats.lastSecond) {
+      // New second: save current count and reset
+      stats.operationsPerSecond = stats.requestCount
+      stats.requestCount = 1
+      stats.lastSecond = now
+    } else {
+      // Same second: increment count
+      stats.requestCount++
+    }
   }
 
   async ping() {
@@ -40,14 +68,17 @@ export class InlineLocalRedis {
   }
 
   async get(key: string): Promise<string | null> {
+    this.trackOperation()
     return this.data.strings.get(key) ?? null
   }
 
   async set(key: string, value: string): Promise<void> {
+    this.trackOperation()
     this.data.strings.set(key, value)
   }
 
   async del(...keys: string[]): Promise<number> {
+    this.trackOperation()
     let count = 0
     for (const key of keys) {
       if (this.data.strings.delete(key)) count++
@@ -60,6 +91,7 @@ export class InlineLocalRedis {
   }
 
   async hset(key: string, data: Record<string, string>): Promise<number> {
+    this.trackOperation()
     const existing = this.data.hashes.get(key) || {}
     const updates = Object.keys(data).length
     this.data.hashes.set(key, { ...existing, ...data })
@@ -77,20 +109,24 @@ export class InlineLocalRedis {
   }
 
   async hgetall(key: string): Promise<Record<string, string> | null> {
+    this.trackOperation()
     return this.data.hashes.get(key) ?? null
   }
 
   async hlen(key: string): Promise<number> {
+    this.trackOperation()
     const hash = this.data.hashes.get(key)
     return hash ? Object.keys(hash).length : 0
   }
 
   async hget(key: string, field: string): Promise<string | null> {
+    this.trackOperation()
     const hash = this.data.hashes.get(key)
     return hash?.[field] ?? null
   }
 
   async hdel(key: string, ...fields: string[]): Promise<number> {
+    this.trackOperation()
     const hash = this.data.hashes.get(key)
     if (!hash) return 0
     let deleted = 0
@@ -107,6 +143,7 @@ export class InlineLocalRedis {
   }
 
   async sadd(key: string, ...members: string[]): Promise<number> {
+    this.trackOperation()
     const set = this.data.sets.get(key) || new Set()
     const sizeBefore = set.size
     for (const member of members) {
@@ -117,14 +154,17 @@ export class InlineLocalRedis {
   }
 
   async scard(key: string): Promise<number> {
+    this.trackOperation()
     return this.data.sets.get(key)?.size ?? 0
   }
 
   async smembers(key: string): Promise<string[]> {
+    this.trackOperation()
     return Array.from(this.data.sets.get(key) || new Set())
   }
 
   async srem(key: string, ...members: string[]): Promise<number> {
+    this.trackOperation()
     const set = this.data.sets.get(key)
     if (!set) return 0
     let removed = 0
@@ -137,15 +177,18 @@ export class InlineLocalRedis {
   }
 
   async expire(key: string, seconds: number): Promise<number> {
+    this.trackOperation()
     // TTL not implemented in memory
     return 1
   }
 
   async dbSize(): Promise<number> {
+    this.trackOperation()
     return this.data.strings.size + this.data.hashes.size + this.data.sets.size + this.data.lists.size + this.data.sorted_sets.size
   }
 
   async keys(pattern: string): Promise<string[]> {
+    this.trackOperation()
     // Convert Redis glob pattern to regex
     const regexPattern = pattern
       .replace(/\*/g, ".*")
@@ -414,22 +457,13 @@ export async function getRedisStats(): Promise<any> {
 }
 
 export function getRedisRequestsPerSecond(): number {
-  // For in-memory Redis, estimate RPS from database activity
-  // In production with real Redis, would return info.instantaneous_ops_per_sec
-  // For now, return a reasonable estimate based on system activity
-  try {
-    const now = Date.now()
-    const redisInstance = getClient()
-    if (!redisInstance) return 0
-    
-    // Track request rate over time window
-    // For in-memory implementation, estimate based on operations per second
-    // In a real Redis instance, this would come from INFO stats
-    const estimatedRPS = Math.ceil(Math.random() * 10 + 5) // Estimate 5-15 RPS for activity
-    return estimatedRPS
-  } catch {
-    return 0
-  }
+  // Get the accurate requests per second from tracking
+  const globalData = globalThis as unknown as { __redis_data?: RedisData }
+  if (!globalData.__redis_data?.requestStats) return 0
+  
+  // Return the operations from the last completed second
+  const rps = globalData.__redis_data.requestStats.operationsPerSecond
+  return Math.max(1, rps) // At least 1 RPS if system is active
 }
 
 export async function verifyRedisHealth(): Promise<{ healthy: boolean; message: string }> {

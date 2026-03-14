@@ -84,22 +84,13 @@ export async function GET() {
     const totalStrategiesResults = strategyKeys || entryKeys
     const strategiesEngineRunning = strategiesRunning || (engineRunning && activeEngineCount > 0)
 
-    // Get Redis request rate per second - use Redis INFO command
+    // Get Redis request rate per second - use actual tracked operations
     let requestsPerSecond = 0
     try {
-      const info = await client.info("stats").catch(() => "")
-      // Parse instantaneous_ops_per_sec from Redis INFO stats output
-      const match = info.match(/instantaneous_ops_per_sec:(\d+(?:\.\d+)?)/)
-      requestsPerSecond = match ? Math.round(parseFloat(match[1])) : 0
-      
-      // Fallback: if no data yet, calculate from activity (estimate from keys being updated)
-      if (requestsPerSecond === 0) {
-        // In a real Redis instance, this would be from INFO stats
-        // For inline Redis, estimate from current activity level
-        const totalSize = keys + sets + positions1h + entries1h
-        requestsPerSecond = totalSize > 0 ? Math.ceil(totalSize / 10) : 0
-      }
-    } catch {
+      const { getRedisRequestsPerSecond } = await import("@/lib/redis-db")
+      requestsPerSecond = getRedisRequestsPerSecond()
+    } catch (err) {
+      console.error("[v0] Failed to get RPS:", err)
       requestsPerSecond = 0
     }
     
