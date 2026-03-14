@@ -128,9 +128,8 @@ export class MarketDataStream {
    * Emit update to listeners
    */
   private emitUpdate(update: MarketDataUpdate): void {
-    // This would emit to any registered listeners
-    // For now, just log
-    console.log(`[v0] Market data update: ${update.symbol} @ ${update.price}`)
+    // Disabled logging - runs on every data update causing excessive Redis key growth
+    // Only log errors if needed
   }
 
   /**

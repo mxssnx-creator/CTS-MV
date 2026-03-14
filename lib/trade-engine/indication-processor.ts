@@ -205,7 +205,7 @@ export class IndicationProcessor {
     try {
       const marketData = await this.getLatestMarketDataCached(symbol)
       if (!marketData) {
-        console.log(`[v0] [RealtimeIndication] ${symbol}: NO MARKET DATA AVAILABLE`)
+        // Disabled logging - runs per symbol per cycle causing excessive Redis key growth
         return []
       }
 
@@ -218,7 +218,7 @@ export class IndicationProcessor {
       const currentVolume = Number.parseFloat(marketData.volume || "0")
       
       if (currentClose === 0 || isNaN(currentClose)) {
-        console.log(`[v0] [RealtimeIndication] ${symbol}: INVALID PRICE DATA`, { close: marketData.close, price: marketData.price })
+        // Disabled logging - runs per symbol per cycle
         return []
       }
 
@@ -226,16 +226,15 @@ export class IndicationProcessor {
       // Since we only have 1 candle, use OHLC to create artificial price history
       const prices = [currentOpen, currentLow, currentClose, currentHigh, currentClose] // Simple 5-point history
       
-      console.log(`[v0] [RealtimeIndication] ${symbol}: Processing with price=${currentClose}, volume=${currentVolume}`)
-
-      // Calculate simple indications from current candle OHLC
-      const indications: any[] = []
-      
-      // Direction indication: based on close vs open
+      // Disabled logging - runs per symbol per cycle
       const direction = currentClose >= currentOpen ? "long" : "short"
       const priceChange = ((currentClose - currentOpen) / currentOpen) * 100
       const directionConfidence = Math.min(0.95, 0.5 + Math.abs(priceChange) / 100)
       
+      // Calculate simple indications from current candle OHLC
+      const indications: any[] = []
+      
+      // Direction indication: based on close vs open
       indications.push({
         type: "direction",
         symbol,
@@ -294,7 +293,7 @@ export class IndicationProcessor {
         }
       })
       
-      console.log(`[v0] [RealtimeIndication] ${symbol}: Generated ${indications.length} indications (direction=${direction}, range=${rangePercent.toFixed(2)}%, volume=${currentVolume})`)
+      // Disabled per-cycle logging - only store and return
 
       // Store indications in Redis for progression tracking
       try {
@@ -306,9 +305,7 @@ export class IndicationProcessor {
           await saveIndication(connKey, ind)
         }
         
-        if (indications.length > 0) {
-          console.log(`[v0] [RealtimeIndication] ✓ Saved ${indications.length} indications to Redis for ${symbol}`)
-        }
+        // Disabled logging - runs per symbol per cycle
       } catch (redisErr) {
         console.error(`[v0] [RealtimeIndication] Failed to save to Redis:`, redisErr)
       }

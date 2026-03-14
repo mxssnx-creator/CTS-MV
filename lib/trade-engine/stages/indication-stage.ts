@@ -71,9 +71,7 @@ export async function processIndications(
       const indicationKey = `indication:${connection.id}:${symbol}:${timeframe}`
       await client.setex(indicationKey, 86400, JSON.stringify(indication))
 
-      console.log(
-        `${LOG_PREFIX} Generated ${indication.signal} signal (strength: ${indication.strength.toFixed(2)}) for ${symbol} ${timeframe}`
-      )
+      // Disabled per-signal logging - only log on errors to avoid excessive Redis key growth
     }
 
     return signals
