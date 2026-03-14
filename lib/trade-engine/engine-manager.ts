@@ -360,31 +360,31 @@ export class TradeEngineManager {
         this.componentHealth.indications.lastCycleDuration = duration
         this.componentHealth.indications.successRate = ((cycleCount - errorCount) / cycleCount) * 100
 
-        // Log successful indication run
-        await logProgressionEvent(this.connectionId, "indications", "info", `Processed ${symbols.length} symbols`, {
-          cycleDuration_ms: duration,
-          cycleCount,
-          symbolsCount: symbols.length,
-        })
+        // OPTIMIZED: Only log every 10th cycle to reduce Redis writes
+        if (cycleCount % 10 === 0) {
+          await logProgressionEvent(this.connectionId, "indications", "info", `Processed ${symbols.length} symbols`, {
+            cycleDuration_ms: duration,
+            cycleCount,
+            symbolsCount: symbols.length,
+          })
 
-        // Update engine state in Redis
-        const engineState = (await getSettings(`trade_engine_state:${this.connectionId}`)) || {}
-        await setSettings(`trade_engine_state:${this.connectionId}`, {
-          ...engineState,
-          status: "running",
-          last_indication_run: new Date().toISOString(),
-          indication_cycle_count: cycleCount,
-          indication_avg_duration_ms: totalDuration / cycleCount,
-        })
-        
-        // Also update global engine stats for monitoring
-        await setSettings("engine:indications:stats", {
-          cycleCount,
-          resultsCount: symbols.length * cycleCount,
-          running: true,
-          lastRun: new Date().toISOString(),
-          connectionId: this.connectionId,
-        })
+          // Update engine state in Redis (batched every 10 cycles)
+          await setSettings(`trade_engine_state:${this.connectionId}`, {
+            status: "running",
+            last_indication_run: new Date().toISOString(),
+            indication_cycle_count: cycleCount,
+            indication_avg_duration_ms: Math.round(totalDuration / cycleCount),
+          })
+          
+          // Update global engine stats (batched)
+          await setSettings("engine:indications:stats", {
+            cycleCount,
+            resultsCount: symbols.length * cycleCount,
+            running: true,
+            lastRun: new Date().toISOString(),
+            connectionId: this.connectionId,
+          })
+        }
       } catch (error) {
         errorCount++
         this.componentHealth.indications.errorCount++
@@ -431,37 +431,37 @@ export class TradeEngineManager {
         this.componentHealth.strategies.lastCycleDuration = duration
         this.componentHealth.strategies.successRate = ((cycleCount - errorCount) / cycleCount) * 100
 
-        // Log detailed strategy run with calculations
-        console.log(`[v0] [StrategyEngine] Cycle ${cycleCount}: Evaluated ${evaluatedThisCycle} total strategies across ${symbols.length} symbols`)
-        
-        await logProgressionEvent(this.connectionId, "strategies", "info", `Processed strategies for ${symbols.length} symbols`, {
-          cycleDuration_ms: duration,
-          cycleCount,
-          symbolsCount: symbols.length,
-          strategiesEvaluatedThisCycle: evaluatedThisCycle,
-          totalStrategiesEvaluated,
-          avgStrategiesPerSymbol: Math.round(evaluatedThisCycle / symbols.length),
-        })
+        // OPTIMIZED: Only log every 5th cycle
+        if (cycleCount % 5 === 0) {
+          console.log(`[v0] [StrategyEngine] Cycle ${cycleCount}: Evaluated ${evaluatedThisCycle} total strategies across ${symbols.length} symbols`)
+          
+          await logProgressionEvent(this.connectionId, "strategies", "info", `Processed strategies for ${symbols.length} symbols`, {
+            cycleDuration_ms: duration,
+            cycleCount,
+            symbolsCount: symbols.length,
+            strategiesEvaluatedThisCycle: evaluatedThisCycle,
+            totalStrategiesEvaluated,
+            avgStrategiesPerSymbol: Math.round(evaluatedThisCycle / symbols.length),
+          })
 
-        // Update engine state in Redis
-        const engineState = (await getSettings(`trade_engine_state:${this.connectionId}`)) || {}
-        await setSettings(`trade_engine_state:${this.connectionId}`, {
-          ...engineState,
-          status: "running",
-          last_strategy_run: new Date().toISOString(),
-          strategy_cycle_count: cycleCount,
-          strategy_avg_duration_ms: totalDuration / cycleCount,
-          total_strategies_evaluated: totalStrategiesEvaluated,
-        })
-        
-        // Also update global engine stats for monitoring
-        await setSettings("engine:strategies:stats", {
-          cycleCount,
-          resultsCount: totalStrategiesEvaluated,
-          running: true,
-          lastRun: new Date().toISOString(),
-          connectionId: this.connectionId,
-        })
+          // Update engine state in Redis (batched)
+          await setSettings(`trade_engine_state:${this.connectionId}`, {
+            status: "running",
+            last_strategy_run: new Date().toISOString(),
+            strategy_cycle_count: cycleCount,
+            strategy_avg_duration_ms: Math.round(totalDuration / cycleCount),
+            total_strategies_evaluated: totalStrategiesEvaluated,
+          })
+          
+          // Update global engine stats (batched)
+          await setSettings("engine:strategies:stats", {
+            cycleCount,
+            resultsCount: totalStrategiesEvaluated,
+            running: true,
+            lastRun: new Date().toISOString(),
+            connectionId: this.connectionId,
+          })
+        }
       } catch (error) {
         errorCount++
         this.componentHealth.strategies.errorCount++
@@ -716,10 +716,10 @@ export class TradeEngineManager {
 
   /**
    * Start heartbeat to keep running state active
-   * Prevents timeout detection during normal operation
+   * OPTIMIZED: Reduced frequency from 2s to 10s (5x less Redis writes)
    */
   private startHeartbeat(): void {
-    // Send heartbeat every 2 seconds to keep engine state fresh
+    // Send heartbeat every 10 seconds (was 2s - too frequent)
     this.heartbeatTimer = setInterval(async () => {
       if (!this.isRunning) {
         if (this.heartbeatTimer) clearInterval(this.heartbeatTimer)
@@ -728,17 +728,16 @@ export class TradeEngineManager {
 
       try {
         const stateKey = `trade_engine_state:${this.connectionId}`
-        const currentState = (await getSettings(stateKey)) || {}
-        
-        // Update last_indication_run timestamp to show activity
+        // Direct set without read-modify-write pattern
         await setSettings(stateKey, {
-          ...currentState,
+          status: "running",
           last_indication_run: new Date().toISOString(),
+          connection_id: this.connectionId,
         })
       } catch (error) {
-        console.warn("[v0] Heartbeat update failed:", error)
+        // Silent fail - heartbeat is non-critical
       }
-    }, 2000)
+    }, 10000) // Changed from 2000ms to 10000ms
   }
 
   /**

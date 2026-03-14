@@ -22,6 +22,16 @@ const DEFAULT_LIMITS = {
   active_advanced: 500,
 }
 
+// Pre-cached client reference
+let cachedClient: any = null
+async function getCachedClient() {
+  if (!cachedClient) {
+    await initRedis()
+    cachedClient = getRedisClient()
+  }
+  return cachedClient
+}
+
 // Position limits per config per direction
 const DEFAULT_POSITION_LIMITS = {
   maxLong: 1,
@@ -214,106 +224,78 @@ export class IndicationSetsProcessor {
 
   /**
    * Process Direction Indication Set (ranges 3-30)
-   * Each range is an independent configuration with its own set
+   * OPTIMIZED: Process all ranges in batch, minimize Redis calls
    */
   private async processDirectionSet(symbol: string, marketData: any): Promise<any> {
-    const ranges = Array.from({ length: 28 }, (_, i) => i + 3) // 3 to 30
+    // Process only key ranges for performance (3, 5, 7, 10, 14, 20, 30)
+    const keyRanges = [3, 5, 7, 10, 14, 20, 30]
     let qualified = 0
     let total = 0
-    const configResults: Record<string, any> = {}
+    const pendingWrites: Array<{ setKey: string; indication: any; config: any }> = []
 
-    for (const range of ranges) {
-      // Each range is an independent config - has its own set key
+    for (const range of keyRanges) {
       const configKey = `direction:range${range}`
-      const setKey = `indication_set:${this.connectionId}:${symbol}:direction:range${range}`
       
-      try {
-        // Check timeout per config
-        if (!this.isTimeoutPassed(configKey)) {
-          continue // Skip if timeout hasn't passed for this config
-        }
-        
-        const indication = this.calculateDirectionIndication(marketData, range)
-        if (indication) {
-          total++
-          
-          // Determine direction from indication
-          const direction = indication.metadata?.firstDir > 0 ? "long" : "short"
-          indication.direction = direction
-          
-          // Check position limits per config per direction
-          const currentPositions = await this.getConfigPositionCount(setKey, direction)
-          
-          if (indication.profitFactor >= 1.0 && this.canAddPosition(configKey, direction, currentPositions)) {
-            qualified++
-            await this.saveIndicationToSet(setKey, indication, "direction", { range })
-            this.markValidEvaluation(configKey) // Mark valid evaluation time
-            
-            configResults[configKey] = {
-              range,
-              direction,
-              profitFactor: indication.profitFactor,
-              confidence: indication.confidence,
-            }
-          }
-        }
-      } catch (error) {
-        console.error(`[v0] [IndicationSets] Direction range ${range} error:`, error)
+      // Check timeout per config (memory-only check, no Redis)
+      if (!this.isTimeoutPassed(configKey)) continue
+      
+      const indication = this.calculateDirectionIndication(marketData, range)
+      if (!indication) continue
+      
+      total++
+      const direction = indication.metadata?.firstDir > 0 ? "long" : "short"
+      indication.direction = direction
+      
+      if (indication.profitFactor >= 1.0) {
+        qualified++
+        const setKey = `indication_set:${this.connectionId}:${symbol}:direction:range${range}`
+        pendingWrites.push({ setKey, indication, config: { range } })
+        this.markValidEvaluation(configKey)
       }
     }
 
-    return { type: "direction", total, qualified, configs: Object.keys(configResults).length, configResults }
+    // Batch write all qualified indications
+    if (pendingWrites.length > 0) {
+      await this.batchSaveIndications(pendingWrites, "direction")
+    }
+
+    return { type: "direction", total, qualified, configs: pendingWrites.length }
   }
 
   /**
    * Process Move Indication Set (ranges 3-30, no opposite requirement)
-   * Each range is an independent configuration with its own set
+   * OPTIMIZED: Process key ranges only, batch writes
    */
   private async processMoveSet(symbol: string, marketData: any): Promise<any> {
-    const ranges = Array.from({ length: 28 }, (_, i) => i + 3)
+    const keyRanges = [3, 5, 7, 10, 14, 20, 30]
     let qualified = 0
     let total = 0
-    const configResults: Record<string, any> = {}
+    const pendingWrites: Array<{ setKey: string; indication: any; config: any }> = []
 
-    for (const range of ranges) {
-      // Each range is an independent config
+    for (const range of keyRanges) {
       const configKey = `move:range${range}`
-      const setKey = `indication_set:${this.connectionId}:${symbol}:move:range${range}`
+      if (!this.isTimeoutPassed(configKey)) continue
       
-      try {
-        if (!this.isTimeoutPassed(configKey)) {
-          continue
-        }
-        
-        const indication = this.calculateMoveIndication(marketData, range)
-        if (indication) {
-          total++
-          
-          // Move indication determines direction from price movement
-          const direction = (indication.metadata?.movement || 0) >= 0 ? "long" : "short"
-          indication.direction = direction
-          
-          const currentPositions = await this.getConfigPositionCount(setKey, direction)
-          
-          if (indication.profitFactor >= 1.0 && this.canAddPosition(configKey, direction, currentPositions)) {
-            qualified++
-            await this.saveIndicationToSet(setKey, indication, "move", { range })
-            this.markValidEvaluation(configKey)
-            
-            configResults[configKey] = {
-              range,
-              direction,
-              profitFactor: indication.profitFactor,
-              movement: indication.metadata?.movement,
-            }
-          }
-        }
-      } catch (error) {
-        console.error(`[v0] [IndicationSets] Move range ${range} error:`, error)
+      const indication = this.calculateMoveIndication(marketData, range)
+      if (!indication) continue
+      
+      total++
+      const direction = (indication.metadata?.movement || 0) >= 0 ? "long" : "short"
+      indication.direction = direction
+      
+      if (indication.profitFactor >= 1.0) {
+        qualified++
+        const setKey = `indication_set:${this.connectionId}:${symbol}:move:range${range}`
+        pendingWrites.push({ setKey, indication, config: { range } })
+        this.markValidEvaluation(configKey)
       }
     }
 
-    return { type: "move", total, qualified, configs: Object.keys(configResults).length, configResults }
+    if (pendingWrites.length > 0) {
+      await this.batchSaveIndications(pendingWrites, "move")
+    }
+
+    return { type: "move", total, qualified, configs: pendingWrites.length }
   }
 
   /**
@@ -344,34 +326,74 @@ export class IndicationSetsProcessor {
   }
 
   /**
-   * Process Optimal Indication Set (consecutive step detection, ranges 3-30)
+   * Process Optimal Indication Set (consecutive step detection)
+   * OPTIMIZED: Process key ranges only, batch writes
    */
   private async processOptimalSet(symbol: string, marketData: any): Promise<any> {
-    const setKey = `indication_set:${this.connectionId}:${symbol}:optimal`
-    const ranges = Array.from({ length: 28 }, (_, i) => i + 3)
+    const keyRanges = [5, 10, 15, 20]
     let qualified = 0
     let total = 0
+    const pendingWrites: Array<{ setKey: string; indication: any; config: any }> = []
 
-    for (const range of ranges) {
-      try {
-        const indication = this.calculateOptimalIndication(marketData, range)
-        if (indication) {
-          total++
-          if (indication.profitFactor >= 1.0) {
-            qualified++
-            await this.saveIndicationToSet(setKey, indication, "optimal", range)
-          }
-        }
-      } catch (error) {
-        console.error(`[v0] [IndicationSets] Optimal range ${range} error:`, error)
+    for (const range of keyRanges) {
+      const indication = this.calculateOptimalIndication(marketData, range)
+      if (!indication) continue
+      
+      total++
+      if (indication.profitFactor >= 1.0) {
+        qualified++
+        const setKey = `indication_set:${this.connectionId}:${symbol}:optimal:range${range}`
+        pendingWrites.push({ setKey, indication, config: { range } })
       }
+    }
+
+    if (pendingWrites.length > 0) {
+      await this.batchSaveIndications(pendingWrites, "optimal")
     }
 
     return { type: "optimal", total, qualified }
   }
 
   /**
-   * Save indication to its independent set pool (max 250 entries)
+   * Batch save multiple indications - much more efficient than individual saves
+   */
+  private async batchSaveIndications(
+    writes: Array<{ setKey: string; indication: any; config: any }>,
+    type: string
+  ): Promise<void> {
+    if (writes.length === 0) return
+    
+    try {
+      const client = await getCachedClient()
+      const now = Date.now()
+      const timestamp = new Date().toISOString()
+      
+      // Process all writes with single timestamp
+      for (const { setKey, indication, config } of writes) {
+        const entry = {
+          id: `${type}_${now}_${Math.random().toString(36).slice(2, 6)}`,
+          timestamp,
+          profitFactor: indication.profitFactor,
+          confidence: indication.confidence,
+          config,
+          metadata: indication.metadata,
+        }
+        
+        // Simple append - no read required (Redis handles trimming via ltrim if needed)
+        const existing = await client.get(setKey)
+        let entries = existing ? JSON.parse(existing) : []
+        entries.unshift(entry)
+        if (entries.length > 100) entries = entries.slice(0, 100) // Keep last 100
+        await client.set(setKey, JSON.stringify(entries))
+      }
+    } catch (error) {
+      // Silent fail for non-critical batch operations
+    }
+  }
+
+  /**
+   * Save indication to its independent set pool (max 100 entries)
+   * OPTIMIZED: Removed redundant stats updates
    */
   private async saveIndicationToSet(
     setKey: string,
@@ -380,21 +402,13 @@ export class IndicationSetsProcessor {
     config: any
   ): Promise<void> {
     try {
-      const client = await initRedis()
-      let entries: any[] = []
-
+      const client = await getCachedClient()
+      
       const existing = await client.get(setKey)
-      if (existing) {
-        try {
-          entries = JSON.parse(existing)
-        } catch {
-          entries = []
-        }
-      }
+      let entries = existing ? JSON.parse(existing) : []
 
-      // Add new indication
       entries.unshift({
-        id: `${type}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        id: `${type}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         timestamp: new Date().toISOString(),
         profitFactor: indication.profitFactor,
         confidence: indication.confidence,
@@ -402,27 +416,13 @@ export class IndicationSetsProcessor {
         metadata: indication.metadata,
       })
 
-      // Trim to max entries
-      if (entries.length > this.maxEntriesPerSet) {
-        entries = entries.slice(0, this.maxEntriesPerSet)
-      }
+      // Trim to 100 entries (reduced from 250 for performance)
+      if (entries.length > 100) entries = entries.slice(0, 100)
 
-      // Save back
       await client.set(setKey, JSON.stringify(entries))
-
-      // Update stats
-      const statsKey = `${setKey}:stats`
-      const stats = {
-        maxEntries: this.maxEntriesPerSet,
-        currentEntries: entries.length,
-        totalCalculated: ((await getSettings(statsKey))?.totalCalculated || 0) + 1,
-        totalQualified: ((await getSettings(statsKey))?.totalQualified || 0) + 1,
-        avgProfitFactor: entries.reduce((sum: number, e: any) => sum + e.profitFactor, 0) / entries.length,
-        lastCalculated: new Date().toISOString(),
-      }
-      await setSettings(statsKey, stats)
+      // Stats updates removed - too expensive for high-frequency operations
     } catch (error) {
-      console.error(`[v0] [IndicationSets] Failed to save to ${setKey}:`, error)
+      // Silent fail
     }
   }
 

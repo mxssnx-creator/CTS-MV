@@ -4,7 +4,7 @@
  * Each stage evaluates strategies with stricter thresholds
  */
 
-import { initRedis, getSettings } from "@/lib/redis-db"
+import { initRedis, getSettings, getIndications, createPosition } from "@/lib/redis-db"
 import { ProgressionStateManager } from "@/lib/progression-state-manager"
 import { StrategyCoordinator } from "@/lib/strategy-coordinator"
 import { logProgressionEvent } from "@/lib/engine-progression-logs"
@@ -215,9 +215,8 @@ export class StrategyProcessor {
     timestamp?: string,
   ): Promise<void> {
     try {
-      const { createPosition } = await import("@/lib/redis-db")
-      
-      await createPosition(this.connectionId, {
+      await createPosition({
+        connection_id: this.connectionId,
         type: "pseudo",
         symbol,
         indication_type: indication.indication_type,
@@ -246,7 +245,6 @@ export class StrategyProcessor {
   private async getActiveIndications(symbol: string): Promise<any[]> {
     try {
       await initRedis()
-      const { getIndications } = await import("@/lib/redis-db")
       
       // Use the same key format as the indication processor saves to
       const indicationsKey = `${this.connectionId}:${symbol}`
@@ -272,7 +270,6 @@ export class StrategyProcessor {
   private async getHistoricalIndications(symbol: string, start: Date, end: Date): Promise<any[]> {
     try {
       await initRedis()
-      const { getIndications } = await import("@/lib/redis-db")
       
       // Retrieve indications saved during prehistoric phase
       const prehistoricKey = `${this.connectionId}:${symbol}:prehistoric`
