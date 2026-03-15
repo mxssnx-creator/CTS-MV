@@ -521,7 +521,7 @@ export class TradeEngineManager {
       } finally {
         isProcessing = false
       }
-    }, optimizedInterval * 1000)
+    }, intervalSeconds * 1000)
   }
 
   /**

@@ -25,7 +25,6 @@ export async function GET() {
     const entries1h = allKeys.filter((k: string) => k.includes("entry") || k.includes("indication")).length
 
     // Get engine status - use Redis state as source of truth (coordinator may not track all engines)
-    const coordinatorReady = coordinator?.isReady?.() ?? false
     const coordinatorRunning = coordinator?.isRunning?.() ?? false
     const coordinatorEngineCount = coordinator?.getActiveEngineCount?.() ?? 0
     
@@ -115,7 +114,7 @@ export async function GET() {
     
     // Log AFTER all variables are defined
     console.log(`[v0] [Monitoring] DB Keys: ${keys}, CPU: ${cpuPercent}%, Mem: ${memPercent}%, RPS: ${requestsPerSecond}`)
-    console.log(`[v0] [Monitoring] Engine: running=${engineRunning}, ready=${coordinatorReady}, active=${activeEngineCount}`)
+    console.log(`[v0] [Monitoring] Engine: running=${engineRunning}, active=${activeEngineCount}`)
 
     return NextResponse.json({
       cpu: cpuPercent,
@@ -138,7 +137,7 @@ export async function GET() {
       modules: {
         redis: true,
         persistence: keys > 0,
-        coordinator: coordinatorReady,
+        coordinator: coordinatorRunning,
         logger: true,
       },
       engines: {
