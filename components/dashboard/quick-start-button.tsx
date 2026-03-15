@@ -33,7 +33,7 @@ export function QuickStartButton() {
     { id: "migrate", name: "Run Migrations",                 status: "pending" },
     { id: "test",    name: "Verify BingX Credentials",       status: "pending" },
     { id: "start",   name: "Start Global Trade Engine",      status: "pending" },
-    { id: "enable",  name: "Enable BingX (3 Symbols)",       status: "pending" },
+    { id: "enable",  name: "Enable BingX (BTCUSDT)",         status: "pending" },
     { id: "engine",  name: "Launch Engine + Progression",    status: "pending" },
   ])
 
@@ -80,7 +80,7 @@ export function QuickStartButton() {
     setSteps(prev => prev.map(s => ({ ...s, status: "pending", message: undefined })))
 
     console.log("[v0] [QuickStart] ========================================")
-    console.log("[v0] [QuickStart] QUICKSTART INITIATED — BingX, 3 symbols")
+    console.log("[v0] [QuickStart] QUICKSTART INITIATED — BingX, 1 symbol")
     console.log("[v0] [QuickStart] ========================================")
 
     let enabledConnectionId: string | null = null
@@ -102,10 +102,14 @@ export function QuickStartButton() {
       })
 
       // STEP 3: Verify BingX (non-critical — never blocks)
+      let balanceInfo = ""
       await runStep("test", "STEP 3: Verify BingX Credentials", async () => {
         const res = await timedFetch("/api/settings/connections/test-bingx", { method: "GET" }, 6000)
         const d = await res.json().catch(() => ({}))
-        if (d.success) return `Ready — ${d.connection?.name ?? "BingX"}`
+        if (d.success) {
+          balanceInfo = d.connection?.testBalance ? ` | Balance: ${d.connection.testBalance}` : ""
+          return `Ready — ${d.connection?.name ?? "BingX"}${balanceInfo}`
+        }
         return `Credentials check: ${d.error ?? "skipped"}`
       })
 
@@ -119,21 +123,21 @@ export function QuickStartButton() {
         return `Coordinator running${n > 0 ? ` | Resumed ${n}` : ""}`
       }, true)
 
-      // STEP 5: Enable BingX with 3 symbols (REQUIRED)
-      await runStep("enable", "STEP 5: Enable BingX (3 Symbols)", async () => {
+      // STEP 5: Enable BingX with 1 symbol (REQUIRED)
+      await runStep("enable", "STEP 5: Enable BingX (1 Symbol)", async () => {
         const res = await timedFetch("/api/trade-engine/quick-start", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "enable", symbols: ["BTCUSDT", "ETHUSDT", "BNBUSDT"] }),
+          body: JSON.stringify({ action: "enable", symbols: ["BTCUSDT"] }),
         }, 10000)
         const d = await res.json().catch(() => ({}))
         console.log("[v0] [QuickStart] Enable response:", JSON.stringify(d))
         if (!res.ok && !d.success) throw new Error(d.error ?? `HTTP ${res.status}`)
         if (!d.success) throw new Error(d.error ?? "Enable returned failure")
         enabledConnectionId = d.connection?.id ?? null
-        const syms = Array.isArray(d.connection?.active_symbols)
-          ? d.connection.active_symbols.join(", ")
-          : "BTCUSDT, ETHUSDT, BNBUSDT"
+        const syms = Array.isArray(d.connection?.symbols)
+          ? d.connection.symbols.join(", ")
+          : "BTCUSDT"
         return `${d.connection?.name} enabled | ${syms}`
       }, true)
 
@@ -157,7 +161,7 @@ export function QuickStartButton() {
       console.log("[v0] [QuickStart] ========================================")
       console.log("[v0] [QuickStart] QUICKSTART COMPLETE")
       console.log("[v0] [QuickStart] ========================================")
-      toast.success("Quick Start complete — BingX engine running with 3 symbols.")
+      toast.success("Quick Start complete — BingX engine running with BTCUSDT.")
 
       // Fetch functional overview in background
       try {
@@ -266,12 +270,11 @@ export function QuickStartButton() {
         <div className="bg-white rounded border border-blue-200 p-3 text-xs text-gray-600">
           <p className="mb-2 font-semibold text-gray-700">This quick start will:</p>
           <ul className="list-disc list-inside space-y-1">
-            <li>Initialize the complete system (preset types, connections)</li>
+          <li>Initialize the complete system (preset types, connections)</li>
             <li>Run ALL database migrations (schema, indexes, TTL policies)</li>
-            <li>Set dashboard states for BingX/Bybit</li>
-            <li>Test BingX API connection (balance check)</li>
+            <li>Test BingX API connection (verify credentials & check balance)</li>
             <li>Start the trade engine</li>
-            <li>Enable BingX for active trading</li>
+            <li>Enable BingX for active trading with BTCUSDT</li>
           </ul>
         </div>
 

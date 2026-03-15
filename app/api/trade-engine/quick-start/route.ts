@@ -10,8 +10,8 @@ export const dynamic = "force-dynamic"
 const API_VERSION = API_VERSIONS.tradeEngine
 const LOG_PREFIX = `[v0] [QuickStart] ${API_VERSION}`
 
-// Default trading symbols for major exchanges
-const DEFAULT_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
+// Default trading symbol (single symbol for quickstart)
+const DEFAULT_SYMBOLS = ["BTCUSDT"]
 
 /**
  * POST /api/trade-engine/quick-start
@@ -43,15 +43,25 @@ export async function POST(request: Request) {
     })
     
     // Find connections with credentials OR any base connection for setup
+    // PREFER BINGX - it's the primary exchange for quickstart
     let connection = allConnections.find((c: any) => {
       const exch = (c.exchange || "").toLowerCase()
       const hasCredentials = !!(c.api_key && c.api_secret && c.api_key.length >= 10 && c.api_secret.length >= 10)
       const isUserCreated = !(c.is_predefined === true || c.is_predefined === "1" || c.is_predefined === "true")
-      return (exch === "bingx" || exch === "bybit") && isUserCreated && hasCredentials
+      return exch === "bingx" && isUserCreated && hasCredentials
     }) || allConnections.find((c: any) => {
       const exch = (c.exchange || "").toLowerCase()
       const hasCredentials = !!(c.api_key && c.api_secret && c.api_key.length >= 10 && c.api_secret.length >= 10)
-      return (exch === "bingx" || exch === "bybit" || exch === "binance" || exch === "okx") && hasCredentials
+      const isUserCreated = !(c.is_predefined === true || c.is_predefined === "1" || c.is_predefined === "true")
+      return exch === "bybit" && isUserCreated && hasCredentials
+    }) || allConnections.find((c: any) => {
+      const exch = (c.exchange || "").toLowerCase()
+      const hasCredentials = !!(c.api_key && c.api_secret && c.api_key.length >= 10 && c.api_secret.length >= 10)
+      return exch === "bingx" && hasCredentials
+    }) || allConnections.find((c: any) => {
+      const exch = (c.exchange || "").toLowerCase()
+      const hasCredentials = !!(c.api_key && c.api_secret && c.api_key.length >= 10 && c.api_secret.length >= 10)
+      return exch === "bybit" && hasCredentials
     }) || allConnections.find((c: any) => {
       const exch = (c.exchange || "").toLowerCase()
       const isBaseInserted = c.is_active_inserted === "1" || c.is_active_inserted === true || 
@@ -185,8 +195,8 @@ export async function POST(request: Request) {
       }
     }
     
-    // Step 2: Get symbols
-    console.log(`${LOG_PREFIX}: [2/4] Configuring symbols...`)
+    // Step 2: Get symbols (single symbol for quickstart)
+    console.log(`${LOG_PREFIX}: [2/4] Configuring symbol...`)
     let symbols = body.symbols || [...DEFAULT_SYMBOLS]
     
     if (testPassed) {
@@ -198,17 +208,17 @@ export async function POST(request: Request) {
         })
         
         if (typeof connector.getTopSymbols === "function") {
-          const topSymbols = await connector.getTopSymbols(3)
+          const topSymbols = await connector.getTopSymbols(1) // Get only 1 symbol
           if (topSymbols && topSymbols.length > 0) {
             symbols = topSymbols
-            console.log(`${LOG_PREFIX}: [2/4] Retrieved top symbols from exchange: ${symbols.join(", ")}`)
+            console.log(`${LOG_PREFIX}: [2/4] Retrieved top symbol from exchange: ${symbols.join(", ")}`)
           }
         }
       } catch {
         // Use defaults if retrieval fails
       }
     }
-    console.log(`${LOG_PREFIX}: [2/4] Symbols: ${symbols.join(", ")}`)
+    console.log(`${LOG_PREFIX}: [2/4] Symbol: ${symbols.join(", ")}`)
     
     await logProgressionEvent(connectionId, "quickstart_symbols", "info", "Trading symbols configured", {
       symbols,
