@@ -283,24 +283,6 @@ export class StrategyCoordinator {
     }
   }
 
-    // Store MAIN strategies
-    const setKey = `strategies:${this.connectionId}:${symbol}:main`
-    await setSettings(setKey, { strategies: mainStrategies, count: totalCreated, created: new Date() })
-
-    console.log(`[v0] [StrategyFlow] ${symbol} MAIN: Created ${totalCreated} position-state specific strategies`)
-
-    return {
-      type: "main",
-      symbol,
-      timestamp: new Date(),
-      totalCreated,
-      passedEvaluation: totalCreated,
-      failedEvaluation: baseSurvivors.length - totalCreated,
-      avgProfitFactor: mainStrategies.reduce((sum, s) => sum + s.profitFactor, 0) / (mainStrategies.length || 1),
-      avgDrawdownTime: mainStrategies.reduce((sum, s) => sum + (s.drawdownTime || 0), 0) / (mainStrategies.length || 1)
-    }
-  }
-
   /**
    * STAGE 4: Evaluate REAL strategies - Exchange-specific thresholds
    */
