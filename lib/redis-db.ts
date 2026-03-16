@@ -704,13 +704,20 @@ export async function getEnabledConnections(): Promise<any[]> {
 export async function getInsertedAndEnabledConnections(): Promise<any[]> {
   const allConnections = await getAllConnections()
   // Return connections that are:
-  // 1. Inserted into Settings (is_inserted="1")
-  // 2. AND enabled (is_enabled="1")
+  // 1. Active-inserted into Active panel (is_active_inserted="1")
+  // 2. AND active/enabled (is_active="1" OR is_enabled="1")
   // This is the filter used by the trade engine coordinator to find active connections
   return allConnections.filter((c: any) => {
+    // Check for active panel flags (modern approach)
+    const isActiveInserted = c.is_active_inserted === "1" || c.is_active_inserted === true
+    const isActive = c.is_active === "1" || c.is_active === true
+    
+    // Fall back to old flags if needed
     const isInserted = c.is_inserted === "1" || c.is_inserted === true
     const isEnabled = c.is_enabled === "1" || c.is_enabled === true
-    return isInserted && isEnabled
+    
+    // Match either set of flags
+    return (isActiveInserted && isActive) || (isInserted && isEnabled)
   })
 }
 
