@@ -87,7 +87,7 @@ export function QuickStartButton() {
     let enabledConnectionId: string | null = null
 
     try {
-      // STEP 1: Initialize (non-critical)
+      // STEP 1: Initialize (non-critical) - timeout: 15s
       await runStep("init", "STEP 1: Initialize System", async () => {
         const res = await timedFetch("/api/init", { method: "GET" }, 15000)
         return res.ok ? "System initialized" : "Already ready"
