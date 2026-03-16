@@ -30,18 +30,62 @@ export async function GET() {
       ? mainConfigKey.symbols.length 
       : (mainConfigKey?.symbols_count || 15)
 
-    // Get indication metrics from Redis
-    const indicationMetrics = await client.hgetall("metrics:indications")
-    const indicationsCalculated = parseInt(indicationMetrics?.calculated_count || "0") || 0
-
-    // Get strategy metrics from Redis
-    const strategyMetrics = await client.hgetall("metrics:strategies")
-    const strategiesEvaluated = parseInt(strategyMetrics?.evaluated_count || "0") || 0
-
-    // Check if sets are created (use scard for sets, with fallback)
-    const baseSetsExist = await client.scard("data:base_set").catch(() => 0)
-    const mainSetsExist = await client.scard("data:main_set").catch(() => 0)
-    const realSetsExist = await client.scard("data:real_set").catch(() => 0)
+    // Get indication/strategy metrics from actual engine state keys
+    let totalIndicationCycles = 0
+    let totalStrategyCycles = 0
+    let totalStrategiesEvaluated = 0
+    let baseSetsCount = 0
+    let mainSetsCount = 0
+    let realSetsCount = 0
+    let liveSetsCount = 0
+    
+    for (const conn of enabledConnections) {
+      try {
+        // Read engine state for each connection
+        const engineStateKey = `trade_engine_state:${conn.id}`
+        const stateJson = await client.get(engineStateKey)
+        const state = stateJson ? JSON.parse(stateJson) : null
+        
+        if (state) {
+          totalIndicationCycles += state.indication_cycle_count || 0
+          totalStrategyCycles += state.strategy_cycle_count || 0
+          totalStrategiesEvaluated += state.total_strategies_evaluated || 0
+        }
+        
+        // Check for strategy sets per connection (check for common symbols)
+        const symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
+        for (const symbol of symbols) {
+          const baseKey = `strategies:${conn.id}:${symbol}:base`
+          const mainKey = `strategies:${conn.id}:${symbol}:main`
+          const realKey = `strategies:${conn.id}:${symbol}:real`
+          const liveKey = `strategies:${conn.id}:${symbol}:live`
+          
+          const baseJson = await client.get(baseKey)
+          const mainJson = await client.get(mainKey)
+          const realJson = await client.get(realKey)
+          const liveJson = await client.get(liveKey)
+          
+          if (baseJson) {
+            const data = JSON.parse(baseJson)
+            baseSetsCount += data.count || data.strategies?.length || 0
+          }
+          if (mainJson) {
+            const data = JSON.parse(mainJson)
+            mainSetsCount += data.count || data.strategies?.length || 0
+          }
+          if (realJson) {
+            const data = JSON.parse(realJson)
+            realSetsCount += data.count || data.strategies?.length || 0
+          }
+          if (liveJson) {
+            const data = JSON.parse(liveJson)
+            liveSetsCount += data.count || data.strategies?.length || 0
+          }
+        }
+      } catch (e) {
+        // Ignore per-connection errors
+      }
+    }
 
     // Get position entries count from Redis
     const positionKeys = await client.keys("positions:*")
@@ -49,18 +93,28 @@ export async function GET() {
 
     // Get in-memory persistence stats
     const persistenceKeys = await client.keys("persistence:*")
-    console.log(`[v0] [FunctionalOverview] Metrics: symbols=${configuredSymbols}, indications=${indicationsCalculated}, strategies=${strategiesEvaluated}, positions=${positionsCount}`)
+    console.log(`[v0] [FunctionalOverview] Metrics: symbols=${configuredSymbols}, indicationCycles=${totalIndicationCycles}, strategyCycles=${totalStrategyCycles}, base=${baseSetsCount}, main=${mainSetsCount}, real=${realSetsCount}, positions=${positionsCount}`)
 
     return NextResponse.json({
       symbolsActive: configuredSymbols,
-      indicationsCalculated,
-      strategiesEvaluated,
-      baseSetsCreated: baseSetsExist > 0,
-      mainSetsCreated: mainSetsExist > 0,
-      realSetsCreated: realSetsExist > 0,
+      indicationsCalculated: totalIndicationCycles,
+      strategiesEvaluated: totalStrategiesEvaluated || totalStrategyCycles,
+      baseSetsCreated: baseSetsCount > 0,
+      mainSetsCreated: mainSetsCount > 0,
+      realSetsCreated: realSetsCount > 0,
+      liveSetsCreated: liveSetsCount > 0,
       positionsEntriesCreated: positionsCount,
       enabledConnections: enabledConnections.length,
       persistenceKeys: persistenceKeys.length,
+      // Detailed counts
+      counts: {
+        indicationCycles: totalIndicationCycles,
+        strategyCycles: totalStrategyCycles,
+        baseStrategies: baseSetsCount,
+        mainStrategies: mainSetsCount,
+        realStrategies: realSetsCount,
+        liveStrategies: liveSetsCount,
+      },
       timestamp: new Date().toISOString(),
     })
   } catch (error) {

@@ -22,7 +22,16 @@ interface FunctionalOverview {
   baseSetsCreated: boolean
   mainSetsCreated: boolean
   realSetsCreated: boolean
+  liveSetsCreated?: boolean
   positionsEntriesCreated: number
+  counts?: {
+    indicationCycles: number
+    strategyCycles: number
+    baseStrategies: number
+    mainStrategies: number
+    realStrategies: number
+    liveStrategies: number
+  }
 }
 
 export function QuickStartButton() {
@@ -281,25 +290,31 @@ export function QuickStartButton() {
         {/* Functional Overview - Displayed after successful completion */}
         {functionalOverview && (
           <div className="bg-green-50 rounded border border-green-200 p-3 text-xs">
-            <p className="mb-2 font-semibold text-green-700">✓ Functional Overview (System Ready):</p>
+            <p className="mb-2 font-semibold text-green-700">Functional Overview (System Ready):</p>
             <div className="grid grid-cols-2 gap-2 text-gray-700">
               <div>
                 <span className="font-medium">Symbols Active:</span> {functionalOverview.symbolsActive}
               </div>
               <div>
-                <span className="font-medium">Indications Calculated:</span> {functionalOverview.indicationsCalculated}
+                <span className="font-medium">Indication Cycles:</span> {functionalOverview.counts?.indicationCycles || functionalOverview.indicationsCalculated}
+              </div>
+              <div>
+                <span className="font-medium">Strategy Cycles:</span> {functionalOverview.counts?.strategyCycles || 0}
               </div>
               <div>
                 <span className="font-medium">Strategies Evaluated:</span> {functionalOverview.strategiesEvaluated}
               </div>
               <div>
-                <span className="font-medium">Base Sets:</span> {functionalOverview.baseSetsCreated ? "✓" : "✗"}
+                <span className="font-medium">Base Strategies:</span> {functionalOverview.counts?.baseStrategies || (functionalOverview.baseSetsCreated ? "Active" : "0")}
               </div>
               <div>
-                <span className="font-medium">Main Sets:</span> {functionalOverview.mainSetsCreated ? "✓" : "✗"}
+                <span className="font-medium">Main Strategies:</span> {functionalOverview.counts?.mainStrategies || (functionalOverview.mainSetsCreated ? "Active" : "0")}
               </div>
               <div>
-                <span className="font-medium">Real Sets:</span> {functionalOverview.realSetsCreated ? "✓" : "✗"}
+                <span className="font-medium">Real Strategies:</span> {functionalOverview.counts?.realStrategies || (functionalOverview.realSetsCreated ? "Active" : "0")}
+              </div>
+              <div>
+                <span className="font-medium">Live Strategies:</span> {functionalOverview.counts?.liveStrategies || (functionalOverview.liveSetsCreated ? "Active" : "0")}
               </div>
               <div className="col-span-2">
                 <span className="font-medium">DB Position Entries:</span> {functionalOverview.positionsEntriesCreated}

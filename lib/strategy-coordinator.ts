@@ -247,10 +247,14 @@ export class StrategyCoordinator {
               created: new Date()
             }
             
-            // Filter by MAIN metrics before adding
-            if (mainStrategy.profitFactor >= metrics.minProfitFactor * 0.8 && // Slightly relaxed from 1.2 to 0.96
+            // Filter by MAIN metrics before adding - relaxed thresholds to allow position generation
+            // BASE strategies with PF=1.0 should pass through to MAIN for position tracking
+            const minPF = Math.max(0.5, metrics.minProfitFactor * 0.5) // Relaxed: 1.2 * 0.5 = 0.6
+            const minConf = Math.max(0.3, metrics.confidence * 0.6) // Relaxed: 0.5 * 0.6 = 0.3
+            
+            if (mainStrategy.profitFactor >= minPF &&
                 mainStrategy.drawdownTime <= metrics.maxDrawdownTime &&
-                mainStrategy.confidence >= metrics.confidence) {
+                (mainStrategy.confidence || 0.5) >= minConf) {
               mainStrategies.push(mainStrategy)
               totalCreated++
             }
