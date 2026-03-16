@@ -77,6 +77,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       ? (Date.now() - new Date(engineState.last_indication_run).getTime()) < 60000 // Active in last 60s
       : false
     
+    // DEBUG: Log what we're reading
+    console.log(`[v0] [ProgressionAPI] ${connectionId}: cycleCount=${indicationCycleCount}, recent=${hasRecentActivity}, engineState.status=${engineState?.status}, running=${isEngineRunning}`)
+    
     // Engine is running if: flag set, state says running, OR there's recent cycle activity
     const engineRunning = isEngineRunning || 
       (isGloballyRunning && (isActiveInserted || isInserted) && isEnabled) ||

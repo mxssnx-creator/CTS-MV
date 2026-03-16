@@ -93,7 +93,7 @@ export class TradeEngineManager {
 
       // Phase 2: Load prehistoric data (historical data retrieval + calculation)
       // Run in background - don't block engine startup
-      await this.updateProgressionPhase("prehistoric_data", 10, "Loading historical market data...")
+      await this.updateProgressionPhase("prehistoric_data", 15, "Loading historical market data...")
       console.log(`[v0] [EngineManager] Phase 2/6: Starting prehistoric data loading (background)...`)
       // Fire and forget - don't await
       this.loadPrehistoricData().catch(err => {
@@ -102,29 +102,41 @@ export class TradeEngineManager {
       })
       console.log(`[v0] [EngineManager] Phase 2/6: Prehistoric loading queued (engine will continue)`)
 
-      // Phase 3: Start indication processor
-      await this.updateProgressionPhase("indications", 60, "Starting indication processor...")
+      // Phase 3: Start indication processor - immediate phase update
+      console.log(`[v0] [EngineManager] Phase 3/6: Starting indication processor (${symbols.length} symbols)`)
+      await this.updateProgressionPhase("indications", 60, "Processing indications continuously")
       this.startIndicationProcessor(config.indicationInterval)
-      console.log(`[v0] [EngineManager] Phase 3/6: Indication processor started (${symbols.length} symbols)`)
 
-      // Phase 4: Start strategy processor
-      await this.updateProgressionPhase("strategies", 75, "Starting strategy processor...")
+      // Phase 4: Start strategy processor - immediate phase update
+      console.log(`[v0] [EngineManager] Phase 4/6: Starting strategy processor`)
+      await this.updateProgressionPhase("strategies", 75, "Processing strategies continuously")
       this.startStrategyProcessor(config.strategyInterval)
-      console.log(`[v0] [EngineManager] Phase 4/6: Strategy processor started`)
 
-      // Phase 5: Start realtime processor
-      await this.updateProgressionPhase("realtime", 85, "Starting real-time data processor...")
+      // Phase 5: Start realtime processor - immediate phase update
+      console.log(`[v0] [EngineManager] Phase 5/6: Starting real-time processor`)
+      await this.updateProgressionPhase("realtime", 85, "Monitoring real-time data and positions")
       this.startRealtimeProcessor(config.realtimeInterval)
       this.startHealthMonitoring()
-      console.log(`[v0] [EngineManager] Phase 5/6: Realtime processor started`)
       
-      // Phase 6: Live trading ready
+      // Phase 6: Live trading ready - final phase update
       this.startHeartbeat()
       this.isRunning = true
       this.startTime = new Date()
-      await this.updateProgressionPhase("live_trading", 100, "Live trading active")
-      console.log(`[v0] [EngineManager] ✓ Phase 6/6: Live trading ACTIVE for ${this.connectionId}`)
-      console.log(`[v0] [EngineManager] ✓ Engine fully initialized - monitoring ${symbols.length} symbols`)
+      
+      // Final progression update - LIVE TRADING ACTIVE
+      await this.updateProgressionPhase("live_trading", 100, `Live trading ACTIVE - monitoring ${symbols.length} symbols`)
+      console.log(`[v0] [EngineManager] ✓ Phase 6/6: LIVE TRADING ACTIVE for ${this.connectionId}`)
+      console.log(`[v0] [EngineManager] ✓ Engine fully initialized`)
+      
+      // Also update engine state to indicate all phases are running
+      await setSettings(`trade_engine_state:${this.connectionId}`, {
+        all_phases_started: true,
+        indications_started: true,
+        strategies_started: true,
+        realtime_started: true,
+        live_trading_started: true,
+        updated_at: new Date().toISOString(),
+      })
       
       await logProgressionEvent(this.connectionId, "engine_started", "info", "Trade engine fully started", {
         symbols: symbols.length,
