@@ -265,16 +265,26 @@ export class StrategyProcessor {
     try {
       await initRedis()
       
-      // Use the same key format as the indication processor saves to
-      const indicationsKey = `${this.connectionId}:${symbol}`
+      // Use the EXACT same key format as the indication processor saves to
+      // indication-processor.ts line 307: `${this.connectionId}:${symbol}:realtime`
+      const indicationsKey = `${this.connectionId}:${symbol}:realtime`
       const indications = await getIndications(indicationsKey)
       
       if (indications && Array.isArray(indications) && indications.length > 0) {
-        console.log(`[v0] [StrategyProcessor] Retrieved ${indications.length} indications for ${symbol} from Redis`)
+        console.log(`[v0] [StrategyProcessor] Retrieved ${indications.length} indications for ${symbol} from Redis key=${indicationsKey}`)
         return indications
       }
       
+      // Fallback: Try without :realtime suffix in case old data exists
+      const fallbackKey = `${this.connectionId}:${symbol}`
+      const fallbackIndications = await getIndications(fallbackKey)
+      if (fallbackIndications && Array.isArray(fallbackIndications) && fallbackIndications.length > 0) {
+        console.log(`[v0] [StrategyProcessor] Retrieved ${fallbackIndications.length} indications from fallback key=${fallbackKey}`)
+        return fallbackIndications
+      }
+      
       // No indications yet - normal during startup
+      console.log(`[v0] [StrategyProcessor] No indications found for ${symbol} - keys tried: ${indicationsKey}, ${fallbackKey}`)
       return []
     } catch (error) {
       console.error(`[v0] [StrategyProcessor] Error retrieving indications for ${symbol}:`, error)
