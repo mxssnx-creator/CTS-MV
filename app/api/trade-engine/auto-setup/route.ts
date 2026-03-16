@@ -35,14 +35,16 @@ export async function POST(request: Request) {
       })
     }
 
-    // Check if already in active connections
-    const isAlreadyActive = bingxConnection.is_active_inserted === "1" || bingxConnection.is_active_inserted === true
+    // Check if already in active connections (multiple ways it might be flagged)
+    const isAlreadyActive = (bingxConnection.is_active_inserted === "1" || bingxConnection.is_active_inserted === true) &&
+                            (bingxConnection.is_active === "1" || bingxConnection.is_active === true)
     
     if (isAlreadyActive) {
       console.log(`[v0] [AutoSetup] ${bingxConnection.name} is already in active connections`)
       return NextResponse.json({
         success: true,
-        message: `${bingxConnection.name} already in active connections`,
+        alreadyActive: true,
+        message: `${bingxConnection.name} already active`,
         connection: {
           id: bingxConnection.id,
           name: bingxConnection.name,
@@ -60,6 +62,7 @@ export async function POST(request: Request) {
       is_active: "1",
       is_inserted: "1",
       is_enabled: "1",
+      is_testnet: false,
       updated_at: new Date().toISOString(),
     }
 
@@ -69,6 +72,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
+      alreadyActive: false,
       message: `${bingxConnection.name} added to active connections`,
       connection: {
         id: bingxConnection.id,
