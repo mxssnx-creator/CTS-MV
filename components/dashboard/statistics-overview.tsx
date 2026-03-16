@@ -74,6 +74,17 @@ export function StatisticsOverview({ connections }: StatisticsOverviewProps) {
       }
 
       const statsPromises = connectionsList.map(async (conn) => {
+        // Fetch engine stats (actual cycle counts and indication/strategy records)
+        let engineStatsData: any = null
+        try {
+          const engineRes = await fetch(`/api/trading/engine-stats?connection_id=${conn.id}`)
+          if (engineRes.ok) {
+            engineStatsData = await engineRes.json()
+          }
+        } catch {
+          // Engine stats may not be available yet
+        }
+
         // Fetch position stats (may not exist yet if engine is still in prehistoric phase)
         let posData: any = { stats: {} }
         try {
@@ -101,30 +112,31 @@ export function StatisticsOverview({ connections }: StatisticsOverviewProps) {
           // Progression may not be available yet
         }
 
-        // Calculate indication counts from cycle data
-        const cyclesCompleted = stateData.cyclesCompleted || metricsData.indicationCycleCount || 0
-        const successfulCycles = stateData.successfulCycles || cyclesCompleted
-        const indicationsProcessed = metricsData.indicationsCount || 0
-        const strategiesProcessed = metricsData.strategiesCount || 0
+        // Use engine stats for actual cycle counts
+        const indicationCycleCount = engineStatsData?.indications?.cycleCount || metricsData.indicationCycleCount || 0
+        const strategyCycleCount = engineStatsData?.strategies?.cycleCount || metricsData.strategyCycleCount || 0
+        const symbolCount = engineStatsData?.metadata?.symbolCount || 1
 
         return {
           connectionId: conn.id,
           connectionName: conn.name,
           indications: {
-            base: Math.floor(cyclesCompleted * 0.3), // Direction indications
-            main: Math.floor(cyclesCompleted * 0.25), // Move indications
-            real: Math.floor(cyclesCompleted * 0.25), // Active indications
-            live: Math.floor(cyclesCompleted * 0.2), // Optimal indications
-            total: indicationsProcessed,
-            evaluated: cyclesCompleted * 15, // 15 symbols per cycle
+            base: engineStatsData?.indications?.types?.direction || 0,
+            main: engineStatsData?.indications?.types?.move || 0,
+            real: engineStatsData?.indications?.types?.active || 0,
+            live: engineStatsData?.indications?.types?.optimal || 0,
+            total: engineStatsData?.indications?.totalRecords || 0,
+            evaluated: indicationCycleCount * symbolCount,
+            cycleCount: indicationCycleCount,
           },
           strategies: {
-            base: Math.floor(stateData.totalTrades || 0),
-            main: Math.floor((stateData.totalTrades || 0) * 0.8),
-            real: Math.floor((stateData.totalTrades || 0) * 0.6),
-            live: stateData.successfulTrades || 0,
-            total: strategiesProcessed,
-            evaluated: metricsData.strategyCycleCount || 0,
+            base: engineStatsData?.strategies?.types?.base || 0,
+            main: engineStatsData?.strategies?.types?.main || 0,
+            real: engineStatsData?.strategies?.types?.real || 0,
+            live: engineStatsData?.strategies?.types?.dca || 0,
+            total: engineStatsData?.strategies?.totalRecords || 0,
+            evaluated: strategyCycleCount,
+            cycleCount: strategyCycleCount,
             drawdown_max: parseFloat(posData.stats?.largest_loss || "0"),
             drawdown_time_hours: parseFloat(posData.stats?.avg_holding_time_hours || "0"),
           },
@@ -139,7 +151,7 @@ export function StatisticsOverview({ connections }: StatisticsOverviewProps) {
             losing: posData.stats?.loss_count || stateData.failedCycles || 0,
             win_rate: posData.stats?.win_rate || stateData.cycleSuccessRate || 0,
           },
-        } as ConnectionStats
+        } as any
       })
 
       const results = await Promise.all(statsPromises)
@@ -250,7 +262,7 @@ function StatisticsCards({ stats }: { stats: ConnectionStats }) {
             <Activity className="h-4 w-4" />
             Indications
           </CardTitle>
-          <CardDescription>Evaluated: {stats.indications.evaluated}</CardDescription>
+          <CardDescription>Cycles: {(stats.indications as any).cycleCount} | Evaluated: {stats.indications.evaluated}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid grid-cols-2 gap-3 text-sm">
@@ -285,7 +297,7 @@ function StatisticsCards({ stats }: { stats: ConnectionStats }) {
             Strategies
           </CardTitle>
           <CardDescription>
-            Drawdown: {stats.strategies.drawdown_max.toFixed(1)}% | Time: {stats.strategies.drawdown_time_hours.toFixed(1)}h
+            Cycles: {(stats.strategies as any).cycleCount} | Drawdown: {stats.strategies.drawdown_max.toFixed(1)}% | Time: {stats.strategies.drawdown_time_hours.toFixed(1)}h
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
