@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { query } from "@/lib/db"
-import { getSettings, getAllSettings } from "@/lib/redis"
+import { getSettings } from "@/lib/redis-persistence"
 import { getGlobalTradeEngineCoordinator } from "@/lib/trade-engine"
 import { loadConnections } from "@/lib/file-storage"
 
