@@ -14,6 +14,14 @@ export default function HomePage() {
       setMounted(true)
       console.log("[v0] HomePage mounted successfully")
       
+      // Fix: Ensure all BingX/Bybit connections use mainnet (not testnet)
+      fetch("/api/trade-engine/fix-testnet", { 
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      })
+        .then(() => console.log("[v0] Testnet fix complete"))
+        .catch(err => console.warn("[v0] Testnet fix failed:", err instanceof Error ? err.message : String(err)))
+      
       // Auto-setup: Add BingX to active connections if it has credentials
       fetch("/api/trade-engine/auto-setup", { 
         method: "POST",

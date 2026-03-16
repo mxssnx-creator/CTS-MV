@@ -54,15 +54,15 @@ export async function POST(request: Request) {
       })
     }
 
-    // Add to active connections
-    console.log(`[v0] [AutoSetup] Adding ${bingxConnection.name} to active connections...`)
+    // Add to active connections (ALWAYS disable testnet for mainnet trading)
+    console.log(`[v0] [AutoSetup] Adding ${bingxConnection.name} to active connections (mainnet only)...`)
     const updated = {
       ...bingxConnection,
       is_active_inserted: "1",
       is_active: "1",
       is_inserted: "1",
       is_enabled: "1",
-      is_testnet: false,
+      is_testnet: false, // FORCE mainnet - never use testnet
       updated_at: new Date().toISOString(),
     }
 
