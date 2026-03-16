@@ -89,13 +89,13 @@ export function QuickStartButton() {
     try {
       // STEP 1: Initialize (non-critical)
       await runStep("init", "STEP 1: Initialize System", async () => {
-        const res = await timedFetch("/api/init", { method: "GET" }, 4000)
+        const res = await timedFetch("/api/init", { method: "GET" }, 15000)
         return res.ok ? "System initialized" : "Already ready"
       })
 
       // STEP 2: Migrations (non-critical)
       await runStep("migrate", "STEP 2: Migrations", async () => {
-        const res = await timedFetch("/api/install/database/migrate", { method: "POST" }, 10000)
+        const res = await timedFetch("/api/install/database/migrate", { method: "POST" }, 20000)
         if (!res.ok) return "Up to date"
         const d = await res.json().catch(() => ({}))
         const n = d.migrations?.length ?? d.ranCount ?? 0
@@ -105,7 +105,7 @@ export function QuickStartButton() {
       // STEP 3: Verify BingX (non-critical - never blocks)
       let balanceInfo = ""
       await runStep("test", "STEP 3: Verify BingX Credentials", async () => {
-        const res = await timedFetch("/api/settings/connections/test-bingx", { method: "GET" }, 15000)
+        const res = await timedFetch("/api/settings/connections/test-bingx", { method: "GET" }, 20000)
         const d = await res.json().catch(() => ({}))
         if (d.success) {
           balanceInfo = d.connection?.testBalance ? ` | Balance: ${d.connection.testBalance}` : ""
@@ -116,7 +116,7 @@ export function QuickStartButton() {
 
       // STEP 4: Start global coordinator (REQUIRED)
       await runStep("start", "STEP 4: Start Global Coordinator", async () => {
-        const res = await timedFetch("/api/trade-engine/start", { method: "POST" }, 12000)
+        const res = await timedFetch("/api/trade-engine/start", { method: "POST" }, 20000)
         const d = await res.json().catch(() => ({}))
         console.log("[v0] [QuickStart] Coordinator response:", JSON.stringify(d))
         if (!res.ok && !d.success) throw new Error(d.error ?? `HTTP ${res.status}`)
@@ -130,7 +130,7 @@ export function QuickStartButton() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "enable", symbols: ["BTCUSDT"] }),
-        }, 10000)
+        }, 25000)
         const d = await res.json().catch(() => ({}))
         console.log("[v0] [QuickStart] Enable response:", JSON.stringify(d))
         if (!res.ok && !d.success) throw new Error(d.error ?? `HTTP ${res.status}`)
@@ -145,17 +145,16 @@ export function QuickStartButton() {
       // STEP 6: Launch per-connection engine (non-critical fallback)
       await runStep("engine", "STEP 6: Launch BingX Engine", async () => {
         const connId = enabledConnectionId
-        if (!connId) return "Skipped — no connection ID"
+        if (!connId) return "Skipped - no connection ID"
         console.log(`[v0] [QuickStart] Starting live-trade engine for: ${connId}`)
         const res = await timedFetch(`/api/settings/connections/${connId}/live-trade`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ is_live_trade: true }),
-        }, 20000)
+        }, 30000)
         const d = await res.json().catch(() => ({}))
         console.log("[v0] [QuickStart] Live-trade response:", JSON.stringify(d))
         if (res.ok && d.success) return `Engine running | Status: ${d.engineStatus}`
-        // Non-fatal — coordinator will still pick up the connection
         return `Queued (${d.error ?? d.message ?? "coordinator processing"})`
       })
 
