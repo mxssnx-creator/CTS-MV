@@ -25,7 +25,7 @@ export async function GET() {
     const entries1h = allKeys.filter((k: string) => k.includes("entry") || k.includes("indication")).length
 
     // Get engine status - use Redis state as source of truth (coordinator may not track all engines)
-    const coordinatorRunning = coordinator?.isRunning?.() ?? false
+    // Note: coordinatorRunning method may not exist, so we derive it from actual engine state
     const coordinatorEngineCount = coordinator?.getActiveEngineCount?.() ?? 0
     
     // Count actual indications and strategies in Redis
@@ -137,7 +137,7 @@ export async function GET() {
       modules: {
         redis: true,
         persistence: keys > 0,
-        coordinator: coordinatorRunning,
+        coordinator: engineRunning, // Coordinator is active if engine is running
         logger: true,
       },
       engines: {
