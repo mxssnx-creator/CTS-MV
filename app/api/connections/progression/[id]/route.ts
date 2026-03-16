@@ -95,24 +95,26 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     
     // Better phase detection based on actual metrics (most reliable)
     // Priority: actual evidence > stored progression > engine state > idle
+    
     if (indicationCycleCount > 100 || progressionState.cyclesCompleted > 100) {
       // STRONG evidence: 100+ indication cycles = live trading active
       phase = "live_trading"
       progress = 100
       detail = `Live trading active - ${Math.max(indicationCycleCount, progressionState.cyclesCompleted)} cycles`
+      console.log(`[v0] [Phase] ${connectionId}: Strong cycles evidence → live_trading`)
+    } else if (indicationCycleCount > 20 || progressionState.cyclesCompleted > 20) {
+      // Moderate evidence: 20+ cycles means we're past initialization
+      phase = "live_trading"
+      progress = 90 + Math.min(10, indicationCycleCount / 100)
+      detail = `Live trading - ${Math.max(indicationCycleCount, progressionState.cyclesCompleted)} cycles`
+      console.log(`[v0] [Phase] ${connectionId}: Moderate cycles (${indicationCycleCount}) → live_trading`)
     } else if (indicationCycleCount > 0 || progressionState.cyclesCompleted > 0) {
-      // Indications are running - we're at realtime or later phases
-      if (progression?.phase === "live_trading") {
-        phase = "live_trading"
-        progress = 100
-        detail = `Live trading - ${indicationCycleCount} indication cycles`
-      } else {
-        // Derive from cycle count since stored phase may be stale
-        const totalCycles = Math.max(progressionState.cyclesCompleted, indicationCycleCount)
-        phase = "realtime"
-        progress = 75 + Math.min(25, Math.min(totalCycles / 4, 25))
-        detail = `Processing - ${totalCycles} cycles completed`
-      }
+      // Any indication processing = realtime phase
+      const totalCycles = Math.max(progressionState.cyclesCompleted, indicationCycleCount)
+      phase = "realtime"
+      progress = 80 + Math.min(20, totalCycles / 10)
+      detail = `Processing - ${totalCycles} cycles`
+      console.log(`[v0] [Phase] ${connectionId}: Initial cycles (${indicationCycleCount}) → realtime`)
     } else if (progression?.phase && !["ready", "idle", "initializing"].includes(progression.phase)) {
       // Use stored progression phase only if meaningful
       phase = progression.phase

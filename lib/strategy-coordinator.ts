@@ -66,13 +66,19 @@ export class StrategyCoordinator {
 
   /**
    * Execute complete strategy progression flow
+   * Coordinate through all stages, but only execute real trading when live_trade enabled
    */
   async executeStrategyFlow(symbol: string, indications: any[], isPrehistoric: boolean = false): Promise<StrategyEvaluation[]> {
     const results: StrategyEvaluation[] = []
 
     try {
-      // STAGE 1: BASE - Create all pseudo positions
-      console.log(`[v0] [StrategyFlow] ${symbol} STAGE 1: Creating BASE pseudo positions`)
+      // Check if live trading is enabled for this connection
+      const connSettings = await getSettings(`connection:${this.connectionId}`)
+      const isLiveTradeEnabled = connSettings?.is_live_trade === true || connSettings?.is_live_trade === "1"
+      console.log(`[v0] [StrategyCoordinator] ${symbol}: Live trading enabled=${isLiveTradeEnabled}`)
+
+      // STAGE 1: BASE - Create all pseudo positions (always, regardless of live_trade setting)
+      console.log(`[v0] [StrategyFlow] ${symbol} STAGE 1: Creating BASE pseudo positions (simulation mode)`)
       const baseResult = await this.createBaseStrategies(symbol, indications)
       results.push(baseResult)
 
