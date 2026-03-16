@@ -378,10 +378,10 @@ export function ActiveConnectionCard({
                   <span className="capitalize">{details.margin_type}</span>
                 </>
               )}
-              {details?.is_testnet && (
+              {!details?.is_testnet && (
                 <>
                   <span className="text-muted-foreground/50">|</span>
-                  <span className="text-amber-600 dark:text-amber-400 font-medium">Testnet</span>
+                  <span className="text-green-600 dark:text-green-400 font-medium">Live</span>
                 </>
               )}
               {details?.last_test_time && (
