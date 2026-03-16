@@ -16,9 +16,39 @@ export async function GET(req: Request) {
     const engHealth = await getSettings(`trade_engine_health:${connectionId}`)
     const progState = await getSettings(`progression_state:${connectionId}`)
 
-    const indicationCycleCount = (engState as any)?.indication_cycle_count || (engHealth as any)?.indications?.cycleCount || 0
-    const strategyCycleCount = (engState as any)?.strategy_cycle_count || (engHealth as any)?.strategies?.cycleCount || 0
+    console.log(`[v0] [EngineStats] ${connectionId}: engState indication_cycle_count=${(engState as any)?.indication_cycle_count}, strategy_cycle_count=${(engState as any)?.strategy_cycle_count}`)
+    console.log(`[v0] [EngineStats] ${connectionId}: Full engState=`, engState)
+
+    let indicationCycleCount = (engState as any)?.indication_cycle_count || (engHealth as any)?.indications?.cycleCount || 0
+    let strategyCycleCount = (engState as any)?.strategy_cycle_count || (engHealth as any)?.strategies?.cycleCount || 0
     const realtimeCycleCount = (engHealth as any)?.realtime?.cycleCount || 0
+
+    // Fallback: if cycle counts are 0, try to count from database
+    if (!indicationCycleCount) {
+      try {
+        const countResult = await query(
+          "SELECT COUNT(*) as count FROM indications WHERE connection_id = ? AND calculated_at > datetime('now', '-1 hour')",
+          [connectionId]
+        ).catch(() => [])
+        indicationCycleCount = Math.max(indicationCycleCount, countResult[0]?.count || 0)
+      } catch (e) {
+        // Ignore DB errors
+      }
+    }
+
+    if (!strategyCycleCount) {
+      try {
+        const countResult = await query(
+          "SELECT COUNT(*) as count FROM strategies_real WHERE connection_id = ? AND evaluated_at > datetime('now', '-1 hour')",
+          [connectionId]
+        ).catch(() => [])
+        strategyCycleCount = Math.max(strategyCycleCount, countResult[0]?.count || 0)
+      } catch (e) {
+        // Ignore DB errors
+      }
+    }
+
+    console.log(`[v0] [EngineStats] ${connectionId}: FINAL cycleCount - indication=${indicationCycleCount}, strategy=${strategyCycleCount}`)
 
     // Get indication types count
     const directionCount = await query(

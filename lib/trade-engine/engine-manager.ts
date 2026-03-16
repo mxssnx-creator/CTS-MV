@@ -337,7 +337,22 @@ export class TradeEngineManager {
         this.componentHealth.indications.lastCycleDuration = duration
         this.componentHealth.indications.successRate = ((cycleCount - errorCount) / cycleCount) * 100
 
-        // Batch progression updates every 10 cycles only
+        // Persist cycle count every cycle (not just every 10)
+        // Update Redis state with latest metrics on EVERY cycle for dashboard real-time visibility
+        try {
+          await setSettings(`trade_engine_state:${this.connectionId}`, {
+            connection_id: this.connectionId,
+            status: "running",
+            started_at: this.startTime?.toISOString() || new Date().toISOString(),
+            last_indication_run: new Date().toISOString(),
+            indication_cycle_count: cycleCount,
+            indication_avg_duration_ms: totalDuration > 0 ? Math.round(totalDuration / cycleCount) : 0,
+          })
+        } catch (err) {
+          // Silently fail - non-critical for engine operation
+        }
+
+        // Batch progression updates and detailed logs every 10 cycles only
         if (cycleCount % 10 === 0) {
           await ProgressionStateManager.incrementCycle(this.connectionId, true, 0)
           await logProgressionEvent(this.connectionId, "indications", "info", `Processed ${symbols.length} symbols`, {
@@ -345,13 +360,6 @@ export class TradeEngineManager {
             cycleCount,
             symbolsCount: symbols.length,
           })
-          await setSettings(`trade_engine_state:${this.connectionId}`, {
-            connection_id: this.connectionId,
-            status: "running",
-            started_at: this.startTime?.toISOString() || new Date().toISOString(),
-            last_indication_run: new Date().toISOString(),
-            indication_cycle_count: cycleCount,
-            indication_avg_duration_ms: Math.round(totalDuration / cycleCount),
           })
         }
       } catch (error) {
@@ -401,7 +409,21 @@ export class TradeEngineManager {
         this.componentHealth.strategies.lastCycleDuration = duration
         this.componentHealth.strategies.successRate = ((cycleCount - errorCount) / cycleCount) * 100
 
-        // Batch updates every 5 cycles
+        // Persist cycle count every cycle (not just every 5)
+        // Update Redis state with latest metrics on EVERY cycle for dashboard real-time visibility
+        try {
+          await setSettings(`trade_engine_state:${this.connectionId}`, {
+            status: "running",
+            last_strategy_run: new Date().toISOString(),
+            strategy_cycle_count: cycleCount,
+            strategy_avg_duration_ms: totalDuration > 0 ? Math.round(totalDuration / cycleCount) : 0,
+            total_strategies_evaluated: totalStrategiesEvaluated,
+          })
+        } catch (err) {
+          // Silently fail - non-critical for engine operation
+        }
+
+        // Batch detailed logs every 5 cycles
         if (cycleCount % 5 === 0) {
           console.log(`[v0] [StrategyEngine] Cycle ${cycleCount}: Evaluated ${evaluatedThisCycle} strategies`)
           await logProgressionEvent(this.connectionId, "strategies", "info", `Processed strategies for ${symbols.length} symbols`, {
@@ -411,13 +433,6 @@ export class TradeEngineManager {
             strategiesEvaluatedThisCycle: evaluatedThisCycle,
             totalStrategiesEvaluated,
             avgStrategiesPerSymbol: Math.round(evaluatedThisCycle / symbols.length),
-          })
-          await setSettings(`trade_engine_state:${this.connectionId}`, {
-            status: "running",
-            last_strategy_run: new Date().toISOString(),
-            strategy_cycle_count: cycleCount,
-            strategy_avg_duration_ms: Math.round(totalDuration / cycleCount),
-            total_strategies_evaluated: totalStrategiesEvaluated,
           })
         }
       } catch (error) {
