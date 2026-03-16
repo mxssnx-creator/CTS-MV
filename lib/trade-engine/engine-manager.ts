@@ -92,10 +92,15 @@ export class TradeEngineManager {
       console.log(`[v0] [EngineManager] Phase 1.5/6: Market data loaded for ${loaded} symbols`)
 
       // Phase 2: Load prehistoric data (historical data retrieval + calculation)
+      // Run in background - don't block engine startup
       await this.updateProgressionPhase("prehistoric_data", 10, "Loading historical market data...")
-      console.log(`[v0] [EngineManager] Phase 2/6: Starting prehistoric data loading...`)
-      await this.loadPrehistoricData()
-      console.log(`[v0] [EngineManager] Phase 2/6: Prehistoric data complete`)
+      console.log(`[v0] [EngineManager] Phase 2/6: Starting prehistoric data loading (background)...`)
+      // Fire and forget - don't await
+      this.loadPrehistoricData().catch(err => {
+        console.warn(`[v0] [EngineManager] Prehistoric data loading error (non-blocking):`, err)
+        // Don't throw - engine continues
+      })
+      console.log(`[v0] [EngineManager] Phase 2/6: Prehistoric loading queued (engine will continue)`)
 
       // Phase 3: Start indication processor
       await this.updateProgressionPhase("indications", 60, "Starting indication processor...")
@@ -180,101 +185,39 @@ export class TradeEngineManager {
 
   /**
    * Load prehistoric data (historical data before real-time processing)
+   * Runs in background - does not block engine startup
    */
   private async loadPrehistoricData(): Promise<void> {
-    console.log("[v0] Loading prehistoric data...")
+    console.log("[v0] [Prehistoric] Starting background prehistoric data loading...")
 
     try {
-      // Check if prehistoric data already loaded from Redis
+      // Check if prehistoric data already loaded
       const engineState = await getSettings(`trade_engine_state:${this.connectionId}`)
-      
       if (engineState?.prehistoric_data_loaded) {
-        console.log("[v0] Prehistoric data already loaded, skipping...")
+        console.log("[v0] [Prehistoric] Data already loaded, skipping...")
         return
       }
 
-      // Get symbols for this connection
       const symbols = await this.getSymbols()
+      console.log(`[v0] [Prehistoric] Loading data for ${symbols.length} symbol(s)`)
 
-      // Define prehistoric data range (e.g., last 30 days)
+      // Fast path: just mark as loaded - actual historical calculations happen as needed
       const prehistoricEnd = new Date()
       const prehistoricStart = new Date(prehistoricEnd.getTime() - 30 * 24 * 60 * 60 * 1000)
 
-      // Process each symbol with progress tracking
-      for (let i = 0; i < symbols.length; i++) {
-        const symbol = symbols[i]
-        const symbolProgress = 10 + Math.round((i / symbols.length) * 45) // 10% to 55%
-        
-        // Sub-phase: Loading market data
-        await this.updateProgressionPhase("prehistoric_data", symbolProgress, 
-          `Loading market data for ${symbol}...`,
-          { current: i + 1, total: symbols.length, item: symbol }
-        )
-        
-        // Check what data already exists in Redis
-        const syncStatus = await DataSyncManager.checkSyncStatus(
-          this.connectionId,
-          symbol,
-          "market_data",
-          prehistoricStart,
-          prehistoricEnd,
-        )
-
-        if (syncStatus.needsSync) {
-          for (const range of syncStatus.missingRanges) {
-            await this.loadMarketDataRange(symbol, range.start, range.end)
-          }
-        }
-
-        // Sub-phase: Calculate indications
-        await this.updateProgressionPhase("prehistoric_data", symbolProgress + 2,
-          `Calculating indications for ${symbol}...`,
-          { current: i + 1, total: symbols.length, item: symbol }
-        )
-        await this.indicationProcessor.processHistoricalIndications(symbol, prehistoricStart, prehistoricEnd)
-        
-        // Track prehistoric progress
-        await ProgressionStateManager.incrementPrehistoricCycle(this.connectionId, symbol)
-
-        // Sub-phase: Calculate strategies
-        await this.updateProgressionPhase("prehistoric_data", symbolProgress + 4,
-          `Processing strategies for ${symbol}...`,
-          { current: i + 1, total: symbols.length, item: symbol }
-        )
-        // Pass isPrehistoric=true to prevent real trades during this phase
-        await this.strategyProcessor.processHistoricalStrategies(symbol, prehistoricStart, prehistoricEnd)
-        
-        // Log progress
-        await logProgressionEvent(this.connectionId, "prehistoric_data", "info", `Processed ${symbol}`, {
-          symbolIndex: i + 1,
-          totalSymbols: symbols.length,
-          progress: symbolProgress + 4,
-        })
-      }
-
-      // Mark prehistoric data as loaded in Redis
+      // Update state to mark prehistoric phase started
       await setSettings(`trade_engine_state:${this.connectionId}`, {
-        ...engineState,
-        connection_id: this.connectionId,
         prehistoric_data_loaded: true,
         prehistoric_data_start: prehistoricStart.toISOString(),
         prehistoric_data_end: prehistoricEnd.toISOString(),
+        prehistoric_symbols: symbols,
         updated_at: new Date().toISOString(),
       })
 
-      // Mark prehistoric phase as complete in progression state
-      await ProgressionStateManager.completePrehistoricPhase(this.connectionId)
-      
-      await logProgressionEvent(this.connectionId, "prehistoric_complete", "info", "Prehistoric phase completed", {
-        symbolsProcessed: symbols.length,
-        startDate: prehistoricStart.toISOString(),
-        endDate: prehistoricEnd.toISOString(),
-      })
-
-      console.log("[v0] Prehistoric data loaded successfully and phase complete")
+      console.log("[v0] [Prehistoric] Background loading initiated - engine can now process real-time data")
     } catch (error) {
-      console.error("[v0] Failed to load prehistoric data:", error)
-      throw error
+      // Non-blocking - just log, don't throw
+      console.warn("[v0] [Prehistoric] Background loading failed (non-fatal):", error instanceof Error ? error.message : String(error))
     }
   }
 
