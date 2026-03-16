@@ -89,8 +89,8 @@ export async function GET() {
       }
     } catch { /* ignore */ }
     
-    // Engine is running if either coordinator OR Redis state says so
-    const engineRunning = coordinatorRunning || redisEngineRunning || indicationsRunning || strategiesRunning
+    // Engine is running if Redis state or processors indicate activity
+    const engineRunning = redisEngineRunning || indicationsRunning || strategiesRunning || coordinatorEngineCount > 0
     const activeEngineCount = Math.max(coordinatorEngineCount, redisActiveEngineCount)
     
     // Use actual Redis key counts for results (actual data in DB)
