@@ -256,6 +256,7 @@ function StatisticsCards({ stats }: { stats: ConnectionStats }) {
 
   return (
     <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-1">
+      {/* Indications Card - Display FIRST (on top) */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
@@ -290,6 +291,7 @@ function StatisticsCards({ stats }: { stats: ConnectionStats }) {
         </CardContent>
       </Card>
 
+      {/* Strategies Card - Display SECOND (below indications) */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
