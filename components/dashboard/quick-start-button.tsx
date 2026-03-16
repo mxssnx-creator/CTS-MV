@@ -68,7 +68,8 @@ export function QuickStartButton() {
     }
   }
 
-  const timedFetch = (url: string, opts?: RequestInit, ms = 8000): Promise<Response> =>
+  // Timed fetch with configurable timeout (default 12s)
+  const timedFetch = (url: string, opts?: RequestInit, ms = 12000): Promise<Response> =>
     Promise.race([
       fetch(url, { ...opts, cache: "no-store" }),
       new Promise<never>((_, rej) => setTimeout(() => rej(new Error(`Timeout ${ms / 1000}s: ${url}`)), ms)),
