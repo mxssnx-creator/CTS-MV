@@ -101,14 +101,14 @@ export function QuickStartButton() {
         return `${n} migration(s) applied`
       })
 
-      // STEP 3: Verify BingX (non-critical — never blocks)
+      // STEP 3: Verify BingX (non-critical - never blocks)
       let balanceInfo = ""
       await runStep("test", "STEP 3: Verify BingX Credentials", async () => {
-        const res = await timedFetch("/api/settings/connections/test-bingx", { method: "GET" }, 6000)
+        const res = await timedFetch("/api/settings/connections/test-bingx", { method: "GET" }, 15000)
         const d = await res.json().catch(() => ({}))
         if (d.success) {
           balanceInfo = d.connection?.testBalance ? ` | Balance: ${d.connection.testBalance}` : ""
-          return `Ready — ${d.connection?.name ?? "BingX"}${balanceInfo}`
+          return `Ready - ${d.connection?.name ?? "BingX"}${balanceInfo}`
         }
         return `Credentials check: ${d.error ?? "skipped"}`
       })
