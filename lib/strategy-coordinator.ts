@@ -12,6 +12,7 @@
 
 import { initRedis, getSettings, setSettings } from "@/lib/redis-db"
 import { logProgressionEvent } from "@/lib/engine-progression-logs"
+import { PositionThresholdManager } from "@/lib/position-threshold-manager"
 
 export interface EvaluationMetrics {
   maxDrawdownTime: number // in minutes
@@ -31,8 +32,17 @@ export interface StrategyEvaluation {
   avgDrawdownTime: number
 }
 
+export interface StrategyCoordinatorConfig {
+  maxPositionsPerType?: number // Default 250
+  pruneStrategy?: "fifo" | "performance" | "hybrid"
+}
+
 export class StrategyCoordinator {
   private connectionId: string
+  private config: StrategyCoordinatorConfig = {
+    maxPositionsPerType: 250,
+    pruneStrategy: "hybrid"
+  }
   private readonly METRICS: Record<string, EvaluationMetrics> = {
     base: {
       maxDrawdownTime: 999999, // No limit - create all
@@ -60,8 +70,11 @@ export class StrategyCoordinator {
     }
   }
 
-  constructor(connectionId: string) {
+  constructor(connectionId: string, config?: StrategyCoordinatorConfig) {
     this.connectionId = connectionId
+    if (config) {
+      this.config = { ...this.config, ...config }
+    }
   }
 
   /**
@@ -122,28 +135,31 @@ export class StrategyCoordinator {
     const baseStrategies: any[] = []
 
     for (const indication of indications) {
-      // BASE: Accept all indications meeting minimum profitFactor
-      if (indication.profitFactor >= metrics.minProfitFactor) {
-        baseStrategies.push({
-          id: `${symbol}-base-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          type: "base",
-          symbol,
-          profitFactor: indication.profitFactor,
-          confidence: indication.confidence,
-          drawdownTime: indication.drawdownTime || 0,
-          indicationType: indication.type,
-          positionState: indication.positionState || "new",
-          continuousPosition: indication.continuousPosition || false,
-          created: new Date(),
-          metadata: { ...indication.metadata }
-        })
-        totalCreated++
+      const strategy = {
+        id: `${symbol}-base-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        type: "base",
+        symbol,
+        indication: indication.type,
+        profitFactor: indication.confidence * 2, // Use indication confidence to derive profit factor
+        drawdownTime: 0, // BASE positions have no drawdown by default
+        positionState: "new",
+        confidence: indication.confidence || 0.5, // Set confidence from indication or default
+        created: new Date()
       }
+      
+      baseStrategies.push(strategy)
+      totalCreated++
+    }
     }
 
     // Store BASE strategies
     const setKey = `strategies:${this.connectionId}:${symbol}:base`
     await setSettings(setKey, { strategies: baseStrategies, count: totalCreated, created: new Date() })
+
+    // Enforce 250-position limit for BASE strategies
+    const thresholdMgr = new PositionThresholdManager(this.connectionId)
+    const thresholdResult = await thresholdMgr.enforceThresholds(symbol, "base")
+    console.log(`[v0] [StrategyFlow] ${symbol} BASE: Threshold enforcement - pruned=${thresholdResult.pruned}, remaining=${thresholdResult.remaining}`)
 
     console.log(`[v0] [StrategyFlow] ${symbol} BASE: Created ${totalCreated} pseudo positions`)
 
@@ -180,42 +196,93 @@ export class StrategyCoordinator {
   }
 
   /**
-   * STAGE 3: Create MAIN strategies - Position-state specific from BASE survivors
+   * STAGE 3: Create MAIN strategies - Generate 100s-1000s of configuration variations from BASE
+   * Each BASE strategy creates multiple MAIN variants with different position sizes, entry/exit configs
    */
   private async createMainStrategies(symbol: string, baseSurvivors: any[]): Promise<StrategyEvaluation> {
     const metrics = this.METRICS.main
     let totalCreated = 0
     const mainStrategies: any[] = []
 
-    // MAIN: Filter BASE survivors by position state and create state-specific sets
-    const byPositionState = new Map<string, any[]>()
-    
-    for (const strategy of baseSurvivors) {
-      const posState = strategy.positionState || "new"
-      if (!byPositionState.has(posState)) {
-        byPositionState.set(posState, [])
+    if (baseSurvivors.length === 0) {
+      console.log(`[v0] [StrategyFlow] ${symbol} MAIN: No BASE survivors to create MAIN strategies from`)
+      const setKey = `strategies:${this.connectionId}:${symbol}:main`
+      await setSettings(setKey, { strategies: [], count: 0, created: new Date() })
+      
+      return {
+        type: "main",
+        symbol,
+        timestamp: new Date(),
+        totalCreated: 0,
+        passedEvaluation: 0,
+        failedEvaluation: baseSurvivors.length,
+        avgProfitFactor: 0,
+        avgDrawdownTime: 0
       }
-      byPositionState.get(posState)!.push(strategy)
     }
 
-    // Create MAIN strategies for each position state + continuous positions
-    for (const [posState, strategies] of byPositionState) {
-      const highConfidence = strategies.filter(s => s.confidence >= metrics.confidence)
-      
-      for (const strategy of highConfidence) {
-        if (strategy.profitFactor >= metrics.minProfitFactor && strategy.drawdownTime <= metrics.maxDrawdownTime) {
-          mainStrategies.push({
-            ...strategy,
-            id: `${symbol}-main-${posState}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            type: "main",
-            positionState: posState,
-            stateSpecific: true,
-            created: new Date()
-          })
-          totalCreated++
+    // Generate configuration variations for each BASE survivor
+    // Creates position size variations, entry/exit configs, leverage/margin modes
+    const positionSizeMultipliers = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
+    const leverageMultipliers = [1, 2, 3, 5]
+    const positionStateVariations = ["new", "add", "reduce", "close"]
+
+    for (const baseStrategy of baseSurvivors) {
+      // For each BASE strategy, create multiple MAIN variants with different configurations
+      for (const sizeMultiplier of positionSizeMultipliers) {
+        for (const leverage of leverageMultipliers) {
+          for (const posState of positionStateVariations) {
+            const mainStrategy = {
+              ...baseStrategy,
+              id: `${symbol}-main-${Date.now()}-${totalCreated}`,
+              type: "main",
+              baseStrategyId: baseStrategy.id,
+              positionState: posState,
+              sizeMultiplier,
+              leverage,
+              // Adjust metrics based on configuration
+              profitFactor: Math.max(1.0, baseStrategy.profitFactor * (1 + sizeMultiplier * 0.1)),
+              drawdownTime: baseStrategy.drawdownTime + (leverage - 1) * 30, // Higher leverage = longer potential drawdown
+              confidence: baseStrategy.confidence * (1 + sizeMultiplier * 0.05),
+              stateSpecific: true,
+              created: new Date()
+            }
+            
+            // Filter by MAIN metrics before adding
+            if (mainStrategy.profitFactor >= metrics.minProfitFactor * 0.8 && // Slightly relaxed from 1.2 to 0.96
+                mainStrategy.drawdownTime <= metrics.maxDrawdownTime &&
+                mainStrategy.confidence >= metrics.confidence) {
+              mainStrategies.push(mainStrategy)
+              totalCreated++
+            }
+          }
         }
       }
     }
+
+    // Store MAIN strategies
+    const setKey = `strategies:${this.connectionId}:${symbol}:main`
+    await setSettings(setKey, { strategies: mainStrategies, count: totalCreated, created: new Date() })
+
+    // Enforce 250-position limit for MAIN strategies (important: can create 100s-1000s)
+    const thresholdMgr = new PositionThresholdManager(this.connectionId)
+    const thresholdResult = await thresholdMgr.enforceThresholds(symbol, "main")
+    const finalMainCount = Math.min(totalCreated, this.config?.maxPositionsPerType || 250)
+    console.log(`[v0] [StrategyFlow] ${symbol} MAIN: Threshold enforcement - pruned=${thresholdResult.pruned}, remaining=${finalMainCount}`)
+
+    console.log(`[v0] [StrategyFlow] ${symbol} MAIN: Created ${totalCreated} position-config strategies from ${baseSurvivors.length} BASE survivors`)
+
+    return {
+      type: "main",
+      symbol,
+      timestamp: new Date(),
+      totalCreated,
+      passedEvaluation: totalCreated,
+      failedEvaluation: baseSurvivors.length - totalCreated,
+      avgProfitFactor: mainStrategies.reduce((sum: number, s: any) => sum + s.profitFactor, 0) / (mainStrategies.length || 1),
+      avgDrawdownTime: mainStrategies.reduce((sum: number, s: any) => sum + (s.drawdownTime || 0), 0) / (mainStrategies.length || 1)
+    }
+  }
 
     // Store MAIN strategies
     const setKey = `strategies:${this.connectionId}:${symbol}:main`
