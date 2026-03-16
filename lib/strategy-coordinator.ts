@@ -150,7 +150,6 @@ export class StrategyCoordinator {
       baseStrategies.push(strategy)
       totalCreated++
     }
-    }
 
     // Store BASE strategies
     const setKey = `strategies:${this.connectionId}:${symbol}:base`
