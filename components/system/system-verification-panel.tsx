@@ -194,7 +194,7 @@ export function SystemVerificationPanel() {
                     </div>
                   </div>
                   <Badge variant={isComplete ? "default" : "secondary"}>
-                    {isComplete ? "✓ Complete" : phase.status === "loading" ? "Processing" : "Idle"}
+                    {isComplete ? "Complete" : phase.status === "loading" ? "Processing" : "Idle"}
                   </Badge>
                 </div>
               </CardContent>
