@@ -284,7 +284,7 @@ export class StrategyCoordinator {
   }
 
   /**
-   * STAGE 4: Evaluate REAL strategies - Exchange-specific thresholds
+   * STAGE 4: Evaluate REAL strategies - Exchange-specific thresholds for real trading
    */
   private async evaluateRealStrategies(symbol: string): Promise<StrategyEvaluation> {
     const metrics = this.METRICS.real
