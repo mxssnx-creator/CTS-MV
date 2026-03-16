@@ -94,30 +94,47 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     let detail = progression?.detail || "Not running"
     
     // Better phase detection based on actual metrics (most reliable)
-    if (progressionState.cyclesCompleted > 0 || indicationCycleCount > 0 || hasRecentActivity) {
-      // Engine is definitely running - we have cycle evidence
-      if (progression?.phase && !["ready", "idle"].includes(progression.phase)) {
-        // Use stored progression phase if it's meaningful
-        phase = progression.phase
-        progress = Number(progression.progress) || 85
-        detail = progression.detail || "Engine running"
+    // Priority: actual evidence > stored progression > engine state > idle
+    if (indicationCycleCount > 100 || progressionState.cyclesCompleted > 100) {
+      // STRONG evidence: 100+ indication cycles = live trading active
+      phase = "live_trading"
+      progress = 100
+      detail = `Live trading active - ${Math.max(indicationCycleCount, progressionState.cyclesCompleted)} cycles`
+    } else if (indicationCycleCount > 0 || progressionState.cyclesCompleted > 0) {
+      // Indications are running - we're at realtime or later phases
+      if (progression?.phase === "live_trading") {
+        phase = "live_trading"
+        progress = 100
+        detail = `Live trading - ${indicationCycleCount} indication cycles`
       } else {
-        // Derive from actual cycle counts
+        // Derive from cycle count since stored phase may be stale
         const totalCycles = Math.max(progressionState.cyclesCompleted, indicationCycleCount)
-        if (totalCycles > 100) {
-          phase = "live_trading"
-          progress = 100
-          detail = `Live trading active - ${totalCycles} cycles completed`
-        } else if (totalCycles > 0) {
-          phase = "realtime"
-          progress = 75 + Math.min(25, totalCycles / 4)
-          detail = `Processing realtime data - ${totalCycles} cycles`
-        } else {
-          phase = "initializing"
-          progress = 50
-          detail = "Engine initializing..."
-        }
+        phase = "realtime"
+        progress = 75 + Math.min(25, Math.min(totalCycles / 4, 25))
+        detail = `Processing - ${totalCycles} cycles completed`
       }
+    } else if (progression?.phase && !["ready", "idle", "initializing"].includes(progression.phase)) {
+      // Use stored progression phase only if meaningful
+      phase = progression.phase
+      progress = Number(progression.progress) || 50
+      detail = progression.detail || "Engine running"
+    } else if (engineState?.all_phases_started || engineState?.live_trading_started) {
+      // Engine state confirms all phases started
+      phase = "live_trading"
+      progress = 100
+      detail = "All phases active"
+    } else if (engineState?.strategies_started) {
+      phase = "strategies"
+      progress = 75
+      detail = "Strategies processor active"
+    } else if (engineState?.indications_started) {
+      phase = "indications"
+      progress = 60
+      detail = "Indications processor active"
+    } else if (engineState?.prehistoric_data_loaded) {
+      phase = "prehistoric_data"
+      progress = 15
+      detail = "Prehistoric data loaded"
     } else if (engineState?.status === "running" || isEngineRunning) {
       // Engine state says running but no cycles yet
       phase = "initializing"
