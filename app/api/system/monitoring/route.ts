@@ -89,7 +89,7 @@ export async function GET() {
       }
     } catch { /* ignore */ }
     
-    // Engine is running if Redis state or processors indicate activity
+    // Engine is running if Redis state or processors indicate activity (no coordinatorRunning var needed)
     const engineRunning = redisEngineRunning || indicationsRunning || strategiesRunning || coordinatorEngineCount > 0
     const activeEngineCount = Math.max(coordinatorEngineCount, redisActiveEngineCount)
     
