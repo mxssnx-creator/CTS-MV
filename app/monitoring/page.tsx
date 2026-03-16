@@ -24,6 +24,7 @@ import { TradeEngineStatus } from "@/components/monitoring/trade-engine-status"
 import { MonitoringAlerts } from "@/components/monitoring/monitoring-alerts"
 import { BackupManager } from "@/components/monitoring/backup-manager"
 import { EmergencyStopButton } from "@/components/emergency-stop-button"
+import { SystemVerificationPanel } from "@/components/system/system-verification-panel"
 
 type LogLevel = "info" | "warning" | "error" | "debug"
 type SystemState = "active" | "inactive" | "error" | "warning"
@@ -371,8 +372,9 @@ export default function MonitoringPage() {
         </div>
       </div>
 
-      <Tabs defaultValue="states" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-7">
+      <Tabs defaultValue="verification" className="space-y-4">
+        <TabsList className="grid w-full grid-cols-8">
+          <TabsTrigger value="verification">System Verification</TabsTrigger>
           <TabsTrigger value="states">System States</TabsTrigger>
           <TabsTrigger value="alerts">Alerts</TabsTrigger>
           <TabsTrigger value="backup">Backup</TabsTrigger>
@@ -381,6 +383,18 @@ export default function MonitoringPage() {
           <TabsTrigger value="toasts">Toast Messages</TabsTrigger>
           <TabsTrigger value="export">Export</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="verification" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Engine Process Verification</CardTitle>
+              <CardDescription>Monitor all phases: prehistoric data, indications, strategies, realtime, live trading</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <SystemVerificationPanel />
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         <TabsContent value="states" className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
