@@ -614,38 +614,42 @@ export class TradeEngineManager {
   }
 
   /**
-   * Get symbols for this connection
+   * Get symbols for this connection - uses connection's active_symbols first
    */
   private async getSymbols(): Promise<string[]> {
     try {
-      // Get system settings from Redis
-      const useMainSymbols = await getSettings("useMainSymbols")
+      // First, check connection's configured symbols in Redis
+      const connState = await getSettings(`trade_engine_state:${this.connectionId}`)
+      if (connState && typeof connState === "object") {
+        const connSymbols = (connState as any).symbols || (connState as any).active_symbols
+        if (Array.isArray(connSymbols) && connSymbols.length > 0) {
+          return connSymbols
+        }
+      }
 
+      // Check connection settings directly
+      const connSettings = await getSettings(`connection:${this.connectionId}`)
+      if (connSettings && typeof connSettings === "object") {
+        const symbols = (connSettings as any).active_symbols || (connSettings as any).symbols
+        if (Array.isArray(symbols) && symbols.length > 0) {
+          return symbols
+        }
+      }
+
+      // Fall back to global main symbols setting
+      const useMainSymbols = await getSettings("useMainSymbols")
       if (useMainSymbols === true || useMainSymbols === "true") {
-        // Get main symbols from settings
         const mainSymbols = await getSettings("mainSymbols")
         if (Array.isArray(mainSymbols) && mainSymbols.length > 0) {
           return mainSymbols
         }
-        if (typeof mainSymbols === "string") {
-          try { return JSON.parse(mainSymbols) } catch { /* fall through */ }
-        }
       }
 
-      // Get symbol count from settings
-      const symbolCountSetting = await getSettings("symbolsCount")
-      const symbolCount = Number.parseInt(String(symbolCountSetting || "30"))
-
-      const fallbackSymbols = [
-        "BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT",
-        "DOGEUSDT", "LINKUSDT", "LITUSDT", "THETAUSDT", "AVAXUSDT",
-        "MATICUSDT", "SOLUSDT", "UNIUSDT", "APTUSDT", "ARBUSDT",
-      ]
-
-      return fallbackSymbols.slice(0, symbolCount)
+      // Default to single symbol to reduce load
+      return ["BTCUSDT"]
     } catch (error) {
       console.error("[v0] Failed to get symbols:", error)
-      return ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT"]
+      return ["BTCUSDT"]
     }
   }
 
