@@ -6,6 +6,7 @@
 
 import { IndicationSetsProcessor } from "@/lib/indication-sets-processor"
 import { logProgressionEvent } from "@/lib/engine-progression-logs"
+import { trackIndicationStats } from "@/lib/statistics-tracker"
 
 // Pre-import modules at module load time (not per-call)
 import { initRedis, getRedisClient, getMarketData, saveIndication, getSettings } from "@/lib/redis-db"
@@ -304,16 +305,18 @@ export class IndicationProcessor {
         if (indications.length > 0) {
           await saveIndication(connKey, indications[0]) // Single write with latest
           
-          // Also save to database for statistics and historical analysis
+          // Track each indication to database for statistics and historical analysis
           for (const indication of indications) {
             try {
-              await query(
-                `INSERT INTO indications (connection_id, symbol, type, value, confidence, calculated_at) 
-                 VALUES (?, ?, ?, ?, ?, datetime('now'))`,
-                [this.connectionId, symbol, indication.type, indication.value, indication.confidence]
-              ).catch(() => {}) // Silently fail - non-critical
+              await trackIndicationStats(
+                this.connectionId,
+                symbol,
+                indication.type,
+                indication.value,
+                indication.confidence
+              )
             } catch (e) {
-              // Ignore DB errors - Redis save is sufficient for operation
+              // Silently fail - non-critical
             }
           }
         }

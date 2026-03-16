@@ -50,41 +50,39 @@ export async function GET(req: Request) {
 
     console.log(`[v0] [EngineStats] ${connectionId}: FINAL cycleCount - indication=${indicationCycleCount}, strategy=${strategyCycleCount}`)
 
-    // Get indication types count
-    const directionCount = await query(
-      "SELECT COUNT(*) as count FROM indications_direction WHERE connection_id = ?",
+    // Get indication types count (from the generic indications table with type field)
+    const indicationStats = await query(
+      `SELECT type, COUNT(*) as count FROM indications WHERE connection_id = ? AND calculated_at > datetime('now', '-24 hours') GROUP BY type`,
       [connectionId]
     ).catch(() => [])
-    const moveCount = await query(
-      "SELECT COUNT(*) as count FROM indications_move WHERE connection_id = ?",
-      [connectionId]
-    ).catch(() => [])
-    const activeCount = await query(
-      "SELECT COUNT(*) as count FROM indications_active WHERE connection_id = ?",
-      [connectionId]
-    ).catch(() => [])
-    const optimalCount = await query(
-      "SELECT COUNT(*) as count FROM indications_optimal WHERE connection_id = ?",
-      [connectionId]
-    ).catch(() => [])
+    
+    const indicationsByType: Record<string, number> = {
+      base: 0,
+      main: 0,
+      real: 0,
+      live: 0,
+    }
+    
+    for (const row of indicationStats as any[]) {
+      indicationsByType[row.type] = row.count
+    }
 
-    // Get strategy types count
-    const stratBase = await query(
-      "SELECT COUNT(*) as count FROM strategies_base WHERE connection_id = ?",
+    // Get strategy types count (from strategies_real with type field)
+    const strategyStats = await query(
+      `SELECT type, COUNT(*) as count FROM strategies_real WHERE connection_id = ? AND evaluated_at > datetime('now', '-24 hours') GROUP BY type`,
       [connectionId]
     ).catch(() => [])
-    const stratMain = await query(
-      "SELECT COUNT(*) as count FROM strategies_main WHERE connection_id = ?",
-      [connectionId]
-    ).catch(() => [])
-    const stratReal = await query(
-      "SELECT COUNT(*) as count FROM strategies_real WHERE connection_id = ?",
-      [connectionId]
-    ).catch(() => [])
-    const stratDca = await query(
-      "SELECT COUNT(*) as count FROM strategies_dca WHERE connection_id = ?",
-      [connectionId]
-    ).catch(() => [])
+    
+    const strategiesByType: Record<string, number> = {
+      base: 0,
+      main: 0,
+      real: 0,
+      live: 0,
+    }
+    
+    for (const row of strategyStats as any[]) {
+      strategiesByType[row.type] = row.count
+    }
 
     const symbolCount = (progState as any)?.symbolsCount || 1
 
@@ -92,29 +90,24 @@ export async function GET(req: Request) {
       success: true,
       indications: {
         cycleCount: indicationCycleCount,
-        types: {
-          direction: directionCount[0]?.count || 0,
-          move: moveCount[0]?.count || 0,
-          active: activeCount[0]?.count || 0,
-          optimal: optimalCount[0]?.count || 0,
-        },
-        totalRecords: (directionCount[0]?.count || 0) +
-                     (moveCount[0]?.count || 0) +
-                     (activeCount[0]?.count || 0) +
-                     (optimalCount[0]?.count || 0),
+        types: indicationsByType,
+        evaluated: indicationCycleCount,
+        base: indicationsByType.base,
+        main: indicationsByType.main,
+        real: indicationsByType.real,
+        live: indicationsByType.live,
+        totalRecords: Object.values(indicationsByType).reduce((a, b) => a + b, 0),
       },
       strategies: {
         cycleCount: strategyCycleCount,
-        types: {
-          base: stratBase[0]?.count || 0,
-          main: stratMain[0]?.count || 0,
-          real: stratReal[0]?.count || 0,
-          dca: stratDca[0]?.count || 0,
-        },
-        totalRecords: (stratBase[0]?.count || 0) +
-                     (stratMain[0]?.count || 0) +
-                     (stratReal[0]?.count || 0) +
-                     (stratDca[0]?.count || 0),
+        types: strategiesByType,
+        base: strategiesByType.base,
+        main: strategiesByType.main,
+        real: strategiesByType.real,
+        live: strategiesByType.live,
+        drawdown_max: 0, // TODO: Calculate from database
+        drawdown_time_hours: 0, // TODO: Calculate from database
+        totalRecords: Object.values(strategiesByType).reduce((a, b) => a + b, 0),
       },
       realtime: {
         cycleCount: realtimeCycleCount,
