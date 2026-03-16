@@ -360,7 +360,6 @@ export class TradeEngineManager {
             cycleCount,
             symbolsCount: symbols.length,
           })
-          })
         }
       } catch (error) {
         errorCount++

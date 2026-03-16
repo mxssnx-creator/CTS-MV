@@ -8,6 +8,7 @@ import { initRedis, getSettings, getIndications, createPosition } from "@/lib/re
 import { ProgressionStateManager } from "@/lib/progression-state-manager"
 import { StrategyCoordinator } from "@/lib/strategy-coordinator"
 import { logProgressionEvent } from "@/lib/engine-progression-logs"
+import { query } from "@/lib/db" // Add database query function
 
 export class StrategyProcessor {
   private connectionId: string
@@ -62,6 +63,19 @@ export class StrategyProcessor {
           `[v0] [StrategyFlow] ${symbol} ${result.type.toUpperCase()}: ${result.passedEvaluation}/${result.totalCreated} passed | ` +
           `PF=${result.avgProfitFactor.toFixed(2)} | DDT=${Math.round(result.avgDrawdownTime)}min`
         )
+        
+        // Save strategies to database for statistics
+        try {
+          if (result.passedEvaluation > 0) {
+            await query(
+              `INSERT INTO strategies_real (connection_id, symbol, type, count, passed_count, avg_profit_factor, avg_drawdown_time, evaluated_at) 
+               VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+              [this.connectionId, symbol, result.type, result.totalCreated, result.passedEvaluation, result.avgProfitFactor, Math.round(result.avgDrawdownTime)]
+            ).catch(() => {}) // Silently fail - non-critical
+          }
+        } catch (e) {
+          // Ignore DB errors - processing continues
+        }
       }
 
       if (totalLiveReady > 0) {

@@ -10,6 +10,7 @@ import { logProgressionEvent } from "@/lib/engine-progression-logs"
 // Pre-import modules at module load time (not per-call)
 import { initRedis, getRedisClient, getMarketData, saveIndication, getSettings } from "@/lib/redis-db"
 import { ProgressionStateManager } from "@/lib/progression-state-manager"
+import { query } from "@/lib/db" // Add database query function
 
 // Cached helpers object to avoid object allocation per call
 const redisHelpers = {
@@ -302,6 +303,19 @@ export class IndicationProcessor {
         // Batch save all indications at once instead of one-by-one
         if (indications.length > 0) {
           await saveIndication(connKey, indications[0]) // Single write with latest
+          
+          // Also save to database for statistics and historical analysis
+          for (const indication of indications) {
+            try {
+              await query(
+                `INSERT INTO indications (connection_id, symbol, type, value, confidence, calculated_at) 
+                 VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+                [this.connectionId, symbol, indication.type, indication.value, indication.confidence]
+              ).catch(() => {}) // Silently fail - non-critical
+            } catch (e) {
+              // Ignore DB errors - Redis save is sufficient for operation
+            }
+          }
         }
       } catch (redisErr) {
         // Silently fail - non-critical for realtime processing
