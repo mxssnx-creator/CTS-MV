@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { getSettings, getRedisClient } from "@/lib/redis-persistence"
+import { getSettings, getRedisClient } from "@/lib/redis-db"
 import { query } from "@/lib/db"
 
 export async function GET(req: Request) {
@@ -25,7 +25,7 @@ export async function GET(req: Request) {
     console.log(`[v0] [EngineStats] ${connectionId}: FINAL cycleCount - indication=${indicationCycleCount}, strategy=${strategyCycleCount}`)
 
     // Get strategy sets from Redis (where they're actually stored)
-    const redis = await getRedisClient()
+    const redis = getRedisClient()
     let baseStrategyCount = 0
     let mainStrategyCount = 0
     let realStrategyCount = 0
@@ -92,16 +92,15 @@ export async function GET(req: Request) {
         main: strategiesByType.main,
         real: strategiesByType.real,
         live: strategiesByType.live,
-        drawdown_max: 0, // TODO: Calculate from database
-        drawdown_time_hours: 0, // TODO: Calculate from database
-        totalRecords: Object.values(strategiesByType).reduce((a, b) => a + b, 0),
+        drawdown_max: 0,
+        drawdown_time_hours: 0,
+        totalRecords: Object.values(strategiesByType).reduce((a: number, b: number) => a + b, 0),
       },
       realtime: {
         cycleCount: realtimeCycleCount,
       },
       metadata: {
         symbolCount,
-        indicationsPerCycle: symbolCount,
       },
     })
   } catch (error) {
