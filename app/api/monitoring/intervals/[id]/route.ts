@@ -1,79 +1,102 @@
-import { NextResponse } from "next/server"
-import { globalIntervalManager } from "@/lib/interval-progression-manager"
-import { initRedis, getSettings, getRedisClient } from "@/lib/redis-db"
+import { type NextRequest, NextResponse } from "next/server"
+import { initRedis, getSettings } from "@/lib/redis-db"
 
-export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export const runtime = "nodejs"
+export const dynamic = "force-dynamic"
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const { id } = await params
-
-    if (!id) {
-      return NextResponse.json({ success: false, error: "Connection ID required" }, { status: 400 })
-    }
-
+    const { id: connectionId } = await params
+    
     await initRedis()
 
-    // Try to get from interval manager first
-    let intervals = await globalIntervalManager.getIntervalHealth(id)
+    // Get engine state for interval health
+    const engineState = await getSettings(`trade_engine_state:${connectionId}`)
+    const engineHealth = await getSettings(`trade_engine_health:${connectionId}`)
+    const progressionState = await getSettings(`progression_state:${connectionId}`)
+    
+    // Determine interval status based on actual engine activity
+    const isEngineRunning = engineState?.status === "running"
+    const lastIndicationRun = engineState?.last_indication_run 
+      ? new Date(engineState.last_indication_run)
+      : null
+    const lastStrategyRun = engineState?.last_strategy_run
+      ? new Date(engineState.last_strategy_run)
+      : null
+    
+    // Check if engine has run recently (within 30 seconds)
+    const now = Date.now()
+    const indicationRecent = lastIndicationRun && (now - lastIndicationRun.getTime()) < 30000
+    const strategyRecent = lastStrategyRun && (now - lastStrategyRun.getTime()) < 30000
 
-    // If empty, try to derive from engine state
-    if (!intervals || Object.keys(intervals).length === 0) {
-      const engineState = await getSettings(`trade_engine_state:${id}`)
-      const isRunning = engineState?.status === "running"
-      const lastRun = engineState?.last_indication_run
-      
-      // Get indication settings for interval times
-      const indicationSettings = await getSettings("indication_settings") || {}
-      
-      // Build intervals from engine state
-      intervals = {
-        direction: {
-          enabled: true,
-          isRunning,
-          isProgressing: isRunning && lastRun && (Date.now() - new Date(lastRun).getTime()) < 5000,
-          intervalTime: indicationSettings.direction?.interval || 1,
-          timeout: indicationSettings.direction?.timeout || 5,
-          lastStart: lastRun,
-          lastEnd: lastRun,
-        },
-        move: {
-          enabled: true,
-          isRunning,
-          isProgressing: isRunning && lastRun && (Date.now() - new Date(lastRun).getTime()) < 5000,
-          intervalTime: indicationSettings.move?.interval || 1,
-          timeout: indicationSettings.move?.timeout || 5,
-          lastStart: lastRun,
-          lastEnd: lastRun,
-        },
-        active: {
-          enabled: true,
-          isRunning,
-          isProgressing: isRunning && lastRun && (Date.now() - new Date(lastRun).getTime()) < 5000,
-          intervalTime: indicationSettings.active?.interval || 1,
-          timeout: indicationSettings.active?.timeout || 5,
-          lastStart: lastRun,
-          lastEnd: lastRun,
-        },
-        optimal: {
-          enabled: true,
-          isRunning,
-          isProgressing: isRunning && lastRun && (Date.now() - new Date(lastRun).getTime()) < 5000,
-          intervalTime: indicationSettings.optimal?.interval || 2,
-          timeout: indicationSettings.optimal?.timeout || 10,
-          lastStart: lastRun,
-          lastEnd: lastRun,
-        },
-      }
+    // Build interval health data based on actual engine metrics
+    const intervals = {
+      direction: {
+        enabled: true,
+        isRunning: isEngineRunning && indicationRecent,
+        isProgressing: indicationRecent,
+        intervalTime: 1,
+        timeout: 5,
+        lastStart: lastIndicationRun?.toISOString(),
+        lastEnd: lastIndicationRun?.toISOString(),
+      },
+      move: {
+        enabled: true,
+        isRunning: isEngineRunning && indicationRecent,
+        isProgressing: indicationRecent,
+        intervalTime: 1,
+        timeout: 5,
+        lastStart: lastIndicationRun?.toISOString(),
+        lastEnd: lastIndicationRun?.toISOString(),
+      },
+      active: {
+        enabled: true,
+        isRunning: isEngineRunning && indicationRecent,
+        isProgressing: indicationRecent,
+        intervalTime: 1,
+        timeout: 5,
+        lastStart: lastIndicationRun?.toISOString(),
+        lastEnd: lastIndicationRun?.toISOString(),
+      },
+      optimal: {
+        enabled: true,
+        isRunning: isEngineRunning && strategyRecent,
+        isProgressing: strategyRecent,
+        intervalTime: 2,
+        timeout: 10,
+        lastStart: lastStrategyRun?.toISOString(),
+        lastEnd: lastStrategyRun?.toISOString(),
+      },
     }
 
     return NextResponse.json({
       success: true,
+      connectionId,
       intervals,
+      engineState: {
+        status: engineState?.status || "unknown",
+        indicationCycleCount: engineState?.indication_cycle_count || 0,
+        strategyCycleCount: engineState?.strategy_cycle_count || 0,
+      },
+      timestamp: new Date().toISOString(),
     })
   } catch (error) {
     console.error("[v0] Error fetching interval health:", error)
     return NextResponse.json(
-      { success: false, error: "Failed to fetch interval health" },
-      { status: 500 }
+      { 
+        success: false,
+        error: "Failed to fetch interval health",
+        intervals: {
+          direction: { enabled: false, isRunning: false, isProgressing: false, intervalTime: 1, timeout: 5 },
+          move: { enabled: false, isRunning: false, isProgressing: false, intervalTime: 1, timeout: 5 },
+          active: { enabled: false, isRunning: false, isProgressing: false, intervalTime: 1, timeout: 5 },
+          optimal: { enabled: false, isRunning: false, isProgressing: false, intervalTime: 2, timeout: 10 },
+        }
+      },
+      { status: 200 } // Return 200 with empty data instead of 500
     )
   }
 }
