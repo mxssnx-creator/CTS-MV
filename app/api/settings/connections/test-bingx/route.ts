@@ -46,7 +46,7 @@ export async function GET() {
         apiKey: bingx.api_key || "",
         apiSecret: bingx.api_secret || "",
         apiType: bingx.api_type || "perpetual_futures",
-        isTestnet: bingx.is_testnet === true || bingx.is_testnet === "1",
+        isTestnet: false, // ALWAYS mainnet - no testnet
       }, "bingx")
       
       const result = await connector.testConnection()
@@ -71,12 +71,13 @@ export async function GET() {
         id: bingx.id,
         name: bingx.name,
         exchange: bingx.exchange,
+        testBalance: balance.toFixed(2),
       },
       status,
       balance: balance.toFixed(2),
       lastTest: new Date().toISOString(),
       message: status === "connected" 
-        ? `BingX connected with ${balance.toFixed(2)} USDT available`
+        ? `BingX mainnet connected with ${balance.toFixed(2)} USDT`
         : `BingX connection ${status}`,
     })
   } catch (error) {

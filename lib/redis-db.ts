@@ -246,6 +246,26 @@ export class InlineLocalRedis {
     return deleted
   }
 
+  async hincrby(key: string, field: string, increment: number): Promise<number> {
+    this.trackOperation()
+    const hash = this.data.hashes.get(key) || {}
+    const currentValue = parseInt(hash[field] || "0", 10)
+    const newValue = currentValue + increment
+    hash[field] = String(newValue)
+    this.data.hashes.set(key, hash)
+    return newValue
+  }
+
+  async hincrbyfloat(key: string, field: string, increment: number): Promise<number> {
+    this.trackOperation()
+    const hash = this.data.hashes.get(key) || {}
+    const currentValue = parseFloat(hash[field] || "0")
+    const newValue = currentValue + increment
+    hash[field] = String(newValue)
+    this.data.hashes.set(key, hash)
+    return newValue
+  }
+
   async sadd(key: string, ...members: string[]): Promise<number> {
     this.trackOperation()
     const set = this.data.sets.get(key) || new Set()
@@ -295,6 +315,57 @@ export class InlineLocalRedis {
       return 1
     }
     return 0
+  }
+
+  // ========== List Operations ==========
+
+  async lpush(key: string, ...values: string[]): Promise<number> {
+    this.trackOperation()
+    const list = this.data.lists.get(key) || []
+    // lpush adds to the beginning of the list
+    for (let i = values.length - 1; i >= 0; i--) {
+      list.unshift(values[i])
+    }
+    this.data.lists.set(key, list)
+    return list.length
+  }
+
+  async rpush(key: string, ...values: string[]): Promise<number> {
+    this.trackOperation()
+    const list = this.data.lists.get(key) || []
+    // rpush adds to the end of the list
+    list.push(...values)
+    this.data.lists.set(key, list)
+    return list.length
+  }
+
+  async lrange(key: string, start: number, stop: number): Promise<string[]> {
+    this.trackOperation()
+    if (this.isExpired(key)) return []
+    const list = this.data.lists.get(key) || []
+    // Handle negative indices like Redis
+    const len = list.length
+    const normalizedStart = start < 0 ? Math.max(0, len + start) : start
+    const normalizedStop = stop < 0 ? len + stop : stop
+    return list.slice(normalizedStart, normalizedStop + 1)
+  }
+
+  async ltrim(key: string, start: number, stop: number): Promise<void> {
+    this.trackOperation()
+    const list = this.data.lists.get(key)
+    if (!list) return
+    // Handle negative indices like Redis
+    const len = list.length
+    const normalizedStart = start < 0 ? Math.max(0, len + start) : start
+    const normalizedStop = stop < 0 ? len + stop : stop
+    const trimmed = list.slice(normalizedStart, normalizedStop + 1)
+    this.data.lists.set(key, trimmed)
+  }
+
+  async llen(key: string): Promise<number> {
+    this.trackOperation()
+    if (this.isExpired(key)) return 0
+    return this.data.lists.get(key)?.length ?? 0
   }
 
   async dbSize(): Promise<number> {
@@ -633,13 +704,20 @@ export async function getEnabledConnections(): Promise<any[]> {
 export async function getInsertedAndEnabledConnections(): Promise<any[]> {
   const allConnections = await getAllConnections()
   // Return connections that are:
-  // 1. Inserted into Settings (is_inserted="1")
-  // 2. AND enabled (is_enabled="1")
+  // 1. Active-inserted into Active panel (is_active_inserted="1")
+  // 2. AND active/enabled (is_active="1" OR is_enabled="1")
   // This is the filter used by the trade engine coordinator to find active connections
   return allConnections.filter((c: any) => {
+    // Check for active panel flags (modern approach)
+    const isActiveInserted = c.is_active_inserted === "1" || c.is_active_inserted === true
+    const isActive = c.is_active === "1" || c.is_active === true
+    
+    // Fall back to old flags if needed
     const isInserted = c.is_inserted === "1" || c.is_inserted === true
     const isEnabled = c.is_enabled === "1" || c.is_enabled === true
-    return isInserted && isEnabled
+    
+    // Match either set of flags
+    return (isActiveInserted && isActive) || (isInserted && isEnabled)
   })
 }
 

@@ -93,39 +93,50 @@ export class ProgressionStateManager {
 
   /**
    * Increment completed cycle (successful or failed)
+   * BATCHED: Only writes to Redis every 10 cycles to reduce I/O and memory usage
    */
+  private static cycleCounters: Map<string, { completed: number; successful: number; failed: number }> = new Map()
+
   static async incrementCycle(connectionId: string, successful: boolean, profit: number = 0): Promise<void> {
     try {
+      // Update local counter
+      let counter = this.cycleCounters.get(connectionId) || { completed: 0, successful: 0, failed: 0 }
+      counter.completed++
+      if (successful) {
+        counter.successful++
+      } else {
+        counter.failed++
+      }
+      this.cycleCounters.set(connectionId, counter)
+
+      // Only write to Redis every 10 cycles for performance
+      if (counter.completed % 10 !== 0) return
+
       const client = getRedisClient()
-      const key = `progression:${connectionId}`
+      if (!client) return
 
-      // Get current state
-      const current = await this.getProgressionState(connectionId)
+      const redisKey = `progression:${connectionId}`
+      const successRate = counter.completed > 0 ? (counter.successful / counter.completed) * 100 : 0
 
-      // Update metrics
-      const cyclesCompleted = current.cyclesCompleted + 1
-      const successfulCycles = successful ? current.successfulCycles + 1 : current.successfulCycles
-      const failedCycles = !successful ? current.failedCycles + 1 : current.failedCycles
-      const totalProfit = current.totalProfit + profit
-      const cycleSuccessRate = cyclesCompleted > 0 ? (successfulCycles / cyclesCompleted) * 100 : 0
-
-      // Save to Redis
-      await client.hset(key, {
-        cycles_completed: String(cyclesCompleted),
-        successful_cycles: String(successfulCycles),
-        failed_cycles: String(failedCycles),
-        total_profit: String(totalProfit),
-        cycle_success_rate: String(cycleSuccessRate),
-        last_cycle_time: new Date().toISOString(),
+      // Write batched update to Redis
+      await client.hset(redisKey, {
+        cycles_completed: String(counter.completed),
+        successful_cycles: String(counter.successful),
+        failed_cycles: String(counter.failed),
+        cycle_success_rate: String(successRate.toFixed(2)),
         last_update: new Date().toISOString(),
+        connection_id: connectionId,
       })
 
-      // Set expiration to 7 days (progression state is accumulated)
-      await client.expire(key, 7 * 24 * 60 * 60)
+      // Set expiration
+      await client.expire(redisKey, 7 * 24 * 60 * 60)
 
-      console.log(`[v0] [Progression] Cycle ${cyclesCompleted}: ${successful ? "✓ Success" : "✗ Failed"} (rate: ${cycleSuccessRate.toFixed(1)}%)`)
+      // Log every 100 cycles
+      if (counter.completed % 100 === 0 && counter.completed > 0) {
+        console.log(`[v0] [Progression] Cycle ${counter.completed}: ${successRate.toFixed(1)}% success rate`)
+      }
     } catch (error) {
-      console.error(`[v0] Failed to increment cycle for ${connectionId}:`, error)
+      // Silent fail to not block processing
     }
   }
 

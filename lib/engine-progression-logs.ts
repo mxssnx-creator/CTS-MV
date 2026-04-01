@@ -17,8 +17,22 @@ export interface ProgressionLogEntry {
 const LOG_RETENTION_HOURS = 24
 const MAX_LOGS_PER_CONNECTION = 500
 
+// In-memory buffer for batch logging (reduces Redis writes significantly)
+const logBuffer: Map<string, string[]> = new Map()
+const BUFFER_FLUSH_SIZE = 10 // Flush every 10 logs (reduced for more responsive logging)
+const BUFFER_FLUSH_INTERVAL = 3000 // Or every 3 seconds (reduced for more responsive logging)
+let flushTimerStarted = false
+
+// Important phases that should flush immediately
+const IMMEDIATE_FLUSH_PHASES = [
+  "initializing", "prehistoric_data", "indications", "strategies", 
+  "realtime", "live_trading", "error", "engine_started", "engine_stopped",
+  "engine_starting", "engine_error", "quickstart"
+]
+
 /**
  * Log a progression event for a connection
+ * OPTIMIZED: Uses in-memory buffering with immediate flush for important events
  */
 export async function logProgressionEvent(
   connectionId: string,
@@ -28,74 +42,95 @@ export async function logProgressionEvent(
   details?: Record<string, any>
 ): Promise<void> {
   try {
-    const client = getRedisClient()
     const timestamp = new Date().toISOString()
     const logKey = `engine_logs:${connectionId}`
-
-    const entry: ProgressionLogEntry = {
-      timestamp,
-      level,
-      phase,
-      message,
-      details,
-      connectionId,
-    }
-
-    // Store in Redis list (prepend to keep most recent at front)
+    
     // Format: "timestamp|level|phase|message|details_json"
     const logEntry = `${timestamp}|${level}|${phase}|${message}|${JSON.stringify(details || {})}`
     
-    // Use lpush-like operation: prepend to list
-    let logs: string[] = []
-    const existing = await client.get(logKey)
-    if (existing) {
-      try {
-        logs = JSON.parse(existing)
-        if (!Array.isArray(logs)) logs = []
-      } catch {
-        logs = []
-      }
+    // Add to buffer instead of writing immediately
+    if (!logBuffer.has(logKey)) {
+      logBuffer.set(logKey, [])
+    }
+    const buffer = logBuffer.get(logKey)!
+    buffer.push(logEntry)
+    
+    // Start flush timer if not started
+    if (!flushTimerStarted) {
+      flushTimerStarted = true
+      setInterval(flushAllLogBuffers, BUFFER_FLUSH_INTERVAL)
     }
     
-    // Prepend new entry
-    logs.unshift(logEntry)
-    
-    // Trim to max logs, keeping most recent
-    if (logs.length > MAX_LOGS_PER_CONNECTION) {
-      logs = logs.slice(0, MAX_LOGS_PER_CONNECTION)
+    // Immediate flush for important phases or errors
+    const isImportant = IMMEDIATE_FLUSH_PHASES.some(p => phase.includes(p)) || level === "error" || level === "warning"
+    if (isImportant || buffer.length >= BUFFER_FLUSH_SIZE) {
+      await flushLogBuffer(logKey)
     }
-    
-    // Save back to Redis with TTL (24 hours)
-    const ttlSeconds = LOG_RETENTION_HOURS * 3600 // 24 hours = 86400 seconds
-    await client.set(logKey, JSON.stringify(logs), { EX: ttlSeconds })
 
-    // Skip console.log for debug level to reduce noise
-    if (level !== "debug") {
-      console.log(`[v0] [${level.toUpperCase()}] [${phase}] ${message}`, details || "")
+    // Console log for important events (info for important phases, always for errors/warnings)
+    if (level === "error" || level === "warning" || isImportant) {
+      console.log(`[v0] [${level.toUpperCase()}] [${phase}] ${message}`, details ? JSON.stringify(details).slice(0, 200) : "")
     }
   } catch (error) {
-    console.error("[v0] [EngineLog] Failed to store progression log:", error instanceof Error ? error.message : String(error))
+    // Silent fail - logging should never block main operations
+    console.error("[v0] [LogError] Failed to log:", error)
   }
 }
 
 /**
+ * Flush log buffer for a specific key
+ */
+async function flushLogBuffer(logKey: string): Promise<void> {
+  const buffer = logBuffer.get(logKey)
+  if (!buffer || buffer.length === 0) return
+  
+  // Copy and clear buffer immediately to prevent duplicate writes
+  const toFlush = [...buffer]
+  logBuffer.set(logKey, [])
+  
+  try {
+    const client = getRedisClient()
+    
+    // Use lpush for efficient prepend (native Redis list operation)
+    await client.lpush(logKey, ...toFlush.reverse())
+    
+    // Trim to max size
+    await client.ltrim(logKey, 0, MAX_LOGS_PER_CONNECTION - 1)
+  } catch (error) {
+    // Put entries back if flush failed
+    const currentBuffer = logBuffer.get(logKey) || []
+    logBuffer.set(logKey, [...toFlush, ...currentBuffer])
+  }
+}
+
+/**
+ * Flush all log buffers
+ */
+export async function flushAllLogBuffers(): Promise<void> {
+  const keys = Array.from(logBuffer.keys())
+  await Promise.all(keys.map(key => flushLogBuffer(key).catch(() => {})))
+}
+
+/**
+ * Force flush logs for a specific connection
+ */
+export async function forceFlushLogs(connectionId: string): Promise<void> {
+  const logKey = `engine_logs:${connectionId}`
+  await flushLogBuffer(logKey)
+}
+
+/**
  * Get all progression logs for a connection
+ * OPTIMIZED: Uses native Redis list operations
  */
 export async function getProgressionLogs(connectionId: string): Promise<ProgressionLogEntry[]> {
   try {
     const client = getRedisClient()
     const logKey = `engine_logs:${connectionId}`
 
-    const existing = await client.get(logKey)
-    if (!existing) return []
-
-    let logs: string[] = []
-    try {
-      logs = JSON.parse(existing)
-      if (!Array.isArray(logs)) logs = []
-    } catch {
-      return []
-    }
+    // Use lrange for efficient list retrieval
+    const logs = await client.lrange(logKey, 0, MAX_LOGS_PER_CONNECTION - 1)
+    if (!logs || logs.length === 0) return []
 
     // Parse each log entry from "timestamp|level|phase|message|details_json"
     return logs
@@ -104,7 +139,8 @@ export async function getProgressionLogs(connectionId: string): Promise<Progress
           const parts = entry.split("|")
           if (parts.length < 4) return null
           
-          const [timestamp, level, phase, message, detailsJson] = parts
+          const [timestamp, level, phase, message, ...detailsParts] = parts
+          const detailsJson = detailsParts.join("|") // Rejoin in case details contained |
           let details: Record<string, any> = {}
           try {
             details = JSON.parse(detailsJson || "{}")

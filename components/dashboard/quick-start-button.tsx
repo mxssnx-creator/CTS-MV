@@ -22,7 +22,16 @@ interface FunctionalOverview {
   baseSetsCreated: boolean
   mainSetsCreated: boolean
   realSetsCreated: boolean
+  liveSetsCreated?: boolean
   positionsEntriesCreated: number
+  counts?: {
+    indicationCycles: number
+    strategyCycles: number
+    baseStrategies: number
+    mainStrategies: number
+    realStrategies: number
+    liveStrategies: number
+  }
 }
 
 export function QuickStartButton() {
@@ -33,7 +42,7 @@ export function QuickStartButton() {
     { id: "migrate", name: "Run Migrations",                 status: "pending" },
     { id: "test",    name: "Verify BingX Credentials",       status: "pending" },
     { id: "start",   name: "Start Global Trade Engine",      status: "pending" },
-    { id: "enable",  name: "Enable BingX (3 Symbols)",       status: "pending" },
+    { id: "enable",  name: "Enable BingX (BTCUSDT)",         status: "pending" },
     { id: "engine",  name: "Launch Engine + Progression",    status: "pending" },
   ])
 
@@ -68,7 +77,8 @@ export function QuickStartButton() {
     }
   }
 
-  const timedFetch = (url: string, opts?: RequestInit, ms = 8000): Promise<Response> =>
+  // Timed fetch with configurable timeout (default 12s)
+  const timedFetch = (url: string, opts?: RequestInit, ms = 12000): Promise<Response> =>
     Promise.race([
       fetch(url, { ...opts, cache: "no-store" }),
       new Promise<never>((_, rej) => setTimeout(() => rej(new Error(`Timeout ${ms / 1000}s: ${url}`)), ms)),
@@ -80,38 +90,42 @@ export function QuickStartButton() {
     setSteps(prev => prev.map(s => ({ ...s, status: "pending", message: undefined })))
 
     console.log("[v0] [QuickStart] ========================================")
-    console.log("[v0] [QuickStart] QUICKSTART INITIATED — BingX, 3 symbols")
+    console.log("[v0] [QuickStart] QUICKSTART INITIATED — BingX, 1 symbol")
     console.log("[v0] [QuickStart] ========================================")
 
     let enabledConnectionId: string | null = null
 
     try {
-      // STEP 1: Initialize (non-critical)
+      // STEP 1: Initialize (non-critical) - timeout: 15s
       await runStep("init", "STEP 1: Initialize System", async () => {
-        const res = await timedFetch("/api/init", { method: "GET" }, 4000)
+        const res = await timedFetch("/api/init", { method: "GET" }, 15000)
         return res.ok ? "System initialized" : "Already ready"
       })
 
       // STEP 2: Migrations (non-critical)
       await runStep("migrate", "STEP 2: Migrations", async () => {
-        const res = await timedFetch("/api/install/database/migrate", { method: "POST" }, 10000)
+        const res = await timedFetch("/api/install/database/migrate", { method: "POST" }, 20000)
         if (!res.ok) return "Up to date"
         const d = await res.json().catch(() => ({}))
         const n = d.migrations?.length ?? d.ranCount ?? 0
         return `${n} migration(s) applied`
       })
 
-      // STEP 3: Verify BingX (non-critical — never blocks)
+      // STEP 3: Verify BingX (non-critical - never blocks)
+      let balanceInfo = ""
       await runStep("test", "STEP 3: Verify BingX Credentials", async () => {
-        const res = await timedFetch("/api/settings/connections/test-bingx", { method: "GET" }, 6000)
+        const res = await timedFetch("/api/settings/connections/test-bingx", { method: "GET" }, 20000)
         const d = await res.json().catch(() => ({}))
-        if (d.success) return `Ready — ${d.connection?.name ?? "BingX"}`
+        if (d.success) {
+          balanceInfo = d.connection?.testBalance ? ` | Balance: ${d.connection.testBalance}` : ""
+          return `Ready - ${d.connection?.name ?? "BingX"}${balanceInfo}`
+        }
         return `Credentials check: ${d.error ?? "skipped"}`
       })
 
       // STEP 4: Start global coordinator (REQUIRED)
       await runStep("start", "STEP 4: Start Global Coordinator", async () => {
-        const res = await timedFetch("/api/trade-engine/start", { method: "POST" }, 12000)
+        const res = await timedFetch("/api/trade-engine/start", { method: "POST" }, 20000)
         const d = await res.json().catch(() => ({}))
         console.log("[v0] [QuickStart] Coordinator response:", JSON.stringify(d))
         if (!res.ok && !d.success) throw new Error(d.error ?? `HTTP ${res.status}`)
@@ -119,45 +133,44 @@ export function QuickStartButton() {
         return `Coordinator running${n > 0 ? ` | Resumed ${n}` : ""}`
       }, true)
 
-      // STEP 5: Enable BingX with 3 symbols (REQUIRED)
-      await runStep("enable", "STEP 5: Enable BingX (3 Symbols)", async () => {
+      // STEP 5: Enable BingX with 1 symbol (REQUIRED)
+      await runStep("enable", "STEP 5: Enable BingX (1 Symbol)", async () => {
         const res = await timedFetch("/api/trade-engine/quick-start", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "enable", symbols: ["BTCUSDT", "ETHUSDT", "BNBUSDT"] }),
-        }, 10000)
+          body: JSON.stringify({ action: "enable", symbols: ["BTCUSDT"] }),
+        }, 25000)
         const d = await res.json().catch(() => ({}))
         console.log("[v0] [QuickStart] Enable response:", JSON.stringify(d))
         if (!res.ok && !d.success) throw new Error(d.error ?? `HTTP ${res.status}`)
         if (!d.success) throw new Error(d.error ?? "Enable returned failure")
         enabledConnectionId = d.connection?.id ?? null
-        const syms = Array.isArray(d.connection?.active_symbols)
-          ? d.connection.active_symbols.join(", ")
-          : "BTCUSDT, ETHUSDT, BNBUSDT"
+        const syms = Array.isArray(d.connection?.symbols)
+          ? d.connection.symbols.join(", ")
+          : "BTCUSDT"
         return `${d.connection?.name} enabled | ${syms}`
       }, true)
 
       // STEP 6: Launch per-connection engine (non-critical fallback)
       await runStep("engine", "STEP 6: Launch BingX Engine", async () => {
         const connId = enabledConnectionId
-        if (!connId) return "Skipped — no connection ID"
+        if (!connId) return "Skipped - no connection ID"
         console.log(`[v0] [QuickStart] Starting live-trade engine for: ${connId}`)
         const res = await timedFetch(`/api/settings/connections/${connId}/live-trade`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ is_live_trade: true }),
-        }, 20000)
+        }, 30000)
         const d = await res.json().catch(() => ({}))
         console.log("[v0] [QuickStart] Live-trade response:", JSON.stringify(d))
         if (res.ok && d.success) return `Engine running | Status: ${d.engineStatus}`
-        // Non-fatal — coordinator will still pick up the connection
         return `Queued (${d.error ?? d.message ?? "coordinator processing"})`
       })
 
       console.log("[v0] [QuickStart] ========================================")
       console.log("[v0] [QuickStart] QUICKSTART COMPLETE")
       console.log("[v0] [QuickStart] ========================================")
-      toast.success("Quick Start complete — BingX engine running with 3 symbols.")
+      toast.success("Quick Start complete — BingX engine running with BTCUSDT.")
 
       // Fetch functional overview in background
       try {
@@ -266,37 +279,42 @@ export function QuickStartButton() {
         <div className="bg-white rounded border border-blue-200 p-3 text-xs text-gray-600">
           <p className="mb-2 font-semibold text-gray-700">This quick start will:</p>
           <ul className="list-disc list-inside space-y-1">
-            <li>Initialize the complete system (preset types, connections)</li>
+          <li>Initialize the complete system (preset types, connections)</li>
             <li>Run ALL database migrations (schema, indexes, TTL policies)</li>
-            <li>Set dashboard states for BingX/Bybit</li>
-            <li>Test BingX API connection (balance check)</li>
+            <li>Test BingX API connection (verify credentials & check balance)</li>
             <li>Start the trade engine</li>
-            <li>Enable BingX for active trading</li>
+            <li>Enable BingX for active trading with BTCUSDT</li>
           </ul>
         </div>
 
         {/* Functional Overview - Displayed after successful completion */}
         {functionalOverview && (
           <div className="bg-green-50 rounded border border-green-200 p-3 text-xs">
-            <p className="mb-2 font-semibold text-green-700">✓ Functional Overview (System Ready):</p>
+            <p className="mb-2 font-semibold text-green-700">Functional Overview (System Ready):</p>
             <div className="grid grid-cols-2 gap-2 text-gray-700">
               <div>
                 <span className="font-medium">Symbols Active:</span> {functionalOverview.symbolsActive}
               </div>
               <div>
-                <span className="font-medium">Indications Calculated:</span> {functionalOverview.indicationsCalculated}
+                <span className="font-medium">Indication Cycles:</span> {functionalOverview.counts?.indicationCycles || functionalOverview.indicationsCalculated}
+              </div>
+              <div>
+                <span className="font-medium">Strategy Cycles:</span> {functionalOverview.counts?.strategyCycles || 0}
               </div>
               <div>
                 <span className="font-medium">Strategies Evaluated:</span> {functionalOverview.strategiesEvaluated}
               </div>
               <div>
-                <span className="font-medium">Base Sets:</span> {functionalOverview.baseSetsCreated ? "✓" : "✗"}
+                <span className="font-medium">Base Strategies:</span> {functionalOverview.counts?.baseStrategies || (functionalOverview.baseSetsCreated ? "Active" : "0")}
               </div>
               <div>
-                <span className="font-medium">Main Sets:</span> {functionalOverview.mainSetsCreated ? "✓" : "✗"}
+                <span className="font-medium">Main Strategies:</span> {functionalOverview.counts?.mainStrategies || (functionalOverview.mainSetsCreated ? "Active" : "0")}
               </div>
               <div>
-                <span className="font-medium">Real Sets:</span> {functionalOverview.realSetsCreated ? "✓" : "✗"}
+                <span className="font-medium">Real Strategies:</span> {functionalOverview.counts?.realStrategies || (functionalOverview.realSetsCreated ? "Active" : "0")}
+              </div>
+              <div>
+                <span className="font-medium">Live Strategies:</span> {functionalOverview.counts?.liveStrategies || (functionalOverview.liveSetsCreated ? "Active" : "0")}
               </div>
               <div className="col-span-2">
                 <span className="font-medium">DB Position Entries:</span> {functionalOverview.positionsEntriesCreated}

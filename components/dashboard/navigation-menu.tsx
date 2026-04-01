@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { Activity, Target, Zap, TrendingUp, PieChart, Cog, Calculator, Layers, Home, Monitor, Bot, Truck } from "lucide-react"
+import { Activity, Target, Zap, TrendingUp, PieChart, Cog, Calculator, Layers, Home, Monitor, Bot, Truck, MapPin } from "lucide-react"
 
 const menuItems = [
   {
@@ -29,6 +29,12 @@ const menuItems = [
     href: "/trade-bots",
     icon: "Bot",
     description: "Automated trading with preset-based strategies",
+  },
+  {
+    title: "Tracking",
+    href: "/tracking",
+    icon: "MapPin",
+    description: "Track positions, progression, and trading activity",
   },
   {
     title: "Presets",
@@ -98,6 +104,7 @@ const iconMap = {
   Layers,
   Truck,
   Monitor,
+  MapPin,
   Cog,
 }
 

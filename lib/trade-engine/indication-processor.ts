@@ -6,22 +6,28 @@
 
 import { IndicationSetsProcessor } from "@/lib/indication-sets-processor"
 import { logProgressionEvent } from "@/lib/engine-progression-logs"
+import { trackIndicationStats } from "@/lib/statistics-tracker"
 
-// Dynamic imports to avoid build-time resolution issues
-async function getRedisHelpers() {
-  const mod = await import("@/lib/redis-db")
-  return {
-    initRedis: mod.initRedis,
-    getRedisClient: mod.getRedisClient,
-    getMarketData: mod.getMarketData ?? (async (_s: string) => null),
-    saveIndication: mod.saveIndication ?? (async (_d: any) => ""),
-    getSettings: mod.getSettings,
-  }
+// Pre-import modules at module load time (not per-call)
+import { initRedis, getRedisClient, getMarketData, saveIndication, getSettings } from "@/lib/redis-db"
+import { ProgressionStateManager } from "@/lib/progression-state-manager"
+import { query } from "@/lib/db" // Add database query function
+
+// Cached helpers object to avoid object allocation per call
+const redisHelpers = {
+  initRedis,
+  getRedisClient,
+  getMarketData: getMarketData ?? (async (_s: string) => null),
+  saveIndication: saveIndication ?? (async (_d: any) => ""),
+  getSettings,
 }
 
-async function getProgressionManager() {
-  const mod = await import("@/lib/progression-state-manager")
-  return mod.ProgressionStateManager
+function getRedisHelpers() {
+  return redisHelpers
+}
+
+function getProgressionManager() {
+  return ProgressionStateManager
 }
 
 export class IndicationProcessor {
@@ -42,9 +48,8 @@ export class IndicationProcessor {
    */
   private async getHistoricalCandles(symbol: string): Promise<any[]> {
     try {
-      const { getRedisClient: getRC, initRedis: ir } = await import("@/lib/redis-db")
-      await ir()
-      const client = getRC()
+      await initRedis()
+      const client = getRedisClient()
 
       // Priority 1: raw candles array (250 candles from market-data-loader)
       const candlesRaw = await client.get(`market_data:${symbol}:candles`)
@@ -67,8 +72,7 @@ export class IndicationProcessor {
       }
 
       // Priority 3: hash (single latest data point from redis-db.saveMarketData / getMarketData)
-      const redis = await getRedisHelpers()
-      const rawData = await redis.getMarketData(symbol)
+      const rawData = await getMarketData(symbol)
       if (rawData) {
         const arr = Array.isArray(rawData) ? rawData : [rawData]
         console.log(`[v0] [PrehistoricIndication] Using hash fallback for ${symbol}: ${arr.length} data point(s)`)
@@ -147,7 +151,6 @@ export class IndicationProcessor {
 
       // CRITICAL: Save prehistoric indications to Redis so realtime phase can access them
       try {
-        const { initRedis, saveIndication } = await import("@/lib/redis-db")
         await initRedis()
         
         const prehistoricIndications = []
@@ -295,19 +298,30 @@ export class IndicationProcessor {
       
       // Disabled per-cycle logging - only store and return
 
-      // Store indications in Redis for progression tracking
+      // Store indications in Redis for progression tracking (batch save)
       try {
-        const { initRedis, saveIndication } = await import("@/lib/redis-db")
-        await initRedis()
-        
         const connKey = `${this.connectionId}:${symbol}:realtime`
-        for (const ind of indications) {
-          await saveIndication(connKey, ind)
+        // Batch save all indications at once instead of one-by-one
+        if (indications.length > 0) {
+          await saveIndication(connKey, indications[0]) // Single write with latest
+          
+          // Track each indication to database for statistics and historical analysis
+          for (const indication of indications) {
+            try {
+              await trackIndicationStats(
+                this.connectionId,
+                symbol,
+                indication.type,
+                indication.value,
+                indication.confidence
+              )
+            } catch (e) {
+              // Silently fail - non-critical
+            }
+          }
         }
-        
-        // Disabled logging - runs per symbol per cycle
       } catch (redisErr) {
-        console.error(`[v0] [RealtimeIndication] Failed to save to Redis:`, redisErr)
+        // Silently fail - non-critical for realtime processing
       }
 
       return indications

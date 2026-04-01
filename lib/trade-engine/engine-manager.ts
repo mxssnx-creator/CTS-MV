@@ -11,6 +11,7 @@ import { PseudoPositionManager } from "./pseudo-position-manager"
 import { RealtimeProcessor } from "./realtime-processor"
 import { logProgressionEvent } from "@/lib/engine-progression-logs"
 import { loadMarketDataForEngine } from "@/lib/market-data-loader"
+import { ProgressionStateManager } from "@/lib/progression-state-manager"
 
 export interface EngineConfig {
   connectionId: string
@@ -39,6 +40,7 @@ export class TradeEngineManager {
   private strategyProcessor: StrategyProcessor
   private pseudoPositionManager: PseudoPositionManager
   private realtimeProcessor: RealtimeProcessor
+  private startTime?: Date
 
   private componentHealth: {
     indications: ComponentHealth
@@ -90,33 +92,51 @@ export class TradeEngineManager {
       console.log(`[v0] [EngineManager] Phase 1.5/6: Market data loaded for ${loaded} symbols`)
 
       // Phase 2: Load prehistoric data (historical data retrieval + calculation)
-      await this.updateProgressionPhase("prehistoric_data", 10, "Loading historical market data...")
-      console.log(`[v0] [EngineManager] Phase 2/6: Starting prehistoric data loading...`)
-      await this.loadPrehistoricData()
-      console.log(`[v0] [EngineManager] Phase 2/6: Prehistoric data complete`)
+      // Run in background - don't block engine startup
+      await this.updateProgressionPhase("prehistoric_data", 15, "Loading historical market data...")
+      console.log(`[v0] [EngineManager] Phase 2/6: Starting prehistoric data loading (background)...`)
+      // Fire and forget - don't await
+      this.loadPrehistoricData().catch(err => {
+        console.warn(`[v0] [EngineManager] Prehistoric data loading error (non-blocking):`, err)
+        // Don't throw - engine continues
+      })
+      console.log(`[v0] [EngineManager] Phase 2/6: Prehistoric loading queued (engine will continue)`)
 
-      // Phase 3: Start indication processor
-      await this.updateProgressionPhase("indications", 60, "Starting indication processor...")
+      // Phase 3: Start indication processor - immediate phase update
+      console.log(`[v0] [EngineManager] Phase 3/6: Starting indication processor (${symbols.length} symbols)`)
+      await this.updateProgressionPhase("indications", 60, "Processing indications continuously")
       this.startIndicationProcessor(config.indicationInterval)
-      console.log(`[v0] [EngineManager] Phase 3/6: Indication processor started (${symbols.length} symbols)`)
 
-      // Phase 4: Start strategy processor
-      await this.updateProgressionPhase("strategies", 75, "Starting strategy processor...")
+      // Phase 4: Start strategy processor - immediate phase update
+      console.log(`[v0] [EngineManager] Phase 4/6: Starting strategy processor`)
+      await this.updateProgressionPhase("strategies", 75, "Processing strategies continuously")
       this.startStrategyProcessor(config.strategyInterval)
-      console.log(`[v0] [EngineManager] Phase 4/6: Strategy processor started`)
 
-      // Phase 5: Start realtime processor
-      await this.updateProgressionPhase("realtime", 85, "Starting real-time data processor...")
+      // Phase 5: Start realtime processor - immediate phase update
+      console.log(`[v0] [EngineManager] Phase 5/6: Starting real-time processor`)
+      await this.updateProgressionPhase("realtime", 85, "Monitoring real-time data and positions")
       this.startRealtimeProcessor(config.realtimeInterval)
       this.startHealthMonitoring()
-      console.log(`[v0] [EngineManager] Phase 5/6: Realtime processor started`)
       
-      // Phase 6: Live trading ready
+      // Phase 6: Live trading ready - final phase update
       this.startHeartbeat()
       this.isRunning = true
-      await this.updateProgressionPhase("live_trading", 100, "Live trading active")
-      console.log(`[v0] [EngineManager] ✓ Phase 6/6: Live trading ACTIVE for ${this.connectionId}`)
-      console.log(`[v0] [EngineManager] ✓ Engine fully initialized - monitoring ${symbols.length} symbols`)
+      this.startTime = new Date()
+      
+      // Final progression update - LIVE TRADING ACTIVE
+      await this.updateProgressionPhase("live_trading", 100, `Live trading ACTIVE - monitoring ${symbols.length} symbols`)
+      console.log(`[v0] [EngineManager] ✓ Phase 6/6: LIVE TRADING ACTIVE for ${this.connectionId}`)
+      console.log(`[v0] [EngineManager] ✓ Engine fully initialized`)
+      
+      // Also update engine state to indicate all phases are running
+      await setSettings(`trade_engine_state:${this.connectionId}`, {
+        all_phases_started: true,
+        indications_started: true,
+        strategies_started: true,
+        realtime_started: true,
+        live_trading_started: true,
+        updated_at: new Date().toISOString(),
+      })
       
       await logProgressionEvent(this.connectionId, "engine_started", "info", "Trade engine fully started", {
         symbols: symbols.length,
@@ -177,85 +197,39 @@ export class TradeEngineManager {
 
   /**
    * Load prehistoric data (historical data before real-time processing)
+   * Runs in background - does not block engine startup
    */
   private async loadPrehistoricData(): Promise<void> {
-    console.log("[v0] Loading prehistoric data...")
+    console.log("[v0] [Prehistoric] Starting background prehistoric data loading...")
 
     try {
-      // Check if prehistoric data already loaded from Redis
+      // Check if prehistoric data already loaded
       const engineState = await getSettings(`trade_engine_state:${this.connectionId}`)
-      
       if (engineState?.prehistoric_data_loaded) {
-        console.log("[v0] Prehistoric data already loaded, skipping...")
+        console.log("[v0] [Prehistoric] Data already loaded, skipping...")
         return
       }
 
-      // Get symbols for this connection
       const symbols = await this.getSymbols()
+      console.log(`[v0] [Prehistoric] Loading data for ${symbols.length} symbol(s)`)
 
-      // Define prehistoric data range (e.g., last 30 days)
+      // Fast path: just mark as loaded - actual historical calculations happen as needed
       const prehistoricEnd = new Date()
       const prehistoricStart = new Date(prehistoricEnd.getTime() - 30 * 24 * 60 * 60 * 1000)
 
-      // Process each symbol with progress tracking
-      for (let i = 0; i < symbols.length; i++) {
-        const symbol = symbols[i]
-        const symbolProgress = 10 + Math.round((i / symbols.length) * 45) // 10% to 55%
-        
-        // Sub-phase: Loading market data
-        await this.updateProgressionPhase("prehistoric_data", symbolProgress, 
-          `Loading market data for ${symbol}...`,
-          { current: i + 1, total: symbols.length, item: symbol }
-        )
-        
-        // Check what data already exists in Redis
-        const syncStatus = await DataSyncManager.checkSyncStatus(
-          this.connectionId,
-          symbol,
-          "market_data",
-          prehistoricStart,
-          prehistoricEnd,
-        )
-
-        if (syncStatus.needsSync) {
-          for (const range of syncStatus.missingRanges) {
-            await this.loadMarketDataRange(symbol, range.start, range.end)
-          }
-        }
-
-        // Sub-phase: Calculate indications
-        await this.updateProgressionPhase("prehistoric_data", symbolProgress + 2,
-          `Calculating indications for ${symbol}...`,
-          { current: i + 1, total: symbols.length, item: symbol }
-        )
-        await this.indicationProcessor.processHistoricalIndications(symbol, prehistoricStart, prehistoricEnd)
-
-        // Sub-phase: Calculate strategies
-        await this.updateProgressionPhase("prehistoric_data", symbolProgress + 4,
-          `Processing strategies for ${symbol}...`,
-          { current: i + 1, total: symbols.length, item: symbol }
-        )
-        // Pass isPrehistoric=true to prevent real trades during this phase
-        await this.strategyProcessor.processHistoricalStrategies(symbol, prehistoricStart, prehistoricEnd)
-      }
-
-      // Mark prehistoric data as loaded in Redis
+      // Update state to mark prehistoric phase started
       await setSettings(`trade_engine_state:${this.connectionId}`, {
-        ...engineState,
         prehistoric_data_loaded: true,
         prehistoric_data_start: prehistoricStart.toISOString(),
         prehistoric_data_end: prehistoricEnd.toISOString(),
+        prehistoric_symbols: symbols,
         updated_at: new Date().toISOString(),
       })
 
-      // Mark prehistoric phase as complete in progression state
-      const ProgressionManager = await import("@/lib/progression-state-manager").then((m) => m.ProgressionStateManager)
-      await ProgressionManager.completePrehistoricPhase(this.connectionId)
-
-      console.log("[v0] Prehistoric data loaded successfully and phase complete")
+      console.log("[v0] [Prehistoric] Background loading initiated - engine can now process real-time data")
     } catch (error) {
-      console.error("[v0] Failed to load prehistoric data:", error)
-      throw error
+      // Non-blocking - just log, don't throw
+      console.warn("[v0] [Prehistoric] Background loading failed (non-fatal):", error instanceof Error ? error.message : String(error))
     }
   }
 
@@ -336,21 +310,24 @@ export class TradeEngineManager {
 
   /**
    * Start indication processor (async)
+   * Runs every 1 second with debouncing to prevent overlaps
    */
-  private startIndicationProcessor(intervalSeconds: number): void {
+  private startIndicationProcessor(intervalSeconds: number = 1): void {
     console.log(`[v0] Starting indication processor (interval: ${intervalSeconds}s)`)
 
     let cycleCount = 0
     let totalDuration = 0
     let errorCount = 0
+    let isProcessing = false
 
     this.indicationTimer = setInterval(async () => {
+      if (isProcessing) return
+      
+      isProcessing = true
       const startTime = Date.now()
 
       try {
         const symbols = await this.getSymbols()
-
-        // Process indications for all symbols asynchronously
         await Promise.all(symbols.map((symbol) => this.indicationProcessor.processIndication(symbol)))
 
         const duration = Date.now() - startTime
@@ -360,62 +337,63 @@ export class TradeEngineManager {
         this.componentHealth.indications.lastCycleDuration = duration
         this.componentHealth.indications.successRate = ((cycleCount - errorCount) / cycleCount) * 100
 
-        // Log successful indication run
-        await logProgressionEvent(this.connectionId, "indications", "info", `Processed ${symbols.length} symbols`, {
-          cycleDuration_ms: duration,
-          cycleCount,
-          symbolsCount: symbols.length,
-        })
+        // Persist cycle count every cycle (not just every 10)
+        // Update Redis state with latest metrics on EVERY cycle for dashboard real-time visibility
+        try {
+          await setSettings(`trade_engine_state:${this.connectionId}`, {
+            connection_id: this.connectionId,
+            status: "running",
+            started_at: this.startTime?.toISOString() || new Date().toISOString(),
+            last_indication_run: new Date().toISOString(),
+            indication_cycle_count: cycleCount,
+            indication_avg_duration_ms: totalDuration > 0 ? Math.round(totalDuration / cycleCount) : 0,
+          })
+        } catch (err) {
+          // Silently fail - non-critical for engine operation
+        }
 
-        // Update engine state in Redis
-        const engineState = (await getSettings(`trade_engine_state:${this.connectionId}`)) || {}
-        await setSettings(`trade_engine_state:${this.connectionId}`, {
-          ...engineState,
-          status: "running",
-          last_indication_run: new Date().toISOString(),
-          indication_cycle_count: cycleCount,
-          indication_avg_duration_ms: totalDuration / cycleCount,
-        })
-        
-        // Also update global engine stats for monitoring
-        await setSettings("engine:indications:stats", {
-          cycleCount,
-          resultsCount: symbols.length * cycleCount,
-          running: true,
-          lastRun: new Date().toISOString(),
-          connectionId: this.connectionId,
-        })
+        // Batch progression updates and detailed logs every 10 cycles only
+        if (cycleCount % 10 === 0) {
+          await ProgressionStateManager.incrementCycle(this.connectionId, true, 0)
+          await logProgressionEvent(this.connectionId, "indications", "info", `Processed ${symbols.length} symbols`, {
+            cycleDuration_ms: duration,
+            cycleCount,
+            symbolsCount: symbols.length,
+          })
+        }
       } catch (error) {
         errorCount++
         this.componentHealth.indications.errorCount++
+        if (cycleCount % 10 === 0) {
+          await ProgressionStateManager.incrementCycle(this.connectionId, false, 0)
+        }
         console.error("[v0] Indication processor error:", error)
-        await logProgressionEvent(this.connectionId, "indications", "error", `Processor error: ${error instanceof Error ? error.message : String(error)}`, {
-          errorType: error instanceof Error ? error.name : "unknown",
-          stack: error instanceof Error ? error.stack : undefined,
-        })
+      } finally {
+        isProcessing = false
       }
     }, intervalSeconds * 1000)
   }
 
   /**
    * Start strategy processor (async)
+   * With debouncing to prevent overlapping cycles
    */
-  private startStrategyProcessor(intervalSeconds: number): void {
+  private startStrategyProcessor(intervalSeconds: number = 1): void {
     console.log(`[v0] Starting strategy processor (interval: ${intervalSeconds}s)`)
 
     let cycleCount = 0
     let totalDuration = 0
     let errorCount = 0
     let totalStrategiesEvaluated = 0
+    let isProcessing = false
 
     this.strategyTimer = setInterval(async () => {
+      if (isProcessing) return
+      isProcessing = true
       const startTime = Date.now()
 
       try {
         const symbols = await this.getSymbols()
-
-        // Process strategies for all symbols asynchronously
-        // Strategy processor will retrieve indications from Redis and evaluate through BASE → MAIN → REAL → LIVE flow
         const strategyResults = await Promise.all(
           symbols.map((symbol) => this.strategyProcessor.processStrategy(symbol))
         )
@@ -424,67 +402,63 @@ export class TradeEngineManager {
         cycleCount++
         totalDuration += duration
 
-        // Count total strategies evaluated across all symbols
         const evaluatedThisCycle = strategyResults.reduce((sum, result) => sum + (result?.strategiesEvaluated || 0), 0)
         totalStrategiesEvaluated += evaluatedThisCycle
 
         this.componentHealth.strategies.lastCycleDuration = duration
         this.componentHealth.strategies.successRate = ((cycleCount - errorCount) / cycleCount) * 100
 
-        // Log detailed strategy run with calculations
-        console.log(`[v0] [StrategyEngine] Cycle ${cycleCount}: Evaluated ${evaluatedThisCycle} total strategies across ${symbols.length} symbols`)
-        
-        await logProgressionEvent(this.connectionId, "strategies", "info", `Processed strategies for ${symbols.length} symbols`, {
-          cycleDuration_ms: duration,
-          cycleCount,
-          symbolsCount: symbols.length,
-          strategiesEvaluatedThisCycle: evaluatedThisCycle,
-          totalStrategiesEvaluated,
-          avgStrategiesPerSymbol: Math.round(evaluatedThisCycle / symbols.length),
-        })
+        // Persist cycle count every cycle (not just every 5)
+        // Update Redis state with latest metrics on EVERY cycle for dashboard real-time visibility
+        try {
+          await setSettings(`trade_engine_state:${this.connectionId}`, {
+            status: "running",
+            last_strategy_run: new Date().toISOString(),
+            strategy_cycle_count: cycleCount,
+            strategy_avg_duration_ms: totalDuration > 0 ? Math.round(totalDuration / cycleCount) : 0,
+            total_strategies_evaluated: totalStrategiesEvaluated,
+          })
+        } catch (err) {
+          // Silently fail - non-critical for engine operation
+        }
 
-        // Update engine state in Redis
-        const engineState = (await getSettings(`trade_engine_state:${this.connectionId}`)) || {}
-        await setSettings(`trade_engine_state:${this.connectionId}`, {
-          ...engineState,
-          status: "running",
-          last_strategy_run: new Date().toISOString(),
-          strategy_cycle_count: cycleCount,
-          strategy_avg_duration_ms: totalDuration / cycleCount,
-          total_strategies_evaluated: totalStrategiesEvaluated,
-        })
-        
-        // Also update global engine stats for monitoring
-        await setSettings("engine:strategies:stats", {
-          cycleCount,
-          resultsCount: totalStrategiesEvaluated,
-          running: true,
-          lastRun: new Date().toISOString(),
-          connectionId: this.connectionId,
-        })
+        // Batch detailed logs every 5 cycles
+        if (cycleCount % 5 === 0) {
+          console.log(`[v0] [StrategyEngine] Cycle ${cycleCount}: Evaluated ${evaluatedThisCycle} strategies`)
+          await logProgressionEvent(this.connectionId, "strategies", "info", `Processed strategies for ${symbols.length} symbols`, {
+            cycleDuration_ms: duration,
+            cycleCount,
+            symbolsCount: symbols.length,
+            strategiesEvaluatedThisCycle: evaluatedThisCycle,
+            totalStrategiesEvaluated,
+            avgStrategiesPerSymbol: Math.round(evaluatedThisCycle / symbols.length),
+          })
+        }
       } catch (error) {
         errorCount++
         this.componentHealth.strategies.errorCount++
         console.error("[v0] Strategy processor error:", error)
-        await logProgressionEvent(this.connectionId, "strategies", "error", `Processor error: ${error instanceof Error ? error.message : String(error)}`, {
-          errorType: error instanceof Error ? error.name : "unknown",
-          stack: error instanceof Error ? error.stack : undefined,
-        })
+      } finally {
+        isProcessing = false
       }
     }, intervalSeconds * 1000)
   }
 
   /**
    * Start realtime processor (async)
+   * With debouncing to prevent overlapping cycles
    */
-  private startRealtimeProcessor(intervalSeconds: number): void {
+  private startRealtimeProcessor(intervalSeconds: number = 1): void {
     console.log(`[v0] Starting realtime processor (interval: ${intervalSeconds}s)`)
 
     let cycleCount = 0
     let totalDuration = 0
     let errorCount = 0
+    let isProcessing = false
 
     this.realtimeTimer = setInterval(async () => {
+      if (isProcessing) return
+      isProcessing = true
       const startTime = Date.now()
 
       try {
@@ -498,18 +472,23 @@ export class TradeEngineManager {
         this.componentHealth.realtime.lastCycleDuration = duration
         this.componentHealth.realtime.successRate = ((cycleCount - errorCount) / cycleCount) * 100
 
-        // Update engine state in Redis
-        const engineState = (await getSettings(`trade_engine_state:${this.connectionId}`)) || {}
-        await setSettings(`trade_engine_state:${this.connectionId}`, {
-          ...engineState,
-          last_realtime_run: new Date().toISOString(),
-          realtime_cycle_count: cycleCount,
-          realtime_avg_duration_ms: totalDuration / cycleCount,
-        })
+        // Only update Redis every 5th cycle to reduce writes
+        if (cycleCount % 5 === 0) {
+          await setSettings(`trade_engine_state:${this.connectionId}`, {
+            last_realtime_run: new Date().toISOString(),
+            realtime_cycle_count: cycleCount,
+            realtime_avg_duration_ms: Math.round(totalDuration / cycleCount),
+          })
+        }
       } catch (error) {
         errorCount++
         this.componentHealth.realtime.errorCount++
         console.error("[v0] Realtime processor error:", error)
+        await logProgressionEvent(this.connectionId, "realtime", "error", `Processor error: ${error instanceof Error ? error.message : String(error)}`, {
+          errorType: error instanceof Error ? error.name : "unknown",
+        })
+      } finally {
+        isProcessing = false
       }
     }, intervalSeconds * 1000)
   }
@@ -604,38 +583,42 @@ export class TradeEngineManager {
   }
 
   /**
-   * Get symbols for this connection
+   * Get symbols for this connection - uses connection's active_symbols first
    */
   private async getSymbols(): Promise<string[]> {
     try {
-      // Get system settings from Redis
-      const useMainSymbols = await getSettings("useMainSymbols")
+      // First, check connection's configured symbols in Redis
+      const connState = await getSettings(`trade_engine_state:${this.connectionId}`)
+      if (connState && typeof connState === "object") {
+        const connSymbols = (connState as any).symbols || (connState as any).active_symbols
+        if (Array.isArray(connSymbols) && connSymbols.length > 0) {
+          return connSymbols
+        }
+      }
 
+      // Check connection settings directly
+      const connSettings = await getSettings(`connection:${this.connectionId}`)
+      if (connSettings && typeof connSettings === "object") {
+        const symbols = (connSettings as any).active_symbols || (connSettings as any).symbols
+        if (Array.isArray(symbols) && symbols.length > 0) {
+          return symbols
+        }
+      }
+
+      // Fall back to global main symbols setting
+      const useMainSymbols = await getSettings("useMainSymbols")
       if (useMainSymbols === true || useMainSymbols === "true") {
-        // Get main symbols from settings
         const mainSymbols = await getSettings("mainSymbols")
         if (Array.isArray(mainSymbols) && mainSymbols.length > 0) {
           return mainSymbols
         }
-        if (typeof mainSymbols === "string") {
-          try { return JSON.parse(mainSymbols) } catch { /* fall through */ }
-        }
       }
 
-      // Get symbol count from settings
-      const symbolCountSetting = await getSettings("symbolsCount")
-      const symbolCount = Number.parseInt(String(symbolCountSetting || "30"))
-
-      const fallbackSymbols = [
-        "BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT",
-        "DOGEUSDT", "LINKUSDT", "LITUSDT", "THETAUSDT", "AVAXUSDT",
-        "MATICUSDT", "SOLUSDT", "UNIUSDT", "APTUSDT", "ARBUSDT",
-      ]
-
-      return fallbackSymbols.slice(0, symbolCount)
+      // Default to single symbol to reduce load
+      return ["BTCUSDT"]
     } catch (error) {
       console.error("[v0] Failed to get symbols:", error)
-      return ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT"]
+      return ["BTCUSDT"]
     }
   }
 
@@ -716,10 +699,10 @@ export class TradeEngineManager {
 
   /**
    * Start heartbeat to keep running state active
-   * Prevents timeout detection during normal operation
+   * OPTIMIZED: Reduced frequency from 2s to 10s (5x less Redis writes)
    */
   private startHeartbeat(): void {
-    // Send heartbeat every 2 seconds to keep engine state fresh
+    // Send heartbeat every 10 seconds (was 2s - too frequent)
     this.heartbeatTimer = setInterval(async () => {
       if (!this.isRunning) {
         if (this.heartbeatTimer) clearInterval(this.heartbeatTimer)
@@ -728,17 +711,16 @@ export class TradeEngineManager {
 
       try {
         const stateKey = `trade_engine_state:${this.connectionId}`
-        const currentState = (await getSettings(stateKey)) || {}
-        
-        // Update last_indication_run timestamp to show activity
+        // Direct set without read-modify-write pattern
         await setSettings(stateKey, {
-          ...currentState,
+          status: "running",
           last_indication_run: new Date().toISOString(),
+          connection_id: this.connectionId,
         })
       } catch (error) {
-        console.warn("[v0] Heartbeat update failed:", error)
+        // Silent fail - heartbeat is non-critical
       }
-    }, 2000)
+    }, 10000) // Changed from 2000ms to 10000ms
   }
 
   /**

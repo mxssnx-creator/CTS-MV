@@ -4,7 +4,7 @@
  * NOW: 100% Redis-backed, no SQL
  */
 
-import { getSettings, setSettings, getMarketData } from "@/lib/redis-db"
+import { getSettings, setSettings, getMarketData, getRedisClient } from "@/lib/redis-db"
 import { PseudoPositionManager } from "./pseudo-position-manager"
 
 export class RealtimeProcessor {
@@ -187,7 +187,6 @@ export class RealtimeProcessor {
       }
 
       // Update via the position manager's update
-      const { getRedisClient } = await import("@/lib/redis-db")
       const client = getRedisClient()
       await client.hset(`pseudo_position:${this.connectionId}:${position.id}`, {
         trailing_stop_price: String(newTrailingStop),

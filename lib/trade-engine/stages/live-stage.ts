@@ -46,6 +46,8 @@ export interface LivePosition {
 
 /**
  * Execute real position on exchange as live position
+ * Only executes REAL exchange trading if is_live_trade is enabled
+ * Otherwise returns pseudo position tracking without exchange execution
  */
 export async function executeLivePosition(
   connectionId: string,
@@ -54,6 +56,12 @@ export async function executeLivePosition(
 ): Promise<LivePosition> {
   await initRedis()
   const client = getRedisClient()
+
+  // Check if live trading is actually enabled for this connection
+  const connSettings = await client?.hgetall(`connection:${connectionId}`) || {}
+  const isLiveTradeEnabled = connSettings.is_live_trade === "1" || connSettings.is_live_trade === "true"
+  
+  console.log(`${LOG_PREFIX} ${realPosition.symbol}: live_trade enabled=${isLiveTradeEnabled}`)
 
   const livePosition: LivePosition = {
     id: `live:${connectionId}:${realPosition.symbol}:${realPosition.direction}:${Date.now()}`,
@@ -69,40 +77,49 @@ export async function executeLivePosition(
     leverage: realPosition.leverage,
     stopLoss: realPosition.stopLoss,
     takeProfit: realPosition.takeProfit,
-    status: "pending",
+    status: isLiveTradeEnabled ? "pending" : "simulated", // Mark as simulated if live_trade disabled
     fills: [],
     createdAt: Date.now(),
     updatedAt: Date.now(),
   }
 
   try {
-    console.log(
-      `${LOG_PREFIX} Executing live position: ${realPosition.symbol} ${realPosition.direction} qty=${realPosition.quantity.toFixed(4)}`
-    )
-
-    // Place order on exchange
-    const order = await exchangeConnector.placeOrder({
-      symbol: realPosition.symbol,
-      side: realPosition.direction.toUpperCase(),
-      type: "market",
-      quantity: realPosition.quantity,
-      leverage: realPosition.leverage,
-      stopLoss: realPosition.stopLoss,
-      takeProfit: realPosition.takeProfit,
-    })
-
-    if (order && order.id) {
-      livePosition.orderId = order.id
-      livePosition.status = "open"
-
+    if (isLiveTradeEnabled) {
+      // REAL TRADING: Only execute on exchange when live_trade is enabled
       console.log(
-        `${LOG_PREFIX} Order placed: ${order.id} for ${realPosition.symbol}`
+        `${LOG_PREFIX} EXECUTING REAL: ${realPosition.symbol} ${realPosition.direction} qty=${realPosition.quantity.toFixed(4)} on EXCHANGE`
       )
+
+      // Place order on exchange - ONLY when live_trade is enabled
+      const order = await exchangeConnector.placeOrder({
+        symbol: realPosition.symbol,
+        side: realPosition.direction.toUpperCase(),
+        type: "market",
+        quantity: realPosition.quantity,
+        leverage: realPosition.leverage,
+        stopLoss: realPosition.stopLoss,
+        takeProfit: realPosition.takeProfit,
+      })
+
+      if (order && order.id) {
+        livePosition.orderId = order.id
+        livePosition.status = "open"
+
+        console.log(
+          `${LOG_PREFIX} Order placed on exchange: ${order.id} for ${realPosition.symbol}`
+        )
+      }
+    } else {
+      // SIMULATION MODE: Track pseudo position without exchange execution
+      console.log(
+        `${LOG_PREFIX} SIMULATION: ${realPosition.symbol} ${realPosition.direction} qty=${realPosition.quantity.toFixed(4)} (live_trade disabled)`
+      )
+      livePosition.status = "simulated"
     }
 
-    // Store live position
+    // Store live position (whether real or simulated)
     const key = `live:position:${livePosition.id}`
-    await client.setex(key, 604800, JSON.stringify(livePosition))
+    await client?.setex(key, 604800, JSON.stringify(livePosition))
 
     return livePosition
   } catch (err) {
